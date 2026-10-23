@@ -23,19 +23,22 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 type App = Awaited<ReturnType<typeof launch>>
 async function turn(text: string, shot: string, before?: (app: App) => Promise<void>) {
   const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home } })
-  const composer = app.getByTestId('composer')
-  await composer.waitFor({ timeoutMs: 60_000 })
-  if (before) await before(app)
-  await composer.click()
-  await composer.fill(text)
-  await composer.press('ctrl-enter')
-  await app.getByText('Working…').waitFor({ timeoutMs: 20_000 })
-  const started = Date.now()
-  while ((await app.getByText('Working…').count()) > 0 && Date.now() - started < 180_000) await wait(1000)
-  await wait(800)
-  await app.screenshot({ path: shot })
-  await app.close()
-  console.log('turn done in', Math.round((Date.now() - started) / 1000), 's')
+  try {
+    const composer = app.getByTestId('composer')
+    await composer.waitFor({ timeoutMs: 60_000 })
+    if (before) await before(app)
+    await composer.click()
+    await composer.fill(text)
+    await composer.press('ctrl-enter')
+    await app.getByText('Working…').waitFor({ timeoutMs: 20_000 })
+    const started = Date.now()
+    while ((await app.getByText('Working…').count()) > 0 && Date.now() - started < 180_000) await wait(1000)
+    await wait(800)
+    await app.screenshot({ path: shot })
+    console.log('turn done in', Math.round((Date.now() - started) / 1000), 's')
+  } finally {
+    await app.close()
+  }
 }
 
 await turn(
@@ -44,10 +47,15 @@ await turn(
 )
 await turn('What is my favourite colour, and which file did you create? Answer in five words or fewer.', 'screenshots/live-2.png', async (app) => {
   // Edit the first paragraph (block u-0) in place, then let the commit timer fire.
+  // The note opens at its end, so scroll up to the paragraph first, and back down after.
+  await app.getByTestId('composer').wheel(0, -4000)
+  await wait(600)
   const first = app.getByTestId('para-u-0')
   await first.click()
   await first.fill('My favourite colour is green.\n\nCreate notes.txt containing the single word hello, then run `cat notes.txt`. Answer in one short sentence.')
   await wait(900)
+  await first.wheel(0, 8000)
+  await wait(600)
 })
 
 const lines = readFileSync(path.join(home, 'threads', `${id}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l))

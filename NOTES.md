@@ -122,6 +122,8 @@ Not used: `ghostty-web`, `restty` (no need once option 1 worked).
   `onMouseDownOutside`, ⌘Esc.
 - Automation screenshots of a background window can catch a `motion.div` mid-fade, because frames
   are paced by the 100 ms fallback timer. Wait about 2 s before asserting on dialogs.
+- `<diff>` still paints a faint `+N −M` in its top-right corner even with `diffFileHeaderHeight: 0`.
+  It duplicates the block's own counts. Cosmetic, left for now.
 - `<diff>`: the patch's own `---/+++` header is stripped, and `diffFileHeaderHeight` is 0, because
   the block's `Edit path +N −M` line already names the file.
 - macOS reports `/var/...` as `/private/var/...` in tool paths, so paths are made workspace-relative
@@ -149,7 +151,9 @@ Not used: `ghostty-web`, `restty` (no need once option 1 worked).
 - `bun scripts/check-terminal.ts`: typed input to `read`, Ctrl+C (exit 130), interactive `top` + `q` (exit 0).
 - `bun scripts/check-pane.ts <home>`: "Open in Claude Code" (title menu) pane opens and closes.
 - `bun scripts/check-live.ts`: **spends two real turns**. Streaming, write → edit block, Bash → shell
-  block, restart + resume.
+  block, restart + resume, and an in-place edit reaching Claude. Last run: the first paragraph was
+  changed from blue to green after the restart, and Claude answered "Green; I created notes.txt."
+  in the same session.
 
 All four use a scratch `VELLUM_HOME` and `GPUIX_BACKGROUND=1`. `~/.vellum` is never touched.
 
