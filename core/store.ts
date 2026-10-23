@@ -46,8 +46,6 @@ export type Settings = {
   translucent?: boolean
   /** Tab strip: always shown, collapsed while writing, or hidden (⌘⇧T reveals). */
   tabs?: 'pinned' | 'auto' | 'hidden'
-  /** Push the traffic lights out of the way and start the header at the edge. Next launch. */
-  hideTrafficLights?: boolean
   /** Reduce motion: follow macOS, always reduce, or always animate. */
   motion?: 'system' | 'reduce' | 'full'
   lastThreadId?: string

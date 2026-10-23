@@ -2,7 +2,7 @@
 //
 // Layout: a tab bar of open notes on the glass, then the page: its title (with
 // a menu) and the note itself. The note is one editable document; new writing
-// goes at its end, and Ctrl+Enter asks Claude. Cmd+K finds any note; Cmd+N starts one.
+// goes at its end, and ⌘↵ asks Claude. Cmd+K finds any note; Cmd+N starts one.
 
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -10,6 +10,7 @@ import path from 'node:path'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, render, useGpuixRequired, useWindowSize, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { Button, Field, Label, Menu, Sheet, SheetHeader, SheetSection, stripHeight, TabStrip, useToast, type MenuItem as MenuEntry } from './components'
+import { FloatingLayer } from '@gpuix/react/floating'
 import { ease, setReducedMotion, tween } from './components/motion'
 import { ClaudeRunner, killAllRunners } from './core/claude'
 import { nameNote } from './core/title'
@@ -36,12 +37,14 @@ import {
 import { BlockView, type BlockActions } from './ui/blocks'
 import { Composer } from './ui/Composer'
 import { NewThreadDialog, ThreadSwitcher } from './ui/dialogs'
+import { History } from './ui/History'
 import { Dot, Icon, Kbd, MaterialContext, Meta, Quiet, useM } from './ui/kit'
 import { SettingsSheet, type MotionPref, type TabMode } from './ui/SettingsSheet'
 import { CELL_W, TerminalBlock } from './ui/TerminalBlock'
 import {
   accentFor,
   concentric,
+  radiusBase,
   contentInset,
   font,
   readingWidth,
@@ -59,10 +62,8 @@ const SOLID = process.env.VELLUM_SOLID === '1'
 // Window material is fixed when the window opens: translucency and blur apply on next launch.
 const TRANSLUCENT = !SOLID && readSettings().translucent === true
 const START_BLUR = !SOLID && (TRANSLUCENT || wantsBlur(materials[readSettings().material ?? 'groknight']))
-// Settings that shape the window itself are read once, before it opens.
-const HIDE_LIGHTS = readSettings().hideTrafficLights === true
-/** Left room for the traffic lights in whatever row sits under them. */
-const LIGHTS_INSET = HIDE_LIGHTS ? 12 : 78
+/** Most tabs open at once: one per ⌘1–⌘9. The rest live in History (⌘Y). */
+const MAX_TABS = 9
 const motionPref = (p: MotionPref) => setReducedMotion(p === 'system' ? undefined : p === 'reduce')
 motionPref(readSettings().motion ?? 'system')
 const FONT_DIR = path.join(import.meta.dir, 'assets', 'fonts')
@@ -117,7 +118,7 @@ const Document = memo(function Document({
       overdraw={600}
       style={{ flexGrow: 1, minHeight: 0, width: '100%', scrollbarColor: m.scrollbar, scrollbarWidth: 10 }}
     >
-      <div key="head" style={{ height: 4 }} />
+      <div key="head" style={{ height: 28 }} />
       {thread.blocks.map((b) => (
         <Paragraph key={b.id} kind={b.kind}>
           <BlockView block={b} actions={actions} />
@@ -160,12 +161,15 @@ function AccountPill({ profile, color, onPress, testId = 'account-pill' }: { pro
   )
 }
 
-/** The page title with its menu: rename, open in Claude Code, show the folder, close. */
-function PageTitle({
+/**
+ * The current note's menu, hung off its tab pill: rename, open in Claude Code, show the folder,
+ * close. Rename opens a one-line field in the same place.
+ */
+function NoteMenu({
   thread,
   profile,
-  inset,
-  trailing,
+  open,
+  onOpenChange,
   canOpenClaude,
   onRename,
   onOpenClaude,
@@ -173,21 +177,19 @@ function PageTitle({
 }: {
   thread: Thread
   profile?: Profile
-  /** Left padding: wider when the tab strip is away and the traffic lights sit over this row. */
-  inset: number
-  trailing?: React.ReactNode
+  open: boolean
+  onOpenChange: (open: boolean) => void
   canOpenClaude: boolean
   onRename: (title: string) => void
   onOpenClaude: () => void
   onClose: () => void
 }) {
   const m = useM()
-  const [menu, setMenu] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(thread.title)
   useEffect(() => {
     setRenaming(false)
-    setMenu(false)
+    onOpenChange(false)
   }, [thread.id])
   const finishRename = () => {
     const next = name.trim()
@@ -210,48 +212,40 @@ function PageTitle({
     { label: 'Close tab', icon: 'x', shortcut: '⇧⌘W', testId: 'menu-close', onSelect: onClose },
   ]
   return (
-    <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', height: 44, marginTop: contentInset - stripHeight - 8, flexShrink: 0, paddingLeft: inset, paddingRight: 12, gap: 8, userSelect: 'none' }}>
-      <div style={{ position: 'relative', flexShrink: 1, minWidth: 0 }}>
-        {renaming ? (
-          <div style={{ width: 360, display: 'flex' }}>
-          <Field
-            testId="title-input"
-            value={name}
-            autoFocus
-            onChange={setName}
-            onSubmit={finishRename}
-            onKeyDown={(e) => {
-              if (e.key === 'escape') {
-                e.preventDefault()
-                setRenaming(false)
-              }
-            }}
-          />
+    <>
+      <Menu
+        open={open}
+        onClose={() => onOpenChange(false)}
+        items={items}
+        width={280}
+        testId="title-menu-panel"
+        header={
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingLeft: 9, paddingRight: 9, paddingTop: 5, paddingBottom: 7 }}>
+            <Meta color={m.textMuted} mono>{folder}</Meta>
+            <Meta>{`${profile?.name ?? thread.profileId}${thread.model ? ` · ${thread.model}` : ''}`}</Meta>
           </div>
-        ) : (
-          <Button onPress={() => setMenu((v) => !v)} testId="title-menu" title="Note menu" style={{ height: 30, paddingLeft: 8, paddingRight: 6 }}>
-            {/* No pressed wash while open: the panel already says so, and a second box read as clutter. */}
-            <text style={{ fontSize: 17, lineHeight: 22, fontWeight: 600, color: m.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{thread.title}</text>
-            <Icon name="chevronDown" size={13} color={menu ? m.text : m.textMuted} />
-          </Button>
-        )}
-        <Menu
-          open={menu}
-          onClose={() => setMenu(false)}
-          items={items}
-          width={280}
-          testId="title-menu-panel"
-          header={
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingLeft: 9, paddingRight: 9, paddingTop: 5, paddingBottom: 7 }}>
-              <Meta color={m.textMuted} mono>{folder}</Meta>
-              <Meta>{`${profile?.name ?? thread.profileId}${thread.model ? ` · ${thread.model}` : ''}`}</Meta>
-            </div>
-          }
-        />
-      </div>
-      <div style={{ flexGrow: 1 }} />
-      {trailing}
-    </div>
+        }
+      />
+      {renaming ? (
+        <FloatingLayer side="bottom" align="start" sideOffset={6} style={{ width: 320 }}>
+          <div onMouseDownOutside={finishRename} style={{ display: 'flex', padding: 5, backgroundColor: m.popup, borderRadius: concentric(radiusBase + 5, 0), borderWidth: 1, borderColor: m.border, boxShadow: { offsetX: 0, offsetY: 12, blurRadius: 32, spreadRadius: 0, color: m.shadow } }}>
+            <Field
+              testId="title-input"
+              value={name}
+              autoFocus
+              onChange={setName}
+              onSubmit={finishRename}
+              onKeyDown={(e) => {
+                if (e.key === 'escape') {
+                  e.preventDefault()
+                  setRenaming(false)
+                }
+              }}
+            />
+          </div>
+        </FloatingLayer>
+      ) : null}
+    </>
   )
 }
 
@@ -317,7 +311,8 @@ function App() {
   // Replies that finished while their tab was in the background.
   const [unread, setUnread] = useState<Record<string, number>>({})
   const [drafts, setDrafts] = useState<Record<string, Draft>>(() => readJson(paths.drafts, {}))
-  const [overlay, setOverlay] = useState<null | 'new' | 'switcher' | 'settings'>(null)
+  const [overlay, setOverlay] = useState<null | 'new' | 'switcher' | 'settings' | 'history'>(null)
+  const [noteMenu, setNoteMenu] = useState(false)
   const [pane, setPane] = useState<Pane | null>(null)
   // Tab strip: the mode from settings, ⌘⇧T flipping it, and the top-edge hover in auto mode.
   const [tabMode, setTabMode] = useState<TabMode>(() => readSettings().tabs ?? 'pinned')
@@ -326,7 +321,6 @@ function App() {
   const [writing, setWriting] = useState(false)
   const [motionSetting, setMotionSetting] = useState<MotionPref>(() => readSettings().motion ?? 'system')
   const [translucentSetting, setTranslucentSetting] = useState(() => readSettings().translucent === true)
-  const [lightsSetting, setLightsSetting] = useState(HIDE_LIGHTS)
   // A tab whose Claude is still working waits here for "stop and close?".
   const [confirmClose, setConfirmClose] = useState<string | null>(null)
   const { toast, show: showToast } = useToast()
@@ -484,7 +478,7 @@ function App() {
   const draftsRef = useRef(drafts)
   draftsRef.current = drafts
 
-  /** Ctrl+Enter: send what was written at the end, plus any edits made to earlier text. */
+  /** ⌘↵: send what was written at the end, plus any edits made to earlier text. */
   const send = useCallback(() => {
     const thread = threadsRef.current.find((t) => t.id === activeRef.current)
     if (!thread) return
@@ -520,8 +514,16 @@ function App() {
   const sendRef = useRef(send)
   sendRef.current = send
 
+  /** Opens a note in a tab. Past nine, the oldest tab Claude isn't working in makes room. */
   const openNote = useCallback((id: string) => {
-    setTabs((t) => (t.includes(id) ? t : [...t, id]))
+    setTabs((t) => {
+      if (t.includes(id)) return t
+      if (t.length < MAX_TABS) return [...t, id]
+      const drop = t.find((x) => !threadsRef.current.find((th) => th.id === x)?.running) ?? t[0]!
+      const title = threadsRef.current.find((th) => th.id === drop)?.title ?? 'a note'
+      setTimeout(() => showToast(`Closed “${title}” to keep nine tabs · ⌘Y has it`), 0)
+      return [...t.filter((x) => x !== drop), id]
+    })
     setActiveId(id)
   }, [])
 
@@ -667,6 +669,9 @@ function App() {
     } else if (key === 'k') {
       e.preventDefault()
       setOverlay((o) => (o === 'switcher' ? null : 'switcher'))
+    } else if (key === 'y') {
+      e.preventDefault()
+      setOverlay((o) => (o === 'history' ? null : 'history'))
     } else if (key === '.') {
       e.preventDefault()
       interrupt()
@@ -714,9 +719,9 @@ function App() {
   const tabThreads = tabs.map((id) => threads.find((t) => t.id === id)).filter((t): t is Thread => Boolean(t))
   const editsWaiting = active ? pendingEdits(active).length > 0 : false
   const placeholder = !active?.blocks.length
-    ? 'Start writing.  Ctrl+Enter asks Claude · ! runs a command · @ tags a file'
+    ? 'Start writing.  ⌘↵ asks Claude · ! runs a command · @ tags a file'
     : editsWaiting
-      ? 'Ctrl+Enter tells Claude about your edits'
+      ? '⌘↵ tells Claude about your edits'
       : 'Keep writing…'
 
   return (
@@ -767,8 +772,29 @@ function App() {
                 dot: accentFor(m, profiles, t.profileId),
               }))}
               activeId={activeId}
-              leading={LIGHTS_INSET}
+              leading={
+                <Button onPress={() => setOverlay('history')} testId="open-history" title="Past notes (⌘Y)">
+                  <Icon name="history" size={14} />
+                </Button>
+              }
+              menuOpen={noteMenu}
+              activeAnchor={
+                active ? (
+                  <NoteMenu
+                    thread={active}
+                    profile={activeProfile}
+                    open={noteMenu}
+                    onOpenChange={setNoteMenu}
+                    canOpenClaude={Boolean(active.claudeSessionId)}
+                    onRename={(title) => record(active.id, { type: 'vellum/title', title })}
+                    onOpenClaude={openClaude}
+                    onClose={() => closeTab(active.id)}
+                  />
+                ) : null
+              }
               onPick={(id) => {
+                // The current pill is the note's title: pressing it opens its menu.
+                if (id === activeId) return setNoteMenu((v) => !v)
                 setActiveId(id)
                 setTimeout(focusComposer, 50)
               }}
@@ -794,18 +820,8 @@ function App() {
             />
           ) : active ? (
             <>
-              <PageTitle
-                thread={active}
-                profile={activeProfile}
-                inset={stripVisible ? 12 : LIGHTS_INSET}
-                trailing={stripVisible ? null : <AccountPill profile={activeProfile} color={accentFor(m, profiles, activeProfile?.id)} testId="account-pill-title" onPress={() => setOverlay('settings')} />}
-                canOpenClaude={Boolean(active.claudeSessionId)}
-                onRename={(title) => record(active.id, { type: 'vellum/title', title })}
-                onOpenClaude={openClaude}
-                onClose={() => closeTab(active.id)}
-              />
-              {/* Text scrolls under the title row through a short fade instead of a hard edge. */}
-              <div style={{ position: 'relative', flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+              {/* Text scrolls under the strip through a short fade instead of a hard edge. */}
+              <div testId="page" style={{ position: 'relative', flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
               <Document
                 thread={active}
                 actions={actions}
@@ -885,12 +901,6 @@ function App() {
             setStripToggled(false)
             updateSettings({ tabs: next })
           }}
-          hideTrafficLights={lightsSetting}
-          onHideTrafficLights={(next) => {
-            setLightsSetting(next)
-            updateSettings({ hideTrafficLights: next })
-            showToast('Traffic lights change on next launch')
-          }}
           motion={motionSetting}
           onMotion={(next) => {
             motionPref(next)
@@ -922,6 +932,19 @@ function App() {
             </Button>
           </div>
         </Sheet>
+        <History
+          open={overlay === 'history'}
+          onClose={() => setOverlay(null)}
+          threads={threads}
+          profiles={profiles}
+          activeId={activeId}
+          openIds={tabs}
+          onPick={(id) => {
+            openNote(id)
+            setOverlay(null)
+            setTimeout(focusComposer, 50)
+          }}
+        />
         {overlay === 'switcher' ? (
           <ThreadSwitcher
             open
@@ -950,9 +973,10 @@ render(<App />, {
   height: 780,
   titlebarTransparent: true,
   windowBackground: START_BLUR ? 'blurred' : 'opaque',
-  // GPUIX has no option to hide the traffic lights; this moves them off the window (see NOTES).
-  trafficLightX: HIDE_LIGHTS ? -200 : 16,
-  trafficLightY: HIDE_LIGHTS ? -200 : 15,
+  // No traffic lights: Vellum is driven from the keyboard (⌘Q, ⇧⌘W, ⌘M). GPUIX has no option to
+  // hide them, so they sit off the window (see NOTES).
+  trafficLightX: -200,
+  trafficLightY: -200,
   keyboardFocusDim: false,
   focus: process.env.GPUIX_BACKGROUND !== '1',
   onKeyDown(event) {

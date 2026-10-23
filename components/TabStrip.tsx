@@ -1,7 +1,8 @@
 // The tab strip, after a page indicator: open notes are small boxes centred in the 36px band,
 // and the current one stays expanded into a pill with its title. Switching tabs morphs one box
 // open and the other shut (width, height and radius on the morph curve), so the row itself
-// shows where you are. The traffic lights keep the left, ⌘K and the account the right.
+// shows where you are. Clicking the current pill opens the note's menu, which hangs off it.
+// History sits on the left (the window has no traffic lights), ⌘K and the account on the right.
 //
 // Box colour says what a background note is doing: violet while Claude works, blue when it
 // needs you, light when a reply is waiting unread, dim otherwise. Hover shows the title.
@@ -36,7 +37,7 @@ export type StripTab = {
 }
 
 /** The pill fits its title, within reason. Geist 12.5/500 averages ~6.9px a character. */
-const pillWidth = (t: StripTab) => Math.round(Math.min(260, Math.max(110, t.title.length * 6.9 + 30 + 40)))
+const pillWidth = (t: StripTab) => Math.round(Math.min(280, Math.max(124, t.title.length * 6.9 + 30 + 54)))
 
 export function TabStrip({
   tabs,
@@ -46,15 +47,20 @@ export function TabStrip({
   onNew,
   leading,
   trailing,
+  menuOpen,
+  activeAnchor,
 }: {
   tabs: StripTab[]
   activeId?: string
   onPick: (id: string) => void
   onClose: (id: string) => void
   onNew: () => void
-  /** Room on the left for the traffic lights. */
-  leading: number
+  leading?: ReactNode
   trailing?: ReactNode
+  /** The current pill's menu is open: its chevron lights up. */
+  menuOpen?: boolean
+  /** Rendered inside the current pill, so a menu anchors to it. */
+  activeAnchor?: ReactNode
 }) {
   const m = useM()
   return (
@@ -64,10 +70,10 @@ export function TabStrip({
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'flex-end',
+        justifyContent: 'space-between',
         height: stripHeight,
         flexShrink: 0,
-        paddingLeft: leading,
+        paddingLeft: 6,
         paddingRight: 6,
         backgroundColor: m.titleBar,
         borderBottomWidth: 1,
@@ -79,19 +85,20 @@ export function TabStrip({
       <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
           {tabs.map((t) => (
-            <Tab key={t.id} tab={t} active={t.id === activeId} onPick={() => onPick(t.id)} onClose={() => onClose(t.id)} />
+            <Tab key={t.id} tab={t} active={t.id === activeId} menuOpen={menuOpen} anchor={t.id === activeId ? activeAnchor : null} onPick={() => onPick(t.id)} onClose={() => onClose(t.id)} />
           ))}
           <Button onPress={onNew} testId="new-thread" title="New note here (⌘N asks where)" style={{ width: 22, paddingLeft: 0, paddingRight: 0, marginLeft: 4 }}>
             <Icon name="plus" size={13} />
           </Button>
         </div>
       </div>
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>{leading}</div>
       {trailing ? <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>{trailing}</div> : null}
     </div>
   )
 }
 
-function Tab({ tab, active, onPick, onClose }: { tab: StripTab; active: boolean; onPick: () => void; onClose: () => void }) {
+function Tab({ tab, active, menuOpen, anchor, onPick, onClose }: { tab: StripTab; active: boolean; menuOpen?: boolean; anchor?: ReactNode; onPick: () => void; onClose: () => void }) {
   const m = useM()
   const [hover, setHover] = useState(false)
   const tone = tab.needsYou ? m.blue : tab.running ? m.accent : tab.unread ? m.textUi : hover ? m.textFaint : m.selected
@@ -114,9 +121,11 @@ function Tab({ tab, active, onPick, onClose }: { tab: StripTab; active: boolean;
         }}
       >
         {active ? (
-          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 7, flexGrow: 1, minWidth: 0, paddingLeft: 10, paddingRight: 6 }}>
+          <div testId="title-menu" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 7, flexGrow: 1, minWidth: 0, paddingLeft: 10, paddingRight: 6 }}>
             {tab.running ? <Dot color={m.accent} size={6} pulse /> : <Dot color={tab.dot ?? m.textFaint} size={6} />}
-            <text style={{ flexGrow: 1, flexShrink: 1, minWidth: 0, fontSize: 12.5, lineHeight: 16, fontWeight: 500, color: m.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{tab.title}</text>
+            <text style={{ flexShrink: 1, minWidth: 0, fontSize: 12.5, lineHeight: 16, fontWeight: 500, color: m.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{tab.title}</text>
+            <Icon name="chevronDown" size={11} color={menuOpen ? m.text : m.textFaint} />
+            <div style={{ flexGrow: 1 }} />
             {hover ? (
               <Button onPress={onClose} testId={`close-${tab.id}`} title="Close tab (⇧⌘W)" style={{ pointerEvents: 'auto', width: 18, height: 18, minHeight: 18, paddingLeft: 0, paddingRight: 0 }}>
                 <Icon name="x" size={11} />
@@ -130,7 +139,9 @@ function Tab({ tab, active, onPick, onClose }: { tab: StripTab; active: boolean;
     </div>
   )
   return (
-    // A real button: a tab stop with Enter/Space, and it takes the press inside the centred layer.
+    // The menu anchor sits beside the button, not in it, so presses in the menu stay in the menu.
+    <div style={{ position: 'relative' }}>
+    {/* A real button: a tab stop with Enter/Space, and it takes the press inside the centred layer. */}
     <Base
       testId={`tab-${tab.id}`}
       aria-label={tab.title}
@@ -158,5 +169,7 @@ function Tab({ tab, active, onPick, onClose }: { tab: StripTab; active: boolean;
         </FloatingLayer>
       ) : null}
     </Base>
+    {anchor}
+    </div>
   )
 }

@@ -59,7 +59,7 @@ function SectionLabel({ children }: { children: ReactNode }) {
   return <text style={{ fontSize: 12, lineHeight: 16, color: m.textMuted, fontWeight: 500 }}>{children}</text>
 }
 
-function Row({ selected, onPress, children, testId }: { selected?: boolean; onPress: () => void; children: ReactNode; testId?: string }) {
+export function Row({ selected, onPress, children, testId }: { selected?: boolean; onPress: () => void; children: ReactNode; testId?: string }) {
   const m = useM()
   return (
     <Button
@@ -256,7 +256,7 @@ function projectConfig(folder: string): string[] {
   return ['.mcp.json', '.claude/settings.json', '.claude/settings.local.json'].filter((f) => existsSync(path.join(folder, f)))
 }
 
-function ago(iso: string) {
+export function ago(iso: string) {
   const s = (Date.now() - new Date(iso).getTime()) / 1000
   if (s < 60) return 'now'
   if (s < 3600) return `${Math.floor(s / 60)}m`

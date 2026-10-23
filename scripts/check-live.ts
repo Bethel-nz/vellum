@@ -29,7 +29,7 @@ async function turn(text: string, shot: string, before?: (app: App) => Promise<v
     if (before) await before(app)
     await composer.click()
     await composer.fill(text)
-    await composer.press('ctrl-enter')
+    await composer.press('cmd-enter')
     await app.getByText('Working…').waitFor({ timeoutMs: 20_000 })
     const started = Date.now()
     while ((await app.getByText('Working…').count()) > 0 && Date.now() - started < 180_000) await wait(1000)

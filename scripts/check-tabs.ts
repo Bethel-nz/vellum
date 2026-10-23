@@ -1,6 +1,7 @@
 // Self-check for the tab strip: + opens a note in the same folder, ⌃← ⌃→ cycle, ⌘⇧T hides and shows the
 // strip, auto mode tucks it away while you write and the top edge brings it back, ⌃click closes.
-// The strip's state is read from where the page title sits (it moves up by the strip's height).
+// The strip's state is read from where the page starts (it moves up by the strip's height).
+// ⌘Y opens History from the left; picking a note there opens it in a tab.
 //   bun scripts/check-tabs.ts
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -12,7 +13,7 @@ await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_H
 const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home } })
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const shot = (n: string) => app.screenshot({ path: 'screenshots/tabs-' + n + '.png' })
-const titleY = async () => Math.round((await app.getByTestId('title-menu').bounds()).y)
+const titleY = async () => Math.round((await app.getByTestId('page').bounds()).y)
 const tabIds = async () => (await app.getByType('div').all()).map((n) => n.testId ?? '').filter((id) => id.startsWith('tab-'))
 const tabCount = async () => (await tabIds()).length
 let failed = 0
@@ -53,6 +54,23 @@ try {
   await app.mouse.click(await app.getByTestId(fresh).center(), { modifiers: 'ctrl' })
   await wait(700)
   expect('⌃click closes a tab', (await tabCount()) === before)
+
+  // ⌘Y opens History; ↩ on a past note opens it
+  await c.press('cmd-y')
+  await app.getByTestId('history-input').waitFor({ timeoutMs: 3000 })
+  const rows = (await app.getByType('div').all()).map((n) => n.testId ?? '').filter((id) => id.startsWith('history-') && id !== 'history-input')
+  expect('History lists notes', rows.length >= 2, `${rows.length} rows`)
+  await shot('5-history')
+  await app.getByTestId('history-input').press('escape')
+  await wait(400)
+  expect('esc closes History', (await app.getByTestId('history-input').count()) === 0)
+
+  // the current pill opens the note menu
+  await app.getByTestId('title-menu').click()
+  await wait(600)
+  expect('current pill opens the note menu', (await app.getByTestId('title-menu-panel').count()) === 1)
+  await app.getByTestId('title-menu-panel').press('escape')
+  await wait(400)
 
   // ⌘⇧T hides the pinned strip and brings it back
   await c.press('cmd-shift-t')

@@ -37,7 +37,7 @@ await Bun.sleep(400)
 await app.getByTestId('composer').click()
 await app.getByTestId('composer').fill('!printf "\\033[32mgreen\\033[0m \\033[1;34mbold blue\\033[0m plain\\n"; ls -G')
 await shot('02-shell-draft')
-await app.getByTestId('composer').press('ctrl-enter')
+await app.getByTestId('composer').press('cmd-enter')
 await new Promise((r) => setTimeout(r, 1200))
 await shot('03-shell-ran')
 

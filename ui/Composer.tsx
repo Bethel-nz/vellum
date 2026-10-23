@@ -1,5 +1,5 @@
 // The end of the note, where new writing goes: a plain textarea, the last paragraph of the document.
-// Enter = newline, Ctrl+Enter = send. "!" runs a shell command, "@" tags skills, folders and
+// Enter = newline, ⌘↵ = send. "!" runs a shell command, "@" tags skills, folders and
 // files, "#" tags files only (type ":42" after one to point at a line).
 
 import { useEffect, useRef, useState, type RefObject } from 'react'
@@ -145,7 +145,7 @@ export function Composer({
   const onKeyDown = (e: KeyEvent) => {
     const mods = e.modifiers
     if (open) {
-      if (e.key === 'tab' || (mods?.ctrl && e.key === 'enter')) {
+      if (e.key === 'tab' || (mods?.cmd && e.key === 'enter')) {
         e.preventDefault()
         pick(items[active]!)
         return
@@ -161,7 +161,7 @@ export function Composer({
         return
       }
     }
-    if (e.key === 'enter' && mods?.ctrl) {
+    if (e.key === 'enter' && mods?.cmd) {
       e.preventDefault()
       onSend()
     }
@@ -204,7 +204,7 @@ export function Composer({
         onFocus={onFocusChange ? () => onFocusChange(true) : undefined}
         onBlur={onFocusChange ? () => onFocusChange(false) : undefined}
       />
-      {shell ? <Meta>{`Ctrl+Enter runs this in ${folder ?? 'the folder'}`}</Meta> : null}
+      {shell ? <Meta>{`⌘↵ runs this in ${folder ?? 'the folder'}`}</Meta> : null}
       {tokenCtx && !shell ? <TokenRow tags={tagsIn(value, tags)} ctx={tokenCtx} testId="draft-chips" /> : null}
     </div>
   )

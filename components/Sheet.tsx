@@ -117,19 +117,38 @@ export function SheetRow({ label, detail, children, testId }: { label: string; d
   )
 }
 
-export function SidePanel({ open, onClose, width = 560, children, testId }: { open: boolean; onClose: () => void; width?: number; children: ReactNode; testId?: string }) {
+export function SidePanel({
+  open,
+  onClose,
+  width = 560,
+  side = 'right',
+  initialFocus,
+  children,
+  testId,
+}: {
+  open: boolean
+  onClose: () => void
+  width?: number
+  /** The edge it slides from, and back to. */
+  side?: 'left' | 'right'
+  initialFocus?: React.RefObject<PublicInstance | null>
+  children: ReactNode
+  testId?: string
+}) {
   const m = useM()
+  const from = side === 'right' ? 24 : -24
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogPortal>
         <Scrim />
         <DialogPopup
           testId={testId}
+          initialFocus={initialFocus}
           style={{
             position: 'absolute',
             top: 8,
-            right: 8,
             bottom: 8,
+            ...(side === 'right' ? { right: 8 } : { left: 8 }),
             width,
             maxWidth: '92%',
             backgroundColor: m.popup,
@@ -141,7 +160,7 @@ export function SidePanel({ open, onClose, width = 560, children, testId }: { op
           }}
         >
           <motion.div
-            initial={{ opacity: 0, left: 24 }}
+            initial={{ opacity: 0, left: from }}
             animate={{ opacity: 1, left: 0 }}
             transition={tween({ duration: duration.considered / 2 + 0.06, ease: ease.standard })}
             style={{ position: 'relative', display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, height: '100%' }}

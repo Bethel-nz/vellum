@@ -1,6 +1,5 @@
-// Settings (⌘,): appearance, the tab strip, window chrome and motion. Everything persists to
-// settings.json. Translucency and the traffic lights are window options, so they apply on the
-// next launch; the rest applies at once.
+// Settings (⌘,): appearance, the tab strip and motion. Everything persists to settings.json.
+// Translucency is a window option, so it applies on the next launch; the rest applies at once.
 
 import { Segmented, Sheet, SheetHeader, SheetRow, SheetSection, Switch } from '../components'
 import type { Settings } from '../core/store'
@@ -18,8 +17,6 @@ export function SettingsSheet({
   onTranslucent,
   tabs,
   onTabs,
-  hideTrafficLights,
-  onHideTrafficLights,
   motion,
   onMotion,
 }: {
@@ -31,8 +28,6 @@ export function SettingsSheet({
   onTranslucent: (next: boolean) => void
   tabs: TabMode
   onTabs: (next: TabMode) => void
-  hideTrafficLights: boolean
-  onHideTrafficLights: (next: boolean) => void
   motion: MotionPref
   onMotion: (next: MotionPref) => void
 }) {
@@ -70,9 +65,6 @@ export function SettingsSheet({
             ]}
             width={70}
           />
-        </SheetRow>
-        <SheetRow label="Hide traffic lights" detail="Tabs start at the window edge. Next launch.">
-          <Switch testId="set-lights" checked={hideTrafficLights} onChange={onHideTrafficLights} label="Hide traffic lights" />
         </SheetRow>
       </SheetSection>
       <SheetSection label="Motion">

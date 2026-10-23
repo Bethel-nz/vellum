@@ -17,7 +17,7 @@ const COMMIT_MS = 500
 
 /**
  * A paragraph you can edit: a borderless textarea that grows with its text.
- * Changes are committed after a short pause, on Ctrl+Enter, and on unmount.
+ * Changes are committed after a short pause, on ⌘↵, and on unmount.
  */
 function EditableText({
   value,
@@ -59,7 +59,7 @@ function EditableText({
   useEffect(() => flush, [])
 
   const onKeyDown = (e: KeyEvent) => {
-    if (e.key === 'enter' && e.modifiers?.ctrl) {
+    if (e.key === 'enter' && e.modifiers?.cmd) {
       e.preventDefault()
       flush()
       onSend()

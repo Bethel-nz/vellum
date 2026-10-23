@@ -21,7 +21,7 @@ Findings, choices and deviations from the build prompt. Newest decisions win.
   New writing goes in the last paragraph, which is the composer inside the virtual list. A textarea
   growing inside the list does remeasure its row (checked by eye). The list is top-aligned and
   follows the tail.
-- **Ctrl+Enter** sends the new text at the end **plus a description of every edit** made to
+- **⌘↵** (was Ctrl+Enter until 2026-10-23) sends the new text at the end **plus a description of every edit** made to
   earlier paragraphs since Claude last saw them. Each edited block keeps `seen` (the text Claude
   saw). `vellum/edit` records change a block, and `vellum/synced` clears `seen` once the edits
   went out. Block ids are now numbered per thread (`u-0`, `a-1`, …), so replayed edits find their block.
@@ -181,3 +181,24 @@ arrives too early. Re-run it before reading anything into that.
 - Changes panel (`git diff --stat`), cursor glow, aurora wash
 - Interactive permission approval (commands that need approval fail and show in the activity line)
 - Mouse reporting in the terminal (clicks inside htop/vim)
+
+## 2026-10-23 — chrome: menu in the strip, History, no traffic lights, ⌘↵
+
+- The page title row is gone. The current tab pill is the title: it carries a chevron and
+  pressing it opens the note menu (rename, open in Claude Code, Finder, close), anchored beside
+  the tab button rather than inside it so presses in the menu never reach the tab.
+- Tabs stop at nine (one per ⌘1–⌘9). Opening a tenth closes the oldest tab Claude isn't working
+  in, with a toast. Everything else is in **History** (⌘Y or the clock at the strip's left): a
+  left sidebar of every note, newest first, grouped Today / Yesterday / This week / This month /
+  Earlier, with a filter that has focus as it opens.
+- No traffic lights, and no setting for them: the window is keyboard-driven (⌘Q, ⇧⌘W, ⌘M).
+  GPUIX can't hide them, so `trafficLightX/Y` put them at -200. Still not verified by eye on a
+  real window (headless screenshots never show them).
+- Send is **⌘↵** everywhere (composer, edited paragraphs, `!` commands). ⌃↵ no longer sends.
+- ⌃← / ⌃→ cycle tabs.
+- Titles: the first paragraph gets a word-cut provisional title, then `claude -p --model haiku`
+  with nothing loaded (`--setting-sources '' --strict-mcp-config --tools '' --disable-slash-commands
+  --no-session-persistence` and a one-line system prompt) names it in 2–6 words: about $0.0003 and
+  6s (spikes/title-haiku.ts). Not Gemini: that would need a Google API key and a second
+  dependency, and this stays on the official binary and your login. `--bare` is no use here: it
+  accepts only an API key, never the subscription login.
