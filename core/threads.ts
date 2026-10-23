@@ -15,7 +15,18 @@ import { createTwoFilesPatch } from 'diff'
 import type { Grid } from './ghostty'
 import { paths } from './store'
 
-export type Tag = { type: 'file' | 'skill' | 'folder'; value: string }
+/**
+ * A context token in your text. Files are written `#path` or `#path:42`; skills `@skill:name`;
+ * folders `@dir/`. A line-scoped file tag means Claude sees only that line unless the note
+ * widened it to the whole file (`vellum/tag-scope`).
+ */
+export type Tag =
+  | { type: 'skill'; value: string }
+  | { type: 'file'; value: string; line?: number; scope?: 'line' | 'file' }
+  | { type: 'folder'; value: string }
+
+/** Key for a line-scoped file tag: `path:line`. */
+export const scopeKey = (file: string, line: number) => `${file}:${line}`
 
 export type ToolCall = {
   id: string
@@ -58,6 +69,8 @@ export type Thread = ThreadMeta & {
   blocks: Block[]
   running: boolean
   updatedAt: string
+  /** Line tags widened to their whole file, by `scopeKey`. */
+  tagScopes: Record<string, 'file'>
   /** Reducer bookkeeping; not persisted. */
   r: {
     /** stream key "msgId:index" → assistant block id */
@@ -86,9 +99,11 @@ export type VellumRecord =
   | { type: 'vellum/shell-exit'; termId: string; exitCode: number; output: string; grid: Grid }
   | { type: 'vellum/error'; text: string; login?: boolean }
   | { type: 'vellum/stopped' }
+  /** A `#path:42` tag was widened to its whole file for the rest of the session. */
+  | { type: 'vellum/tag-scope'; key: string; scope: 'file' }
 
 export function newThread(meta: ThreadMeta): Thread {
-  return { ...meta, blocks: [], running: false, updatedAt: meta.createdAt, r: { streams: {}, tools: {}, n: 0 } }
+  return { ...meta, blocks: [], running: false, updatedAt: meta.createdAt, tagScopes: {}, r: { streams: {}, tools: {}, n: 0 } }
 }
 
 // ---------------------------------------------------------------- edits
@@ -280,6 +295,9 @@ export function reduce(thread: Thread, ev: any): Thread {
       t.updatedAt = now
       break
     }
+    case 'vellum/tag-scope':
+      t.tagScopes = { ...t.tagScopes, [ev.key]: ev.scope }
+      break
     case 'vellum/synced':
       for (const b of blocks) if ((b.kind === 'user' || b.kind === 'assistant') && b.seen !== undefined) patchBlock(b.id, (x) => ({ ...x, seen: undefined }))
       break

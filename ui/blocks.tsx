@@ -2,12 +2,14 @@
 // bubbles, no avatars, no timestamps. Your text and Claude's replies are both
 // editable in place; tool work renders as quiet embeds between them.
 
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyEvent } from '@gpuix/react'
 import { hunksOnly, type Block, type Tag, type ToolCall } from '../core/threads'
 import { getTerm } from '../core/term'
 import { Icon, Meta, Quiet, useM } from './kit'
 import { TerminalBlock } from './TerminalBlock'
+import { TokenRow, TokenText, type TokenContext } from './Tokens'
+import { mentionedFiles, tokens } from '../core/tags'
 import { concentric, font, nativeTheme, radiusBase, type } from './theme'
 
 const COMMIT_MS = 500
@@ -88,17 +90,27 @@ function EditableText({
   )
 }
 
+/** Your paragraph. With tokens in it, it reads with chips and turns into its source on click. */
 function UserBlock({ block, actions }: { block: Extract<Block, { kind: 'user' }>; actions: BlockActions }) {
   const m = useM()
+  const [editing, setEditing] = useState(false)
+  const hasTokens = block.tags.length > 0 && tokens(block.text, block.tags).some((t) => t.kind === 'tag')
+  if (hasTokens && !editing) {
+    return <TokenText text={block.text} tags={block.tags} ctx={actions.tokens} color={m.text} testId={`read-${block.id}`} onPress={() => setEditing(true)} />
+  }
   return (
-    <EditableText
-      value={block.text}
-      color={m.text}
-      weight={500}
-      testId={`para-${block.id}`}
-      onCommit={(text) => actions.onEdit(block.id, text)}
-      onSend={actions.onSend}
-    />
+    <div onMouseDownOutside={hasTokens ? () => setEditing(false) : undefined}>
+      <EditableText
+        value={block.text}
+        color={m.text}
+        weight={500}
+        autoFocus={editing}
+        testId={`para-${block.id}`}
+        onCommit={(text) => actions.onEdit(block.id, text)}
+        onSend={actions.onSend}
+        onDone={hasTokens ? () => setEditing(false) : undefined}
+      />
+    </div>
   )
 }
 
@@ -106,6 +118,7 @@ function UserBlock({ block, actions }: { block: Extract<Block, { kind: 'user' }>
 function AssistantBlock({ block, actions }: { block: Extract<Block, { kind: 'assistant' }>; actions: BlockActions }) {
   const m = useM()
   const [editing, setEditing] = useState(false)
+  const mentioned = useMemo(() => (block.streaming ? [] : mentionedFiles(block.markdown, actions.tokens.workspace)), [block.markdown, block.streaming, actions.tokens.workspace])
   if (editing && !block.streaming) {
     return (
       <div onMouseDownOutside={() => setEditing(false)}>
@@ -125,8 +138,12 @@ function AssistantBlock({ block, actions }: { block: Extract<Block, { kind: 'ass
     )
   }
   return (
-    <div testId={`reply-${block.id}`} onClick={() => !block.streaming && setEditing(true)} style={{ cursor: block.streaming ? 'default' : 'text' }}>
-      <markdown source={block.markdown || ' '} theme={nativeTheme(m)} style={{ color: m.textMuted }} />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div testId={`reply-${block.id}`} onClick={() => !block.streaming && setEditing(true)} style={{ cursor: block.streaming ? 'default' : 'text' }}>
+        <markdown source={block.markdown || ' '} theme={nativeTheme(m)} style={{ color: m.textMuted }} />
+      </div>
+      {/* Files the reply names, with the same hover slice; read-only, so no widening. */}
+      {mentioned.length ? <TokenRow tags={mentioned} ctx={{ ...actions.tokens, onWiden: undefined }} testId={`mentions-${block.id}`} /> : null}
     </div>
   )
 }
@@ -264,6 +281,8 @@ function ErrorBlock({ block, onLogin }: { block: Extract<Block, { kind: 'error' 
 }
 
 export type BlockActions = {
+  /** Workspace and tag scopes for chips and their slices. */
+  tokens: TokenContext
   onEdit: (blockId: string, text: string) => void
   onSend: () => void
   onLogin: () => void

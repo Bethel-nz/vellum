@@ -504,7 +504,8 @@ function App() {
     if (text && !thread.blocks.some((b) => b.kind === 'user') && (thread.title === 'Untitled' || thread.title === 'New thread')) {
       record(thread.id, { type: 'vellum/title', title: titleFrom(text) })
     }
-    runnerFor(thread).send([edits, text ? promptFor(text, tags) : ''].filter(Boolean).join('\n\n'))
+    const prompt = text ? promptFor(text, tags, { workspace: thread.workspace, scopes: thread.tagScopes }) : ''
+    runnerFor(thread).send([edits, prompt].filter(Boolean).join('\n\n'))
     setDraft(thread.id, '', [])
   }, [pane, record, runShell, runnerFor, setDraft])
   const sendRef = useRef(send)
@@ -597,8 +598,18 @@ function App() {
     })
   }, [])
 
+  const tokenCtx = useMemo(
+    () => ({
+      workspace: active?.workspace ?? homedir(),
+      scopes: active?.tagScopes ?? {},
+      onWiden: (key: string) => active && record(active.id, { type: 'vellum/tag-scope', key, scope: 'file' }),
+    }),
+    [active?.id, active?.workspace, active?.tagScopes, record],
+  )
+
   const actions: BlockActions = useMemo(
     () => ({
+      tokens: tokenCtx,
       onEdit: (blockId, text) => active && record(active.id, { type: 'vellum/edit', blockId, text }),
       onSend: () => sendRef.current(),
       onLogin: () => active && openLogin(active.profileId),
@@ -610,7 +621,7 @@ function App() {
       },
       onReturnFocus: focusComposer,
     }),
-    [active?.id, active?.profileId, focusComposer, openLogin, record, setDraft],
+    [active?.id, active?.profileId, focusComposer, openLogin, record, setDraft, tokenCtx],
   )
 
   // ---- shortcuts
@@ -795,6 +806,7 @@ function App() {
                     placeholder={placeholder}
                     composerRef={composerRef}
                     onFocusChange={setWriting}
+                    tokenCtx={tokenCtx}
                   />
                 }
               />

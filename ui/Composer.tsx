@@ -1,20 +1,23 @@
 // The end of the note, where new writing goes: a plain textarea, the last paragraph of the document.
-// Enter = newline, Ctrl+Enter = send. "!" runs a shell command, "@" tags files and skills.
+// Enter = newline, Ctrl+Enter = send. "!" runs a shell command, "@" tags skills, folders and
+// files, "#" tags files only (type ":42" after one to point at a line).
 
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { DismissableLayer, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { FloatingLayer } from '@gpuix/react/floating'
 import type { Profile } from '../core/profiles'
-import { suggest, tagText, type Suggestion } from '../core/tags'
+import { suggest, tagsIn, tagText, type Suggestion } from '../core/tags'
+import { TokenRow, type TokenContext } from './Tokens'
 import type { Tag } from '../core/threads'
 import { Icon, Meta, useM } from './kit'
 import { motion as m_ } from '@gpuix/react'
 import { concentric, font, motion, radiusBase, type } from './theme'
 
-/** The "@query" being typed at the end of the draft, if any. */
+/** The "@query" or "#query" being typed at the end of the draft, trigger included. */
 function activeQuery(text: string): string | undefined {
-  const match = /(?:^|\s)@([^\s@]*)$/.exec(text)
-  return match ? match[1] : undefined
+  const match = /(?:^|\s)([@#][^\s@#]*)$/.exec(text)
+  // `#path:42` is finished: the line number is typed after the pick, not searched for.
+  return match && !/^#.+:\d*$/.test(match[1]!) ? match[1] : undefined
 }
 
 function TagPopup({
@@ -96,6 +99,7 @@ export function Composer({
   placeholder,
   composerRef,
   onFocusChange,
+  tokenCtx,
 }: {
   value: string
   tags: Tag[]
@@ -106,6 +110,8 @@ export function Composer({
   placeholder: string
   /** The tab strip's auto mode tucks away while you write. */
   onFocusChange?: (focused: boolean) => void
+  /** Chips under the draft, with their hover slices. */
+  tokenCtx?: TokenContext
   composerRef: RefObject<PublicInstance | null>
 }) {
   const m = useM()
@@ -122,7 +128,7 @@ export function Composer({
       return
     }
     const id = ++request.current
-    suggest(query, workspace, profile).then((found) => {
+    suggest(query.slice(1), workspace, profile, 8, query[0] === '#').then((found) => {
       if (id !== request.current) return
       setItems(found)
       setActive(0)
@@ -130,8 +136,8 @@ export function Composer({
   }, [query, workspace, profile])
 
   const pick = (s: Suggestion) => {
-    const tag: Tag = { type: s.type, value: s.value }
-    const next = value.replace(/@([^\s@]*)$/, tagText(tag) + ' ')
+    const tag = { type: s.type, value: s.value } as Tag
+    const next = value.replace(/[@#]([^\s@#]*)$/, tagText(tag) + ' ')
     onChange(next, [...tags.filter((t) => !(t.type === tag.type && t.value === tag.value)), tag])
     setItems([])
   }
@@ -199,6 +205,7 @@ export function Composer({
         onBlur={onFocusChange ? () => onFocusChange(false) : undefined}
       />
       {shell ? <Meta>{`Ctrl+Enter runs this in ${folder ?? 'the folder'}`}</Meta> : null}
+      {tokenCtx && !shell ? <TokenRow tags={tagsIn(value, tags)} ctx={tokenCtx} testId="draft-chips" /> : null}
     </div>
   )
 }

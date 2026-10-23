@@ -182,6 +182,18 @@ function insideWorkspace(workspace: string, file: string): string | undefined {
   return target
 }
 
+/** Text of a workspace file for tag previews and line quotes, under the same rules as diffs. */
+export function readWorkspaceFile(workspace: string, file: string): string | undefined {
+  const abs = insideWorkspace(workspace, file)
+  if (!abs || /credentials|keychain/i.test(abs) || !existsSync(abs)) return
+  try {
+    if (!statSync(abs).isFile() || statSync(abs).size > MAX_DIFF_BYTES) return
+    return readFileSync(abs, 'utf8')
+  } catch {
+    return
+  }
+}
+
 export function filePatch(workspace: string, name: string, input: any): string | undefined {
   const file = String(input.file_path ?? '')
   if (!file) return

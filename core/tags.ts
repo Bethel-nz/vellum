@@ -1,19 +1,27 @@
-// `@` tags: a file index per workspace, skill discovery, fuzzy filtering, and the
-// translation of tags into prompt text Claude Code understands.
+// Context tokens: a file index per workspace, skill discovery, fuzzy filtering, parsing tokens
+// out of text for chips, line slices for hover, and the translation of tokens into the prompt
+// Claude Code receives. `promptFor` is the only place that translation happens.
 //
-// Spike result: headless `claude -p` expands `@path` itself, so file and folder
-// tags stay in the prompt as written. Skills become one plain instruction.
+//   #path        a file; becomes `@path`, which headless `claude -p` expands itself
+//   #path:42     one line of a file; Claude gets that line quoted, not the file, unless the
+//                note widened the tag to the whole file
+//   @dir/        a folder, passed through as `@dir/`
+//   @skill:name  a skill; becomes one plain instruction
+//
+// `@path` for a file still parses (older notes wrote files that way).
 
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
+import { readWorkspaceFile } from './claude'
 import type { Profile } from './profiles'
-import type { Tag } from './threads'
+import { scopeKey, type Tag } from './threads'
 
 export type Suggestion = Tag & { label: string; hint: string }
 
 const SKIP = new Set(['node_modules', '.git', 'dist', 'build', 'target', '.next', 'out', '.turbo', '.cache', 'coverage', 'vendor'])
 const index = new Map<string, Promise<string[]>>()
+const name = 'test'
 
 async function gitFiles(workspace: string): Promise<string[] | undefined> {
   const proc = Bun.spawn(['git', 'ls-files', '--cached', '--others', '--exclude-standard'], {
@@ -108,8 +116,17 @@ function score(query: string, candidate: string): number {
   return 10 + gaps * 5 + c.length * 0.05
 }
 
-export async function suggest(query: string, workspace: string, profile: Profile, limit = 8): Promise<Suggestion[]> {
+/** `#` asks for files only; `@` for skills, folders and files. */
+export async function suggest(query: string, workspace: string, profile: Profile, limit = 8, filesOnly = false): Promise<Suggestion[]> {
   const files = await workspaceFiles(workspace)
+  if (filesOnly) {
+    return files
+      .map((f) => ({ s: { type: 'file' as const, value: f, label: f, hint: '' }, n: score(query, f) }))
+      .filter((x) => x.n >= 0)
+      .sort((a, b) => a.n - b.n)
+      .slice(0, limit)
+      .map((x) => x.s)
+  }
   const q = query.startsWith('skill:') ? query.slice(6) : query
   const pool: Suggestion[] = [
     ...skills(workspace, profile).map((s) => ({ type: 'skill' as const, value: s, label: `skill:${s}`, hint: 'Skill' })),
@@ -129,24 +146,124 @@ export async function suggest(query: string, workspace: string, profile: Profile
 }
 
 export function tagText(tag: Tag) {
-  return tag.type === 'skill' ? `@skill:${tag.value}` : `@${tag.value}`
+  if (tag.type === 'skill') return `@skill:${tag.value}`
+  if (tag.type === 'folder') return `@${tag.value}`
+  return `#${tag.value}${tag.line ? `:${tag.line}` : ''}`
 }
 
-/** Tags still present in the draft, in order. */
-export function tagsIn(text: string, inserted: Tag[]): Tag[] {
-  return inserted.filter((t, i) => text.includes(tagText(t)) && inserted.findIndex((x) => x.value === t.value && x.type === t.type) === i)
+export type Token = { kind: 'text'; text: string } | { kind: 'tag'; tag: Tag; text: string }
+
+const TRAILING = /[.,;:!?)\]]+$/
+
+/**
+ * Splits text into plain runs and tokens. Only tags that were picked (or saved with the block)
+ * become tokens, so a stray `#1` or an email address stays text.
+ */
+export function tokens(text: string, known: Tag[]): Token[] {
+  const files = new Set(known.filter((t) => t.type === 'file').map((t) => t.value))
+  const others = new Set(known.filter((t) => t.type !== 'file').map((t) => tagText(t)))
+  const out: Token[] = []
+  let plain = ''
+  const flush = () => {
+    if (plain) out.push({ kind: 'text', text: plain })
+    plain = ''
+  }
+  for (const part of text.split(/(\s+)/)) {
+    const tail = TRAILING.exec(part)?.[0] ?? ''
+    let word = tail ? part.slice(0, -tail.length) : part
+    let tag: Tag | undefined
+    if (word.startsWith('#') || (word.startsWith('@') && !word.startsWith('@skill:'))) {
+      // `#path:42` — the trailing colon-number is the line; `TRAILING` may have eaten a lone ':'.
+      const m = /^[#@](.+?)(?::(\d+))?$/.exec(word)
+      if (m && files.has(m[1]!)) tag = { type: 'file', value: m[1]!, ...(m[2] ? { line: Number(m[2]) } : {}) }
+    }
+    if (!tag && others.has(word)) tag = known.find((t) => t.type !== 'file' && tagText(t) === word)
+    if (tag) {
+      flush()
+      out.push({ kind: 'tag', tag, text: word })
+      plain = tail
+    } else plain += part
+  }
+  flush()
+  return out
 }
 
-/** The prompt Claude receives: file tags stay as @path; skills become an instruction. */
-export function promptFor(text: string, tags: Tag[]): string {
-  let out = text
+/** Tags present in the text, in order, with the line each file tag points at. */
+export function tagsIn(text: string, known: Tag[]): Tag[] {
+  const seen = new Set<string>()
+  const out: Tag[] = []
+  for (const t of tokens(text, known)) {
+    if (t.kind !== 'tag') continue
+    const key = `${t.tag.type}:${tagText(t.tag)}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(t.tag)
+  }
+  return out
+}
+
+/**
+ * Files a reply names in inline code (`ui/theme.ts`, `ui/theme.ts:42`) that exist in the
+ * workspace, for its read-only chip row.
+ */
+export function mentionedFiles(markdown: string, workspace: string, limit = 6): Tag[] {
+  const out: Tag[] = []
+  const seen = new Set<string>()
+  for (const m of markdown.matchAll(/`([\w@][\w@./-]*\.\w+)(?::(\d+))?`/g)) {
+    const file = m[1]!
+    const key = `${file}:${m[2] ?? ''}`
+    if (seen.has(key) || file.includes('..') || !existsSync(path.join(workspace, file))) continue
+    seen.add(key)
+    out.push({ type: 'file', value: file, ...(m[2] ? { line: Number(m[2]) } : {}) })
+    if (out.length >= limit) break
+  }
+  return out
+}
+
+export type Slice = { start: number; lines: string[] }
+
+/** The line a `#path:42` tag points at, or the head of the file for a plain file tag. */
+export function readSlice(workspace: string, file: string, line?: number, head = 4): Slice | undefined {
+  const text = readWorkspaceFile(workspace, file)
+  if (text === undefined) return
+  const all = text.split('\n')
+  if (line) return line <= all.length ? { start: line, lines: [all[line - 1]!] } : undefined
+  return { start: 1, lines: all.slice(0, head) }
+}
+
+/** True when a line tag reaches Claude as its whole file. */
+export const widened = (tag: Tag, scopes: Record<string, 'file'> = {}) =>
+  tag.type === 'file' && Boolean(tag.line) && (tag.scope === 'file' || scopes[scopeKey(tag.value, tag.line!)] === 'file')
+
+/**
+ * The prompt Claude receives. Files become `@path`; a line tag becomes `path:42` with that one
+ * line quoted after the text, unless it was widened, in which case it is `@path (line 42)`.
+ */
+export function promptFor(text: string, tags: Tag[], ctx: { workspace?: string; scopes?: Record<string, 'file'> } = {}): string {
   const skillNames: string[] = []
-  for (const t of tags) {
-    if (t.type === 'skill') {
-      out = out.split(tagText(t)).join(`"${t.value}" skill`)
-      skillNames.push(t.value)
+  const quotes: string[] = []
+  let out = ''
+  for (const t of tokens(text, tags)) {
+    if (t.kind === 'text') {
+      out += t.text
+      continue
+    }
+    const tag = t.tag
+    if (tag.type === 'skill') {
+      out += `"${tag.value}" skill`
+      if (!skillNames.includes(tag.value)) skillNames.push(tag.value)
+    } else if (tag.type === 'folder') out += `@${tag.value}`
+    else if (!tag.line) out += `@${tag.value}`
+    else if (widened(tag, ctx.scopes)) out += `@${tag.value} (line ${tag.line})`
+    else {
+      out += `${tag.value}:${tag.line}`
+      const slice = ctx.workspace ? readSlice(ctx.workspace, tag.value, tag.line) : undefined
+      const quoted = slice ? `\n\n\`\`\`\n${tag.line} | ${slice.lines[0]}\n\`\`\`` : ''
+      const note = `Refer only to line ${tag.line} of ${tag.value} (quoted below); read the file first if you need more.${quoted}`
+      if (!quotes.includes(note)) quotes.push(note)
     }
   }
+  for (const q of quotes) out += `\n\n${q}`
   for (const name of skillNames) out += `\n\nUse the "${name}" skill for this.`
   return out
 }
