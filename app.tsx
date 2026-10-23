@@ -20,7 +20,7 @@ import { StatusBar } from './ui/StatusBar'
 import { defaultMode, type Ask, type PermissionMode, type Think } from './core/asks'
 import { createProfile, loadProfiles, profileEnv, profileForWorkspace, rememberWorkspace, updateProfile, type Profile } from './core/profiles'
 import { paths, readJson, readSettings, updateSettings, writeJson } from './core/store'
-import { promptFor, tagsIn } from './core/tags'
+import { promptFor, tagsIn, tagText } from './core/tags'
 import { killAllTerms, startTerm, type TermSession } from './core/term'
 import { claudeBin, hasPty, isMac, keys, openConsole, primary, revealFolder, revealLabel, shellArgv, tabStep } from './core/platform'
 import {
@@ -44,7 +44,7 @@ import { Composer } from './ui/Composer'
 import { NewThreadDialog, ThreadSwitcher } from './ui/dialogs'
 import { History } from './ui/History'
 import { Changes } from './ui/Changes'
-import { changeCount } from './core/changes'
+import { changeCount, hunkTags } from './core/changes'
 import { Dot, Icon, Kbd, MaterialContext, Meta, Quiet, useM } from './ui/kit'
 import { SettingsSheet, type MotionPref, type TabMode } from './ui/SettingsSheet'
 import { CELL_W, TerminalBlock } from './ui/TerminalBlock'
@@ -1088,10 +1088,13 @@ function App() {
           open={overlay === 'changes'}
           onClose={() => setOverlay(null)}
           thread={active}
-          onAdd={(paragraph) => {
+          onAdd={(hunks, notes) => {
             if (!active) return
             const d = draftsRef.current[active.id] ?? { text: '', tags: [] }
-            setDraft(active.id, d.text.trim() ? `${d.text.trimEnd()}\n\n${paragraph}` : paragraph, d.tags)
+            // ± pills at the end of the draft; you write what to do with them around them.
+            const added = hunkTags(hunks, notes, d.tags)
+            const pills = added.map(tagText).join(' ')
+            setDraft(active.id, d.text.trim() ? `${d.text.trimEnd()} ${pills} ` : `${pills} `, [...d.tags, ...added])
             setOverlay(null)
             setTimeout(focusComposer, 50)
           }}

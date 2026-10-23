@@ -330,3 +330,24 @@ channel, which does the same job:
   with "Context was full". It cost $0.001 on haiku (spikes/compact.ts).
 - fake-claude answers `initialize` with two models, honours `set_model`, reports usage and a
   200k window, and answers `/compact` with a boundary, so check-approval covers all of it.
+
+## 2026-10-23 — hunks as ± pills, with comments on their lines
+
+- **A hunk is a tag, not pasted diff.** "Add n hunks" in Changes used to drop a ```diff fence
+  into the draft. Now each hunk becomes a `hunk` tag: the token `±ui/theme.ts:1` (path and new
+  start line, `~2` if taken) in the text, and a pill in the chip row and in the sent paragraph:
+  ±, file glyph, name, +n −m in the diff colours, and a blue comment count. Hovering the pill
+  opens the hunk (the same Pierre `<diff>`, clipped to 12 lines) with its comments under it.
+  The tag carries the patch itself, so the pill still means the same thing after more edits.
+- **Comments on lines.** In Changes, clicking a line of a hunk (`<diff onLineClick>` gives the
+  line text and its old/new numbers; only an old number means a removed line) opens a field
+  under that hunk; ↵ saves, esc leaves the field without closing the sheet. A comment selects
+  its hunk; the header counts comments; × removes one. GPUIX can't highlight a single diff row,
+  so the comment list says `−2` / `+3` instead of marking the line.
+- **What Claude reads** (`promptFor`): the token becomes "hunk 1 (ui/theme.ts)" in your
+  sentence, and after the text: "Hunk 1, from an edit you made to ui/theme.ts:", the diff with
+  its ---/+++ lines, then "My comments on its lines:" one per line with the code quoted. You
+  write what to do around the pills ("revert ±… but keep the comment").
+- Checks: core/changes.test.ts (token, prompt, duplicate tokens); check-changes now comments on
+  the removed line, adds, and hovers the pill. drafts.json is written 300ms after a change, so
+  the check polls for it.

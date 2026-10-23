@@ -1,6 +1,6 @@
 // Self-check for the Changes sheet: the strip shows how many files Claude changed, ⇧⌘D opens
-// the sheet, a file row opens to its hunks, selecting a hunk updates the count, and "Add" puts a
-// ```diff paragraph in the draft.
+// the sheet, a file row opens to its hunks, selecting a hunk updates the count, a click on a diff
+// line opens a comment for it, and "Add" puts the hunk in the draft as a ± pill with that comment.
 //   bun scripts/check-changes.ts
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -51,13 +51,37 @@ try {
   await wait(300)
   expect('selecting counts it', (await app.getByTestId('changes-count').textContent()).startsWith('1 of'))
   await shot('1-selected')
+
+  // a line of the hunk takes a comment: the second row is the removed `return parentRadius - inset`
+  const b = await app.getByTestId(`hunk-diff-${hunks[0]!.slice('hunk-'.length)}`).bounds()
+  await app.mouse.click({ x: b.x + 120, y: b.y + 30 })
+  await wait(400)
+  expect('a line click opens a comment field', (await app.getByTestId('hunk-comment').count()) === 1)
+  await app.getByTestId('hunk-comment').fill('clamp it instead')
+  await app.getByTestId('hunk-comment').press('enter')
+  await wait(400)
+  expect('the comment sits under the hunk', (await app.getByTestId('hunk-note-0').count()) === 1)
+  expect('the header counts it', (await app.getByTestId('changes-count').textContent()).includes('1 comment'))
+  await shot('2-comment')
+
   await app.getByTestId('changes-add').click()
   await wait(900)
   expect('Add closes the sheet', (await app.getByTestId('changes').count()) === 0)
-  const drafts = JSON.parse(readFileSync(path.join(home, 'drafts.json'), 'utf8'))
-  const text = Object.values(drafts).map((d: any) => d.text).join('\n')
-  expect('the hunk is in the draft as a diff fence', text.includes('Keep exactly these changes:') && text.includes('```diff') && text.includes('+++ b/ui/theme.ts'))
-  await shot('2-draft')
+  // drafts.json is written a moment after the draft changes.
+  let drafts: Record<string, any> = {}
+  for (let i = 0; i < 30 && !Object.keys(drafts).length; i++) {
+    await wait(100)
+    drafts = JSON.parse(readFileSync(path.join(home, 'drafts.json'), 'utf8'))
+  }
+  const d = Object.values(drafts)[0] as any
+  expect('the hunk is a ± pill in the draft, not a diff fence', d.text.includes('±ui/theme.ts:1') && !d.text.includes('```'), JSON.stringify(d.text))
+  const tag = d.tags.find((t: any) => t.type === 'hunk')
+  expect('the pill carries the hunk and the comment', tag?.patch?.includes('@@') && tag?.notes?.[0]?.text === 'clamp it instead' && tag.notes[0].side === 'old', JSON.stringify(tag?.notes))
+  expect('the chip row shows the pill', (await app.getByTestId('draft-chips-0').count()) === 1)
+  await app.getByTestId('draft-chips-0').hover()
+  await wait(500)
+  expect('hovering the pill shows the hunk', (await app.getByTestId('hunk-slice').count()) === 1)
+  await shot('3-draft')
 } finally {
   await app.close()
 }

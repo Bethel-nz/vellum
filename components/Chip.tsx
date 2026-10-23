@@ -3,7 +3,7 @@
 // 1px dashed blue rule, with `:42` in muted. Skills are violet text on a violet rule.
 
 import type { ReactNode } from 'react'
-import { font } from '../ui/theme'
+import { diffInk, font } from '../ui/theme'
 import { FileIcon } from './FileIcon'
 import { Icon } from './Icon'
 import { useM } from './theme'
@@ -60,6 +60,51 @@ export function Chip({
         <text style={{ fontSize: 12.5, lineHeight: 16, color: ink, fontFamily: skill ? font.sans : font.mono, whiteSpace: 'nowrap' }}>{base}</text>
         {line ? <text style={{ fontSize: 12.5, lineHeight: 16, color: m.textMuted, fontFamily: font.mono, whiteSpace: 'nowrap' }}>{`:${line[1]}`}</text> : null}
       </div>
+    </div>
+  )
+}
+
+/**
+ * A hunk from the Changes sheet, in your writing: a small ± pill, not a wall of diff. File glyph,
+ * name, +n −m in the diff colours, and how many lines you commented on. Hover shows the hunk.
+ */
+export function HunkPill({ path, added, removed, notes = 0, onHover, testId }: { path: string; added: number; removed: number; notes?: number; onHover?: (inside: boolean) => void; testId?: string }) {
+  const m = useM()
+  const ink = diffInk(m)
+  const name = path.split('/').pop() ?? path
+  return (
+    <div
+      testId={testId}
+      onMouseEnter={onHover ? () => onHover(true) : undefined}
+      onMouseLeave={onHover ? () => onHover(false) : undefined}
+      style={{
+        display: 'flex',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        height: 20,
+        paddingLeft: 6,
+        paddingRight: 7,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: m.border,
+        backgroundColor: m.codeBg,
+        flexShrink: 0,
+        cursor: onHover ? 'pointer' : 'default',
+        hover: onHover ? { borderColor: m.borderFocused } : undefined,
+      }}
+    >
+      <text style={{ fontSize: 12, lineHeight: 16, color: m.textMuted, fontFamily: font.mono }}>±</text>
+      <FileIcon path={path} size={11} />
+      <text style={{ fontSize: 12, lineHeight: 16, color: m.text, fontFamily: font.mono, whiteSpace: 'nowrap' }}>{name}</text>
+      <text style={{ fontSize: 11.5, lineHeight: 16, color: ink.add, fontFamily: font.mono }}>{`+${added}`}</text>
+      <text style={{ fontSize: 11.5, lineHeight: 16, color: ink.del, fontFamily: font.mono }}>{`−${removed}`}</text>
+      {notes ? (
+        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 3, marginLeft: 2 }}>
+          <Icon name="comment" size={11} color={m.blue} />
+          <text style={{ fontSize: 11.5, lineHeight: 16, color: m.blue, fontFamily: font.mono }}>{String(notes)}</text>
+        </div>
+      ) : null}
     </div>
   )
 }

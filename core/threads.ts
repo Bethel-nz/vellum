@@ -26,6 +26,11 @@ export type Tag =
   | { type: 'skill'; value: string }
   | { type: 'file'; value: string; line?: number; scope?: 'line' | 'file' }
   | { type: 'folder'; value: string }
+  /** One hunk of an edit Claude made, carried whole, with your comments on its lines. */
+  | { type: 'hunk'; value: string; path: string; header: string; patch: string; added: number; removed: number; notes?: HunkNote[] }
+
+/** A comment on one line of a hunk: `side` new for + and context lines, old for − lines. */
+export type HunkNote = { side: 'old' | 'new'; line: number; code: string; text: string }
 
 /** Key for a line-scoped file tag: `path:line`. */
 export const scopeKey = (file: string, line: number) => `${file}:${line}`

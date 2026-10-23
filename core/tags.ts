@@ -7,6 +7,8 @@
 //                note widened the tag to the whole file
 //   @dir/        a folder, passed through as `@dir/`
 //   @skill:name  a skill; becomes one plain instruction
+//   ±path:12     a hunk from the Changes sheet; becomes "hunk 1 (path)" with the diff and your
+//                line comments after the text
 //
 // `@path` for a file still parses (older notes wrote files that way).
 
@@ -148,6 +150,7 @@ export async function suggest(query: string, workspace: string, profile: Profile
 export function tagText(tag: Tag) {
   if (tag.type === 'skill') return `@skill:${tag.value}`
   if (tag.type === 'folder') return `@${tag.value}`
+  if (tag.type === 'hunk') return `±${tag.value}`
   return `#${tag.value}${tag.line ? `:${tag.line}` : ''}`
 }
 
@@ -242,6 +245,7 @@ export const widened = (tag: Tag, scopes: Record<string, 'file'> = {}) =>
 export function promptFor(text: string, tags: Tag[], ctx: { workspace?: string; scopes?: Record<string, 'file'> } = {}): string {
   const skillNames: string[] = []
   const quotes: string[] = []
+  const hunks: Extract<Tag, { type: 'hunk' }>[] = []
   let out = ''
   for (const t of tokens(text, tags)) {
     if (t.kind === 'text') {
@@ -253,7 +257,10 @@ export function promptFor(text: string, tags: Tag[], ctx: { workspace?: string; 
       out += `"${tag.value}" skill`
       if (!skillNames.includes(tag.value)) skillNames.push(tag.value)
     } else if (tag.type === 'folder') out += `@${tag.value}`
-    else if (!tag.line) out += `@${tag.value}`
+    else if (tag.type === 'hunk') {
+      if (!hunks.includes(tag)) hunks.push(tag)
+      out += `hunk ${hunks.indexOf(tag) + 1} (${tag.path})`
+    } else if (!tag.line) out += `@${tag.value}`
     else if (widened(tag, ctx.scopes)) out += `@${tag.value} (line ${tag.line})`
     else {
       out += `${tag.value}:${tag.line}`
@@ -264,6 +271,15 @@ export function promptFor(text: string, tags: Tag[], ctx: { workspace?: string; 
     }
   }
   for (const q of quotes) out += `\n\n${q}`
+  hunks.forEach((h, i) => (out += `\n\n${hunkQuote(h, i + 1)}`))
   for (const name of skillNames) out += `\n\nUse the "${name}" skill for this.`
   return out
+}
+
+/** A hunk as Claude reads it: which edit, the diff itself, then your comments line by line. */
+function hunkQuote(h: Extract<Tag, { type: 'hunk' }>, n: number): string {
+  const fence = h.patch.includes('```') ? '````' : '```'
+  const diff = `${fence}diff\n--- a/${h.path}\n+++ b/${h.path}\n${h.patch.trimEnd()}\n${fence}`
+  const notes = (h.notes ?? []).map((x) => `- ${x.side === 'old' ? 'removed' : 'new'} line ${x.line} \`${x.code.trim().slice(0, 120)}\`: ${x.text}`)
+  return [`Hunk ${n}, from an edit you made to ${h.path}:`, diff, ...(notes.length ? ['My comments on its lines:', ...notes] : [])].join('\n')
 }

@@ -1,8 +1,9 @@
 // The note's edits, by file and hunk, for the Changes sheet. "This turn" is every edit since your
 // last paragraph; "Earlier" is the rest. A file edited several times is one row whose hunks run
-// in edit order. Selected hunks go back to Claude as a ```diff fence you can still edit.
+// in edit order. Selected hunks go into your draft as ± pills (hunk tags) carrying the hunk and
+// your comments on its lines; `promptFor` spells them out for Claude.
 
-import { hunksOnly, type Block, type Thread } from './threads'
+import { hunksOnly, type Block, type HunkNote, type Tag, type Thread } from './threads'
 
 export type Hunk = {
   /** `${blockId}:${index}`: stable across renders and replays. */
@@ -76,10 +77,19 @@ export function collectChanges(t: Thread): ChangeGroup[] {
 
 export const changeCount = (t: Thread) => new Set(t.blocks.flatMap((b) => (b.kind === 'edit' && b.patch ? [b.path] : []))).size
 
-/** The paragraph that hands selected hunks back to Claude. */
-export function keepPrompt(hunks: Hunk[]): string {
-  const byPath = new Map<string, Hunk[]>()
-  for (const h of hunks) byPath.set(h.path, [...(byPath.get(h.path) ?? []), h])
-  const body = [...byPath.entries()].map(([p, hs]) => [`--- a/${p}`, `+++ b/${p}`, ...hs.map((h) => h.patch)].join('\n')).join('\n')
-  return `Keep exactly these changes:\n\n\`\`\`diff\n${body}\n\`\`\``
+/** Where a hunk starts in the new file, from `@@ -a,b +c,d @@`. */
+export function hunkStart(header: string): number {
+  return Number(/\+(\d+)/.exec(header)?.[1] ?? 1)
+}
+
+/** Hunk tags for the draft. The token is `±path:line`, unique within the draft. */
+export function hunkTags(hunks: Hunk[], notes: Record<string, HunkNote[]> = {}, taken: Tag[] = []): Extract<Tag, { type: 'hunk' }>[] {
+  const used = new Set(taken.filter((t) => t.type === 'hunk').map((t) => t.value))
+  return hunks.map((h) => {
+    let value = `${h.path}:${hunkStart(h.header)}`
+    for (let n = 2; used.has(value); n++) value = `${h.path}:${hunkStart(h.header)}~${n}`
+    used.add(value)
+    const own = notes[h.id]
+    return { type: 'hunk', value, path: h.path, header: h.header, patch: h.patch, added: h.added, removed: h.removed, ...(own?.length ? { notes: own } : {}) }
+  })
 }
