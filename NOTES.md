@@ -351,3 +351,15 @@ channel, which does the same job:
 - Checks: core/changes.test.ts (token, prompt, duplicate tokens); check-changes now comments on
   the removed line, adds, and hovers the pill. drafts.json is written 300ms after a change, so
   the check polls for it.
+
+## 2026-10-23 — + asks where
+
+- **The bug**: "new note, picked a folder, still the old one". The strip's + never opened the
+  dialog: it made a note in the current note's folder and account straight away (brief v2 §5).
+  Only ⌘N / ⌘T and the empty state asked. The picker itself was fine (`promptForPaths` returned
+  the folder and the note got it; checked with a logged run).
+- **Now** + opens New note like ⌘N, starting on the current note's folder and account, so the
+  same folder is still one press of Create. A folder past the five recent rows still shows as
+  selected (it used to be selected but invisible).
+- `bun scripts/check-new-note.ts`: + makes nothing until Create, Create uses the current folder
+  and account, a picked recent folder is used. check-tabs now expects + to ask.

@@ -28,12 +28,14 @@ try {
   await wait(1200)
   const shown = await titleY()
 
-  // + makes a new note in this folder without asking
+  // + asks where, starting on this note's folder; Create adds the tab
   const before = await tabCount()
   await app.getByTestId('new-thread').click()
+  await wait(1200)
+  expect('+ asks where', (await app.getByTestId('choose-folder').count()) === 1)
+  await app.getByTestId('create-thread').click()
   await wait(900)
-  expect('+ adds a tab', (await tabCount()) === before + 1, `${before} → ${await tabCount()}`)
-  expect('+ asks nothing', (await app.getByTestId('choose-folder').count()) === 0)
+  expect('Create adds a tab', (await tabCount()) === before + 1, `${before} → ${await tabCount()}`)
   await shot('1-plus')
 
   // ⌃← ⌃→ step through the tabs, even from the composer. The current tab is the wide one.

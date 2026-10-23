@@ -87,7 +87,7 @@ export function TabStrip({
           {tabs.map((t) => (
             <Tab key={t.id} tab={t} active={t.id === activeId} menuOpen={menuOpen} anchor={t.id === activeId ? activeAnchor : null} onPick={() => onPick(t.id)} onClose={() => onClose(t.id)} />
           ))}
-          <Button onPress={onNew} testId="new-thread" title="New note here (⌘N asks where)" style={{ width: 22, paddingLeft: 0, paddingRight: 0, marginLeft: 4 }}>
+          <Button onPress={onNew} testId="new-thread" title="New note (⌘N)" style={{ width: 22, paddingLeft: 0, paddingRight: 0, marginLeft: 4 }}>
             <Icon name="plus" size={13} />
           </Button>
         </div>

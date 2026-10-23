@@ -595,12 +595,6 @@ function App() {
     [focusComposer, openNote, setThreads],
   )
 
-  /** The strip's +: a new note in the same folder, on the same account. */
-  const newHere = useCallback(() => {
-    if (active) createThread(active.profileId, active.workspace)
-    else setOverlay('new')
-  }, [active, createThread])
-
   const openLogin = useCallback((profileId: string) => {
     const profile = profilesRef.current.find((p) => p.id === profileId)
     if (!profile) return
@@ -909,7 +903,7 @@ function App() {
                 setTimeout(focusComposer, 50)
               }}
               onClose={closeTab}
-              onNew={newHere}
+              onNew={() => setOverlay('new')}
               trailing={
                 <>
                   {active && changeCount(active) ? (
@@ -1027,6 +1021,7 @@ function App() {
             profiles={profiles}
             recentFolders={recentFolders}
             initialProfileId={active?.profileId}
+            initialFolder={active?.workspace}
             suggestProfile={(folder) => profileForWorkspace(profiles, folder)?.id}
             onCreate={createThread}
             onAddProfile={(name) => setProfiles(createProfile(name))}

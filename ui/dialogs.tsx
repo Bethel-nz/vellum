@@ -120,6 +120,7 @@ export function NewThreadDialog({
   recentFolders,
   suggestProfile,
   initialProfileId,
+  initialFolder,
   onCreate,
   onAddProfile,
   onLogin,
@@ -130,16 +131,19 @@ export function NewThreadDialog({
   recentFolders: string[]
   suggestProfile: (folder: string) => string | undefined
   initialProfileId?: string
+  /** The current note's folder: the dialog starts there, on that note's account. */
+  initialFolder?: string
   onCreate: (profileId: string, folder: string) => void
   onAddProfile: (name: string) => void
   onLogin: (profileId: string) => void
 }) {
   const m = useM()
   const renderer = useGpuixRequired()
-  const [folder, setFolder] = useState<string | undefined>(recentFolders[0])
-  const [profileId, setProfileId] = useState<string | undefined>(
-    () => (recentFolders[0] && suggestProfile(recentFolders[0])) || initialProfileId || profiles[0]?.id,
+  const [folder, setFolder] = useState<string | undefined>(initialFolder ?? recentFolders[0])
+  const [profileId, setProfileId] = useState<string | undefined>(() =>
+    initialFolder ? initialProfileId : (recentFolders[0] && suggestProfile(recentFolders[0])) || initialProfileId || profiles[0]?.id,
   )
+  const shownFolders = recentFolders.slice(0, 5)
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
 
@@ -213,13 +217,13 @@ export function NewThreadDialog({
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <SectionLabel>Which folder?</SectionLabel>
-          {recentFolders.slice(0, 5).map((f, i) => (
+          {shownFolders.map((f, i) => (
             <Row key={f} selected={f === folder} onPress={() => chooseFolder(f)} testId={`recent-${i}`}>
               <Icon name="folder" size={13} />
               <text style={{ flexGrow: 1, minWidth: 0, fontSize: 12.5, lineHeight: 17, color: m.text, fontFamily: font.mono, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{shortPath(f)}</text>
             </Row>
           ))}
-          {folder && !recentFolders.includes(folder) ? (
+          {folder && !shownFolders.includes(folder) ? (
             <Row selected onPress={() => {}}>
               <Icon name="folder" size={13} />
               <text style={{ flexGrow: 1, minWidth: 0, fontSize: 12.5, lineHeight: 17, color: m.text, fontFamily: font.mono, whiteSpace: 'nowrap', textOverflow: 'ellipsis-start' }}>{folder}</text>
