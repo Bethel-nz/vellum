@@ -4,6 +4,7 @@
 
 import { useState } from 'react'
 import { Button, Dot, Field, Label, Segmented, Sheet, SheetHeader, SheetRow, SheetSection, Switch } from '../components'
+import { sameLogin } from '../core/auth'
 import type { Profile } from '../core/profiles'
 import { accentFor } from './theme'
 import { useM } from './kit'
@@ -131,7 +132,16 @@ function Accounts({
   return (
     <SheetSection label="Accounts" hint="Each account keeps its own login. Your skills, settings and history are shared.">
       {profiles.map((p) => {
-        const who = p.loggedIn === false ? 'Not logged in' : p.email ? [p.email, p.plan].filter(Boolean).join(' · ') : 'Checking…'
+        // The later of two accounts with one login is the mistake; the first is fine.
+        const same = p.loggedIn && p.email ? sameLogin(profiles, p.id, p.email) : undefined
+        const twin = same && profiles.indexOf(same) < profiles.indexOf(p) ? same : undefined
+        const who = twin
+          ? `Same login as ${twin.name}. Log out, sign out of claude.ai in your browser, and log in again.`
+          : p.loggedIn === false
+            ? 'Not logged in'
+            : p.email
+              ? [p.email, p.plan].filter(Boolean).join(' · ')
+              : 'Checking…'
         return (
           <SheetRow key={p.id} label={p.name} detail={who} testId={`account-${p.id}`}>
             <Dot color={accentFor(m, profiles, p.id)} size={8} />

@@ -8,9 +8,11 @@
 //
 // With `--cli auth login|logout|status` it plays the account side (scripts/check-login.ts puts a
 // `claude` shim on PATH that runs this file with --cli): a marker file in the account's config dir
-// ($CLAUDE_CONFIG_DIR, or $FAKE_DEFAULT_CONFIG for the default account) means logged in.
+// ($CLAUDE_CONFIG_DIR, or $FAKE_DEFAULT_CONFIG for the default account) means logged in, and holds
+// the email. A login takes `--email`, else the email in $FAKE_NEXT_LOGIN (a file, used once: the
+// browser was still signed in to that account), else one made from the account's folder.
 //   VELLUM_AGENT=scripts/fake-acp.ts (scripts/check-approval.ts sets it)
-import { appendFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 if (process.argv.includes('--cli')) {
@@ -20,14 +22,19 @@ if (process.argv.includes('--cli')) {
   log({ cli: args, dir })
   if (args[0] === 'auth' && args[1] === 'status') {
     const loggedIn = existsSync(marker)
-    process.stdout.write(JSON.stringify(loggedIn ? { loggedIn, authMethod: 'claude.ai', apiProvider: 'firstParty', email: `${path.basename(path.dirname(dir))}@example.com`, subscriptionType: 'max' } : { loggedIn, authMethod: 'none' }) + '\n')
+    const email = loggedIn ? readFileSync(marker, 'utf8').trim() || `${path.basename(path.dirname(dir))}@example.com` : undefined
+    process.stdout.write(JSON.stringify(loggedIn ? { loggedIn, authMethod: 'claude.ai', apiProvider: 'firstParty', email, subscriptionType: 'max' } : { loggedIn, authMethod: 'none' }) + '\n')
     process.exit(loggedIn ? 0 : 1)
   }
   if (args[0] === 'auth' && args[1] === 'login') {
     process.stdout.write('Opening your browser to log in…\r\n')
     await Bun.sleep(600)
+    const next = process.env.FAKE_NEXT_LOGIN
+    const given = args.includes('--email') ? args[args.indexOf('--email') + 1] : undefined
+    const email = given ?? (next && existsSync(next) ? readFileSync(next, 'utf8').trim() : undefined) ?? `${path.basename(path.dirname(dir))}@example.com`
+    if (next && !given) rmSync(next, { force: true })
     mkdirSync(dir, { recursive: true })
-    writeFileSync(marker, 'yes')
+    writeFileSync(marker, email)
     process.stdout.write('Login successful.\r\n')
     process.exit(0)
   }

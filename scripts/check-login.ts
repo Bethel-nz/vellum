@@ -1,6 +1,8 @@
 // Self-check for accounts in Settings, against scripts/fake-acp.ts (no real login): who each
 // account is shows at launch, Log in runs the agent's own login method in the inline terminal and
-// the row updates when it exits, Log out ends it, and a new account starts logged out.
+// the row updates when it exits, Log out ends it, a new account starts logged out, logging in
+// again asks for the account's last email, and a second account that lands on the same login is
+// flagged.
 //   bun scripts/check-login.ts
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -16,13 +18,14 @@ chmodSync(path.join(bin, 'claude'), 0o755)
 // The default account is logged in; Work isn't.
 const defaultConfig = path.join(home, 'default', 'claude')
 mkdirSync(defaultConfig, { recursive: true })
-writeFileSync(path.join(defaultConfig, '.fake-login'), 'yes')
+writeFileSync(path.join(defaultConfig, '.fake-login'), 'default@example.com')
+const nextLogin = path.join(home, 'next-login')
 const log = path.join(home, 'fake-acp.log')
 writeFileSync(log, '')
 const app = await launch({
   command: 'bun',
   args: ['app.tsx'],
-  env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_AGENT: fake, PATH: `${bin}:${process.env.PATH}`, FAKE_DEFAULT_CONFIG: defaultConfig, FAKE_ACP_LOG: log },
+  env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_AGENT: fake, PATH: `${bin}:${process.env.PATH}`, FAKE_DEFAULT_CONFIG: defaultConfig, FAKE_ACP_LOG: log, FAKE_NEXT_LOGIN: nextLogin },
 })
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const shot = (n: string) => app.screenshot({ path: 'screenshots/login-' + n + '.png' })
@@ -73,6 +76,22 @@ try {
   await wait(600)
   expect('…and listed', (await app.getByTestId('account-work-2').count()) === 1)
   await shot('4-added')
+
+  // Work again: it asks for the email it had.
+  await app.getByTestId('login-work').click()
+  expect('logging in again asks for the same email', await until(() => cli().includes('auth login --claudeai --email work@example.com')), cli().at(-1))
+  await until(async () => (await app.getByTestId('pane-term').count()) === 0, 15_000)
+
+  // Work 2, with the browser still signed in to the default account.
+  writeFileSync(nextLogin, 'default@example.com')
+  await openSettings()
+  await app.getByTestId('login-work-2').click()
+  await until(async () => (await app.getByTestId('pane-term').count()) === 1, 15_000)
+  await until(async () => (await app.getByTestId('pane-term').count()) === 0, 15_000)
+  await openSettings()
+  expect('a login that lands on another account’s login is flagged on the later row', (await app.getByTestId('account-work-2').textContent()).includes('Same login as Default'))
+  expect('…and not on the first', !(await app.getByTestId('account-main').textContent()).includes('Same login'))
+  await shot('5-same-login')
 } finally {
   await app.close()
 }

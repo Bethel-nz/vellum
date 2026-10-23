@@ -430,3 +430,11 @@ Agent SDK (`CLAUDE_CODE_EXECUTABLE`), with your login, per account through `CLAU
 - check-approval failed once in four runs with an uncaught automation timeout (the background
   window ticking slowly, as noted above), and passed the other three.
 - **Not verified with a real login yet.** The real flow opens the browser; it needs a person.
+- **Login identity.** Vellum uses the official login: the CLI performs OAuth, the
+  Keychain holds tokens, and the CLI refreshes them. Account handling includes:
+  - **Same login twice.** Accounts are keyed by identity. A browser still signed in to one account
+    hands that account to the next login, so Settings flags the later of two accounts with one
+    email ("Same login as Default…") and the login's toast says so.
+  - **`--email` on a login again.** A logged-out account keeps its last email, and its next login
+    passes `--email` (claude's own flag) so the browser asks for that account. This is an addition
+    to the ACP method's args.

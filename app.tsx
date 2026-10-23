@@ -13,7 +13,7 @@ import { ApprovalCard, Button, closedByOutsidePress, Field, Label, Menu, Sheet, 
 import { FloatingLayer } from '@gpuix/react/floating'
 import { ease, setReducedMotion, tween } from './components/motion'
 import { AgentRunner, killAllAgents } from './core/agent'
-import { accountStatus, loginCommand, loginMethods, logout } from './core/auth'
+import { accountStatus, loginCommand, loginMethods, logout, sameLogin } from './core/auth'
 import { identityFor, machineAvatar, realName } from './core/avatar'
 import { cacheModels, cachedModels, type ModelOption } from './core/models'
 import { StatusBar } from './ui/StatusBar'
@@ -623,8 +623,10 @@ function App() {
     const s = await accountStatus(profile)
     if (!s) return
     const p = given ?? profilesRef.current.find((x) => x.id === profileId)
-    if (p && (p.loggedIn !== s.loggedIn || p.email !== s.email || p.plan !== s.plan))
-      setProfiles(updateProfile(profileId, { loggedIn: s.loggedIn, email: s.email, plan: s.plan }))
+    // A logged-out account keeps the email it last had, so its next login can ask for that one.
+    const email = s.loggedIn ? s.email : (s.email ?? p?.email)
+    const plan = s.loggedIn ? s.plan : p?.plan
+    if (p && (p.loggedIn !== s.loggedIn || p.email !== email || p.plan !== plan)) setProfiles(updateProfile(profileId, { loggedIn: s.loggedIn, email, plan }))
     return s
   }, [])
 
@@ -644,12 +646,14 @@ function App() {
       if (!profile) return
       busy(profileId, true)
       const methods = await loginMethods(profile)
-      const { argv, env } = loginCommand(profile, methods[0]!)
+      const { argv, env, label } = loginCommand(profile, methods[0]!)
       setOverlay(null)
       const done = async () => {
         const s = await refreshAccount(profileId)
         busy(profileId, false)
-        if (s?.loggedIn) showToastRef.current(`${profile.name} is logged in${s.email ? ` as ${s.email}` : ''}`, 'success')
+        const twin = s?.loggedIn && s.email ? sameLogin(profilesRef.current, profileId, s.email) : undefined
+        if (twin) showToastRef.current(`${profile.name} logged in as the same account as ${twin.name}. Sign out of claude.ai in your browser, then log in again.`)
+        else if (s?.loggedIn) showToastRef.current(`${profile.name} is logged in${s.email ? ` as ${s.email}` : ''}`, 'success')
         else showToastRef.current(`${profile.name} is still not logged in`)
         return s?.loggedIn
       }
@@ -668,7 +672,7 @@ function App() {
         return
       }
       const session = startTerm({ argv, cwd: homedir(), env, cols: 100, rows: 30 })
-      setPane({ kind: 'login', profileId, session, label: ['claude', ...methods[0]!.args.filter((a) => a !== '--cli')].join(' ') })
+      setPane({ kind: 'login', profileId, session, label })
       session.exited.then(async () => {
         setPane((p) => (p?.session === session ? null : p))
         await done()

@@ -68,9 +68,25 @@ export function loginMethods(profile: Profile): Promise<LoginMethod[]> {
   })())
 }
 
-/** argv and env for one login method under an account. */
-export function loginCommand(profile: Profile, method: LoginMethod): { argv: string[]; env: Record<string, string> } {
-  return { argv: [...agentArgv(), ...method.args], env: { ...agentEnv(profile), ...method.env } }
+/**
+ * argv and env for one login method under an account, and how it reads (`claude auth login …`).
+ * An account that was logged in before asks for the same email again (`--email`, which claude's
+ * login takes; an addition to the method's args, so the browser offers the right account).
+ */
+export function loginCommand(profile: Profile, method: LoginMethod): { argv: string[]; env: Record<string, string>; label: string } {
+  const login = method.args.includes('login')
+  const args = [...method.args, ...(login && profile.email ? ['--email', profile.email] : [])]
+  return { argv: [...agentArgv(), ...args], env: { ...agentEnv(profile), ...method.env }, label: ['claude', ...args.filter((a) => a !== '--cli')].join(' ') }
+}
+
+/**
+ * Another logged-in account with the same login as `profileId`. Easy to do by accident: a browser
+ * still signed in to one account hands that same account to the next login. (Subrouter keys its
+ * accounts by identity for the same reason.)
+ */
+export function sameLogin(profiles: Profile[], profileId: string, email: string): Profile | undefined {
+  const key = email.trim().toLowerCase()
+  return profiles.find((p) => p.id !== profileId && p.loggedIn && p.email?.trim().toLowerCase() === key)
 }
 
 /** Log an account out (the adapter hands `auth logout` to your claude). */
