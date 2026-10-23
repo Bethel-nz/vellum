@@ -13,6 +13,8 @@ import {
   type PublicInstance,
 } from '@gpuix/react'
 import { Button } from '@gpuix/react/button'
+import { existsSync } from 'node:fs'
+import path from 'node:path'
 import type { Profile } from '../core/profiles'
 import type { Thread } from '../core/threads'
 import { Dot, Icon, Kbd, Meta, Quiet, useM } from './kit'
@@ -219,6 +221,13 @@ export function NewThreadDialog({
               <text style={{ flexGrow: 1, minWidth: 0, fontSize: 12.5, lineHeight: 17, color: m.text, fontFamily: font.mono, whiteSpace: 'nowrap', textOverflow: 'ellipsis-start' }}>{folder}</text>
             </Row>
           ) : null}
+          {folder && projectConfig(folder).length ? (
+            <div style={{ padding: 10, borderRadius: concentric(radiusXl, 8), backgroundColor: m.dangerBg }}>
+              <text style={{ fontSize: 12, lineHeight: 17, color: m.danger }}>
+                {`This folder has ${projectConfig(folder).join(', ')}. Headless runs skip Claude Code's trust prompt, so its hooks and MCP servers run without asking. Only continue if you trust this folder.`}
+              </text>
+            </div>
+          ) : null}
           <Quiet onPress={browse} style={{ alignSelf: 'start' }} testId="choose-folder">
             <Icon name="plus" size={12} />
             <Meta color={m.textMuted}>Choose folder…</Meta>
@@ -236,6 +245,11 @@ export function NewThreadDialog({
       </div>
     </Sheet>
   )
+}
+
+/** Project files that make Claude Code run folder-provided config (hooks, MCP servers). */
+function projectConfig(folder: string): string[] {
+  return ['.mcp.json', '.claude/settings.json', '.claude/settings.local.json'].filter((f) => existsSync(path.join(folder, f)))
 }
 
 function ago(iso: string) {

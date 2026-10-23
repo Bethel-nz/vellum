@@ -180,7 +180,7 @@ export function TerminalBlock({
       } else if (e.key === 'v') {
         e.preventDefault()
         const text = Bun.spawnSync(['pbpaste']).stdout.toString()
-        if (text) session.write(text)
+        if (text) session.paste(text)
       }
       return // other Cmd shortcuts stay with the app
     }

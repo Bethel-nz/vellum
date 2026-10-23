@@ -10,6 +10,8 @@ export type TermSession = {
   argv: string[]
   write(bytes: string | Uint8Array): void
   key(input: KeyInput): void
+  /** Paste text the way a terminal does (bracketed when the program asks, control bytes stripped). */
+  paste(text: string): void
   resize(cols: number, rows: number): void
   snapshot(): Grid
   /** Plain text of screen and scrollback, from libghostty's formatter. */
@@ -85,6 +87,11 @@ export function startTerm(opts: {
     },
     key(input) {
       const bytes = vt.encodeKey(input)
+      if (bytes.length) session.write(bytes)
+    },
+    paste(text) {
+      if (disposed) return
+      const bytes = vt.encodePaste(text)
       if (bytes.length) session.write(bytes)
     },
     resize(cols, rows) {

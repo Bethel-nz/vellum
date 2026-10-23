@@ -5,7 +5,7 @@
 // thread's .jsonl and reduces it). If the process exits it is restarted lazily
 // on the next message with --resume <session id>.
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { createTwoFilesPatch } from 'diff'
 import type { Profile } from './profiles'
@@ -163,12 +163,34 @@ export class ClaudeRunner {
   }
 }
 
-function filePatch(workspace: string, name: string, input: any): string | undefined {
+const MAX_DIFF_BYTES = 2 * 1024 * 1024
+
+/** The real path of `file` if it lies inside the workspace, else undefined. */
+function insideWorkspace(workspace: string, file: string): string | undefined {
+  const abs = path.isAbsolute(file) ? file : path.join(workspace, file)
+  let root: string
+  let target: string
+  try {
+    root = realpathSync(workspace)
+    // A file that does not exist yet (Write) resolves through its folder.
+    target = existsSync(abs) ? realpathSync(abs) : path.join(realpathSync(path.dirname(abs)), path.basename(abs))
+  } catch {
+    return
+  }
+  const rel = path.relative(root, target)
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return
+  return target
+}
+
+export function filePatch(workspace: string, name: string, input: any): string | undefined {
   const file = String(input.file_path ?? '')
   if (!file) return
-  const abs = path.isAbsolute(file) ? file : path.join(workspace, file)
-  // Never open credential files, even if an agent touches one.
-  if (/credentials|keychain/i.test(abs)) return
+  // Only files inside the workspace are read for a diff; anything else falls
+  // back to the snippet patch built from the tool input. Credential files are
+  // never opened, wherever they are.
+  const abs = insideWorkspace(workspace, file)
+  if (!abs || /credentials|keychain/i.test(abs)) return
+  if (existsSync(abs) && statSync(abs).size > MAX_DIFF_BYTES) return
   const before = existsSync(abs) ? readFileSync(abs, 'utf8') : ''
   let after = before
   if (name === 'Write') after = String(input.content ?? '')

@@ -135,6 +135,25 @@ Not used: `ghostty-web`, `restty` (no need once option 1 worked).
 
 All four use a scratch `VELLUM_HOME` and `GPUIX_BACKGROUND=1`. `~/.vellum` is never touched.
 
+## Security review (after the first commit)
+
+- **Diff reads stay in the workspace.** `filePatch` (core/claude.ts) realpaths the target and reads it
+  only if it lies inside the workspace's realpath and is at most 2 MB. Paths outside, `..` escapes and
+  symlinks pointing out fall back to the snippet patch built from the tool input. Checked with an
+  inside edit, a new file, an outside path, `ws/../x` and a symlink out.
+- **Trust prompt.** Headless `-p` skips Claude Code's workspace trust dialog. The New thread dialog
+  warns when the folder has `.mcp.json`, `.claude/settings.json` or `.claude/settings.local.json`,
+  whose hooks and MCP servers would run without asking. It warns, it doesn't block. Not yet checked by eye.
+- **Wasm buffers.** core/ghostty.ts gives each libghostty out-parameter its own allocation, sized from
+  the ABI manifest. A grapheme cluster longer than 32 codepoints renders as U+FFFD instead of
+  overflowing. Checked with `a` + 40 combining marks.
+- **Paste.** ⌘V in a terminal goes through `ghostty_paste_encode`: unsafe control bytes become spaces,
+  and the text is wrapped in `ESC[200~ … ESC[201~` when the program enabled mode 2004. That's read
+  with `ghostty_terminal_get(MODE)`. An embedded `ESC[201~` is neutralised.
+
+`scripts/check-terminal.ts` can flake under heavy load: if `top` hasn't drawn within 2.5 s, the `q`
+arrives too early. Re-run it before reading anything into that.
+
 ## Not built (out of scope or stretch)
 
 - Changes panel (`git diff --stat`), cursor glow, aurora wash

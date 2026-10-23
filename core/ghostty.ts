@@ -108,6 +108,10 @@ export type KeyInput = {
 
 let nextUserdata = 1
 
+/** Longest grapheme cluster we decode; longer clusters render as U+FFFD instead of overflowing the buffer. */
+const MAX_GRAPHEME = 32
+const KEY_OUT = 1024
+
 export class VtTerminal {
   #m = vt()
   #term = 0
@@ -118,7 +122,14 @@ export class VtTerminal {
   #event = 0
   #userdata = nextUserdata++
   #handleSlot = 0
-  #scratch = 0
+  // Dedicated buffers, each sized for what libghostty writes into it.
+  #keyOut = 0
+  #cursorBuf = 0
+  #styleBuf = 0
+  #lenBuf = 0
+  #cpBuf = 0
+  #rgbBuf = 0
+  #modeBuf = 0
   cols: number
   rowsCount: number
 
@@ -140,7 +151,13 @@ export class VtTerminal {
     m.check(e.ghostty_key_event_new(0, m.slot), 'key_event_new')
     this.#event = m.takeOpaque()
     this.#handleSlot = m.alloc(4)
-    this.#scratch = m.alloc(1024)
+    this.#keyOut = m.alloc(KEY_OUT)
+    this.#cursorBuf = m.alloc(m.type('GhosttyRenderStateCursor').size)
+    this.#styleBuf = m.alloc(m.type('GhosttyStyle').size)
+    this.#lenBuf = m.alloc(4)
+    this.#cpBuf = m.alloc(MAX_GRAPHEME * 4)
+    this.#rgbBuf = m.alloc(Math.max(4, m.type('GhosttyColorRgb').size))
+    this.#modeBuf = m.alloc(m.type('GhosttyTerminalModeConfig').size)
 
     writePtyHandlers.set(this.#userdata, onReply)
     const opt = (name: string) => m.enumValue('GhosttyTerminalOption', name)
@@ -200,15 +217,50 @@ export class VtTerminal {
 
     try {
       e.ghostty_key_encoder_setopt_from_terminal(this.#encoder, this.#term)
-      const out = this.#scratch
+      const out = this.#keyOut
       const lenSlot = this.#handleSlot
-      const result = e.ghostty_key_encoder_encode(this.#encoder, ev, out, 1024, lenSlot)
+      const result = e.ghostty_key_encoder_encode(this.#encoder, ev, out, KEY_OUT, lenSlot)
       if (result !== 0) return new Uint8Array()
       const len = m.view().getUint32(lenSlot, true)
       return m.bytes().slice(out, out + len)
     } finally {
       e.ghostty_key_event_set_utf8(ev, 0, 0)
       if (textPtr) m.free(textPtr, textBytes.length)
+    }
+  }
+
+  /** Whether the program enabled bracketed paste (DEC mode 2004). */
+  #bracketedPaste(): boolean {
+    const m = this.#m
+    const f = (name: string) => m.field('GhosttyTerminalModeConfig', name).offset
+    m.bytes().fill(0, this.#modeBuf, this.#modeBuf + m.type('GhosttyTerminalModeConfig').size)
+    m.view().setUint16(this.#modeBuf + f('mode'), 2004, true) // DEC private, not ANSI
+    const r = m.exports.ghostty_terminal_get(this.#term, m.enumValue('GhosttyTerminalData', 'MODE'), this.#modeBuf)
+    return r === 0 && m.bytes()[this.#modeBuf + f('value')] !== 0
+  }
+
+  /**
+   * Bytes for pasting `text`, via libghostty: unsafe control bytes become spaces,
+   * and the text is wrapped in ESC[200~ … ESC[201~ when the program asked for it,
+   * so an embedded end marker or newline cannot run commands.
+   */
+  encodePaste(text: string): Uint8Array {
+    const m = this.#m
+    const e = m.exports
+    const data = enc.encode(text)
+    if (data.length === 0) return data
+    const bracketed = this.#bracketedPaste()
+    const cap = data.length * 2 + 16
+    const inPtr = m.copyIn(data)
+    const outPtr = m.alloc(cap)
+    try {
+      const r = e.ghostty_paste_encode(inPtr, data.length, bracketed, outPtr, cap, this.#lenBuf)
+      if (r !== 0) return new Uint8Array()
+      const len = m.view().getUint32(this.#lenBuf, true)
+      return m.bytes().slice(outPtr, outPtr + len)
+    } finally {
+      m.free(inPtr, data.length)
+      m.free(outPtr, cap)
     }
   }
 
@@ -256,7 +308,7 @@ export class VtTerminal {
 
     // Cursor.
     const cursorType = m.type('GhosttyRenderStateCursor')
-    const cur = this.#scratch
+    const cur = this.#cursorBuf
     m.bytes().fill(0, cur, cur + cursorType.size)
     m.view().setUint32(cur, cursorType.size, true)
     m.check(e.ghostty_render_state_get(this.#render, rsData('CURSOR'), cur), 'get cursor')
@@ -277,10 +329,10 @@ export class VtTerminal {
       tag: m.view().getInt32(base, true),
       value: base + 8,
     })
-    const styleBuf = this.#scratch
-    const lenBuf = this.#scratch + 128
-    const cpBuf = this.#scratch + 256
-    const rgbBuf = this.#scratch + 512
+    const styleBuf = this.#styleBuf
+    const lenBuf = this.#lenBuf
+    const cpBuf = this.#cpBuf
+    const rgbBuf = this.#rgbBuf
     const hex = (p: number) => {
       const b = m.bytes()
       return '#' + [b[p]!, b[p + 1]!, b[p + 2]!].map((x) => x.toString(16).padStart(2, '0')).join('')
@@ -295,9 +347,10 @@ export class VtTerminal {
       while (e.ghostty_render_state_row_cells_next(this.#cells)) {
         m.view().setUint32(lenBuf, 0, true)
         e.ghostty_render_state_row_cells_get(this.#cells, cellData('GRAPHEMES_LEN'), lenBuf)
-        const n = Math.min(m.view().getUint32(lenBuf, true), 16)
+        const n = m.view().getUint32(lenBuf, true)
         let ch = ' '
-        if (n > 0) {
+        if (n > MAX_GRAPHEME) ch = '\uFFFD'
+        else if (n > 0) {
           e.ghostty_render_state_row_cells_get(this.#cells, cellData('GRAPHEMES_BUF'), cpBuf)
           const cps: number[] = []
           for (let i = 0; i < n; i++) cps.push(m.view().getUint32(cpBuf + i * 4, true))
@@ -358,8 +411,15 @@ export class VtTerminal {
     e.ghostty_render_state_row_iterator_free(this.#rows)
     e.ghostty_render_state_free(this.#render)
     e.ghostty_terminal_free(this.#term)
-    this.#m.free(this.#handleSlot, 4)
-    this.#m.free(this.#scratch, 1024)
+    const m = this.#m
+    m.free(this.#handleSlot, 4)
+    m.free(this.#keyOut, KEY_OUT)
+    m.free(this.#cursorBuf, m.type('GhosttyRenderStateCursor').size)
+    m.free(this.#styleBuf, m.type('GhosttyStyle').size)
+    m.free(this.#lenBuf, 4)
+    m.free(this.#cpBuf, MAX_GRAPHEME * 4)
+    m.free(this.#rgbBuf, Math.max(4, m.type('GhosttyColorRgb').size))
+    m.free(this.#modeBuf, m.type('GhosttyTerminalModeConfig').size)
     this.#term = 0
   }
 }
