@@ -165,7 +165,7 @@ export function TokenText({ text, tags, ctx, onPress, color, testId }: { text: s
   )
 }
 
-/** The tokens in a paragraph, as a row of chips: under the composer, and under Claude's replies. */
+/** The tokens in the paragraph being written, as a row of chips under the composer. */
 export function TokenRow({ tags, ctx, testId }: { tags: Tag[]; ctx: TokenContext; testId?: string }) {
   const hover = useHover()
   const slices = useSlices(tags, ctx.workspace)

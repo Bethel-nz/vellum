@@ -39,6 +39,7 @@ import { Dot, Icon, Kbd, MaterialContext, Meta, Quiet, useM } from './ui/kit'
 import { SettingsSheet, type MotionPref, type TabMode } from './ui/SettingsSheet'
 import { CELL_W, TerminalBlock } from './ui/TerminalBlock'
 import {
+  accentFor,
   concentric,
   contentInset,
   font,
@@ -148,12 +149,11 @@ const clock = (iso: string) => {
 }
 
 /** The account a note runs on. The account menu hangs off it. */
-function AccountPill({ profile, onPress, testId = 'account-pill' }: { profile?: Profile; onPress: () => void; testId?: string }) {
-  const m = useM()
+function AccountPill({ profile, color, onPress, testId = 'account-pill' }: { profile?: Profile; color: string; onPress: () => void; testId?: string }) {
   if (!profile) return null
   return (
     <Button onPress={onPress} testId={testId} title="Account">
-      <Dot color={profile.color} size={7} />
+      <Dot color={color} size={7} />
       <Label muted>{profile.name}</Label>
     </Button>
   )
@@ -746,7 +746,7 @@ function App() {
                 time: clock(t.updatedAt),
                 running: t.running,
                 unread: (unread[t.id] ?? 0) > 0,
-                dot: profiles.find((p) => p.id === t.profileId)?.color,
+                dot: accentFor(m, profiles, t.profileId),
               }))}
               activeId={activeId}
               leading={LIGHTS_INSET}
@@ -762,7 +762,7 @@ function App() {
                     <Icon name="search" size={13} />
                     <Kbd>⌘K</Kbd>
                   </Button>
-                  <AccountPill profile={activeProfile} onPress={() => setOverlay('settings')} />
+                  <AccountPill profile={activeProfile} color={accentFor(m, profiles, activeProfile?.id)} onPress={() => setOverlay('settings')} />
                 </>
               }
             />
@@ -780,12 +780,14 @@ function App() {
                 thread={active}
                 profile={activeProfile}
                 inset={stripVisible ? 12 : LIGHTS_INSET}
-                trailing={stripVisible ? null : <AccountPill profile={activeProfile} testId="account-pill-title" onPress={() => setOverlay('settings')} />}
+                trailing={stripVisible ? null : <AccountPill profile={activeProfile} color={accentFor(m, profiles, activeProfile?.id)} testId="account-pill-title" onPress={() => setOverlay('settings')} />}
                 canOpenClaude={Boolean(active.claudeSessionId)}
                 onRename={(title) => record(active.id, { type: 'vellum/title', title })}
                 onOpenClaude={openClaude}
                 onClose={() => closeTab(active.id)}
               />
+              {/* Text scrolls under the title row through a short fade instead of a hard edge. */}
+              <div style={{ position: 'relative', flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
               <Document
                 thread={active}
                 actions={actions}
@@ -810,6 +812,18 @@ function App() {
                   />
                 }
               />
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 12,
+                  height: 24,
+                  pointerEvents: 'none',
+                  background: { type: 'linear-gradient', angle: 180, stops: [{ color: m.pane, position: 0 }, { color: `${m.pane.slice(0, 7)}00`, position: 1 }] },
+                }}
+              />
+              </div>
             </>
           ) : (
             <EmptyState onNew={() => setOverlay('new')} />

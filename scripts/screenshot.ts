@@ -27,6 +27,12 @@ const shot = async (name: string) => {
 
 await app.getByTestId('composer').waitFor({ timeoutMs: 60_000 })
 await shot('01-document')
+// The edit block sits above the fold: scroll up to it for the diff (positive wheel = toward the top).
+await app.mouse.wheel({ x: 540, y: 500 }, 0, 4000)
+await Bun.sleep(500)
+await shot('01b-edit')
+await app.mouse.wheel({ x: 540, y: 500 }, 0, -8000)
+await Bun.sleep(400)
 
 await app.getByTestId('composer').click()
 await app.getByTestId('composer').fill('!printf "\\033[32mgreen\\033[0m \\033[1;34mbold blue\\033[0m plain\\n"; ls -G')

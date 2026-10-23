@@ -18,7 +18,8 @@ import path from 'node:path'
 import type { Profile } from '../core/profiles'
 import type { Thread } from '../core/threads'
 import { Dot, Icon, Kbd, Meta, Quiet, useM } from './kit'
-import { concentric, font, motion as mo, radiusXl } from './theme'
+import { Tooltip } from '../components'
+import { accentFor, concentric, font, motion as mo, radiusXl, shortPath } from './theme'
 
 function Sheet({ open, onClose, width, children, initialFocus }: { open: boolean; onClose: () => void; width: number; children: ReactNode; initialFocus?: React.RefObject<PublicInstance | null> }) {
   const m = useM()
@@ -98,7 +99,8 @@ function PrimaryButton({ children, onPress, disabled, testId }: { children: Reac
         borderRadius: 8,
         display: 'flex',
         alignItems: 'center',
-        backgroundColor: m.accent,
+        // Inverted neutral: violet is kept for the agent's own identity.
+        backgroundColor: m.text,
         opacity: disabled ? 0.4 : 1,
         cursor: disabled ? 'default' : 'pointer',
         hover: disabled ? undefined : { opacity: 0.9 },
@@ -106,7 +108,7 @@ function PrimaryButton({ children, onPress, disabled, testId }: { children: Reac
         focusVisible: { outlineWidth: 2, outlineColor: m.focusRing, outlineOffset: 2 },
       }}
     >
-      <text style={{ fontSize: 13, lineHeight: 16, color: '#ffffff', fontWeight: 500 }}>{children}</text>
+      <text style={{ fontSize: 13, lineHeight: 16, color: m.pane, fontWeight: 500 }}>{children}</text>
     </Button>
   )
 }
@@ -162,12 +164,14 @@ export function NewThreadDialog({
           <SectionLabel>Which account?</SectionLabel>
           {profiles.map((p) => (
             <Row key={p.id} selected={p.id === profileId} onPress={() => setProfileId(p.id)} testId={`profile-${p.id}`}>
-              <Dot color={p.color} size={8} />
+              <Dot color={accentFor(m, profiles, p.id)} size={8} />
               <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}>
                 <text style={{ fontSize: 13, lineHeight: 18, color: m.text }}>{p.name}</text>
-                <text style={{ fontSize: 11, lineHeight: 14, color: m.textFaint, fontFamily: font.mono, whiteSpace: 'nowrap', textOverflow: 'ellipsis-start' }}>
-                  {p.configDir ?? '~/.claude (Claude Code default)'}
-                </text>
+                <Tooltip label={p.configDir ?? '~/.claude'}>
+                  <text style={{ fontSize: 11, lineHeight: 14, color: m.textFaint, fontFamily: font.mono, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                    {p.configDir ? shortPath(p.configDir) : '~/.claude · Claude Code default'}
+                  </text>
+                </Tooltip>
               </div>
               {p.loggedIn === false ? <Meta color={m.danger}>not logged in</Meta> : null}
               <Quiet onPress={() => onLogin(p.id)} title={`Log in to ${p.name}`}>
@@ -212,7 +216,7 @@ export function NewThreadDialog({
           {recentFolders.slice(0, 5).map((f, i) => (
             <Row key={f} selected={f === folder} onPress={() => chooseFolder(f)} testId={`recent-${i}`}>
               <Icon name="folder" size={13} />
-              <text style={{ flexGrow: 1, minWidth: 0, fontSize: 12.5, lineHeight: 17, color: m.text, fontFamily: font.mono, whiteSpace: 'nowrap', textOverflow: 'ellipsis-start' }}>{f}</text>
+              <text style={{ flexGrow: 1, minWidth: 0, fontSize: 12.5, lineHeight: 17, color: m.text, fontFamily: font.mono, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{shortPath(f)}</text>
             </Row>
           ))}
           {folder && !recentFolders.includes(folder) ? (
@@ -338,14 +342,14 @@ export function ThreadSwitcher({
         {groups.map(([workspace, ts]) => (
           <div key={workspace} style={{ display: 'flex', flexDirection: 'column', gap: 1, paddingBottom: 6 }}>
             <div style={{ paddingLeft: 10, paddingTop: 6, paddingBottom: 4 }}>
-              <text style={{ fontSize: 11, lineHeight: 14, color: m.textFaint, fontFamily: font.mono, whiteSpace: 'nowrap', textOverflow: 'ellipsis-start' }}>{workspace}</text>
+              <text style={{ fontSize: 11, lineHeight: 14, color: m.textFaint, fontFamily: font.mono, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{workspace.startsWith('/') ? shortPath(workspace) : workspace}</text>
             </div>
             {ts.map((t) => {
               const i = flat.indexOf(t)
               const p = profiles.find((x) => x.id === t.profileId)
               return (
                 <Row key={t.id} selected={i === active} onPress={() => pick(t)} testId={`thread-${t.id}`}>
-                  <Dot color={p?.color ?? m.textFaint} />
+                  <Dot color={accentFor(m, profiles, p?.id)} />
                   <text style={{ flexGrow: 1, minWidth: 0, fontSize: 13, lineHeight: 18, color: t.id === activeId ? m.text : m.textMuted, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{t.title}</text>
                   {t.running ? <Meta color={m.textMuted}>working</Meta> : null}
                   <Meta>{ago(t.updatedAt)}</Meta>

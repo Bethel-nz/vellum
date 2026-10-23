@@ -1,6 +1,6 @@
 // Self-check for context tokens: a paragraph with `#ui/theme.ts:3` reads with chips, hovering
-// opens that exact line, "Read whole file" records the widening, a reply's file mentions get a
-// chip row, and `#` in the draft opens a files-only picker whose pick becomes a chip.
+// opens that exact line, "Read whole file" records the widening, replies carry no chip row,
+// and `#` in the draft opens a files-only picker whose pick becomes a chip.
 //   bun scripts/check-tokens.ts
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -59,7 +59,7 @@ try {
   await wait(500)
   expect('leaving closes the slice', (await app.getByTestId('token-slice').count()) === 0)
 
-  expect('reply mentions get chips', (await app.getByTestId('mentions-a-1-0').count()) === 1)
+  expect('replies carry no chip row', (await app.getByTestId('mentions-a-1-0').count()) === 0)
 
   await c.click()
   await c.fill('Look at #theme')

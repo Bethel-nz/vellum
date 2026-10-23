@@ -66,7 +66,8 @@ try {
   // trust warning in the New note dialog
   await c.press('cmd-n')
   await wait(1500)
-  await app.getByText(risky).click()
+  // Rows show the last two path segments; the full path is in the tooltip.
+  await app.getByText(`…/${path.basename(home)}/risky-project`).click()
   await wait(800)
   console.log('trust warning shown:', await app.getByTestId('trust-warning').count())
   await shot('7-trust-warning')

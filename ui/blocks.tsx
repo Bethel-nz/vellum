@@ -8,9 +8,10 @@ import { hunksOnly, type Block, type Tag, type ToolCall } from '../core/threads'
 import { getTerm } from '../core/term'
 import { Icon, Meta, Quiet, useM } from './kit'
 import { TerminalBlock } from './TerminalBlock'
-import { TokenRow, TokenText, type TokenContext } from './Tokens'
-import { mentionedFiles, tokens } from '../core/tags'
-import { concentric, font, nativeTheme, radiusBase, type } from './theme'
+import { TokenText, type TokenContext } from './Tokens'
+import { tokens } from '../core/tags'
+import { splitFences } from '../core/fences'
+import { concentric, diffHeaderClip, font, nativeTheme, radiusBase, type } from './theme'
 
 const COMMIT_MS = 500
 
@@ -118,7 +119,7 @@ function UserBlock({ block, actions }: { block: Extract<Block, { kind: 'user' }>
 function AssistantBlock({ block, actions }: { block: Extract<Block, { kind: 'assistant' }>; actions: BlockActions }) {
   const m = useM()
   const [editing, setEditing] = useState(false)
-  const mentioned = useMemo(() => (block.streaming ? [] : mentionedFiles(block.markdown, actions.tokens.workspace)), [block.markdown, block.streaming, actions.tokens.workspace])
+  const parts = useMemo(() => splitFences(block.markdown || ' '), [block.markdown])
   if (editing && !block.streaming) {
     return (
       <div onMouseDownOutside={() => setEditing(false)}>
@@ -138,12 +139,51 @@ function AssistantBlock({ block, actions }: { block: Extract<Block, { kind: 'ass
     )
   }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div testId={`reply-${block.id}`} onClick={() => !block.streaming && setEditing(true)} style={{ cursor: block.streaming ? 'default' : 'text' }}>
-        <markdown source={block.markdown || ' '} theme={nativeTheme(m)} style={{ color: m.textMuted }} />
-      </div>
-      {/* Files the reply names, with the same hover slice; read-only, so no widening. */}
-      {mentioned.length ? <TokenRow tags={mentioned} ctx={{ ...actions.tokens, onWiden: undefined }} testId={`mentions-${block.id}`} /> : null}
+    <div testId={`reply-${block.id}`} onClick={() => !block.streaming && setEditing(true)} style={{ display: 'flex', flexDirection: 'column', gap: 12, cursor: block.streaming ? 'default' : 'text' }}>
+      {parts.map((p, i) =>
+        p.kind === 'code' ? (
+          <CodeCard key={i} code={p.code} language={p.language} testId={`code-${block.id}-${i}`} />
+        ) : (
+          <markdown key={i} source={p.text} theme={nativeTheme(m)} style={{ color: m.textUi }} />
+        ),
+      )}
+    </div>
+  )
+}
+
+/**
+ * A fenced block in a reply: highlighted code in a quiet card with no language header.
+ * Copy appears on hover, top right, and turns into a tick for a moment after it copies.
+ */
+function CodeCard({ code, language, testId }: { code: string; language: string; testId?: string }) {
+  const m = useM()
+  const [hover, setHover] = useState(false)
+  const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    if (!copied) return
+    const t = setTimeout(() => setCopied(false), 1200)
+    return () => clearTimeout(t)
+  }, [copied])
+  const copy = () => {
+    // GPUIX has no clipboard API yet; macOS first.
+    Bun.spawn(['pbcopy'], { stdin: new Blob([code]) })
+    setCopied(true)
+  }
+  return (
+    <div
+      testId={testId}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{ position: 'relative', borderRadius: concentric(radiusBase, 2), borderWidth: 1, borderColor: m.border, backgroundColor: m.codeBg, overflow: 'hidden' }}
+    >
+      <code code={code || ' '} language={language || undefined} theme={nativeTheme(m)} style={{ paddingLeft: 14, paddingRight: 14, paddingTop: 11, paddingBottom: 11, minWidth: 0, color: m.text }} />
+      {hover || copied ? (
+        <div style={{ position: 'absolute', top: 5, right: 5 }}>
+          <Quiet onPress={copy} testId={testId ? `${testId}-copy` : undefined} title="Copy">
+            <Icon name={copied ? 'check' : 'copy'} size={13} color={copied ? m.success : m.textMuted} />
+          </Quiet>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -203,14 +243,20 @@ function EditBlock({ block }: { block: Extract<Block, { kind: 'edit' }> }) {
         {block.status === 'error' ? <Meta color={m.danger}>failed</Meta> : null}
       </div>
       {block.error ? <text style={{ ...type.meta, color: m.danger, lineClamp: 3 }}>{block.error}</text> : null}
-      <diff
-        patch={hunksOnly(block.patch)}
-        wordDiff
-        maxLines={open ? undefined : 12}
-        onShowMore={() => setOpen(true)}
-        theme={nativeTheme(m)}
-        style={{ borderRadius: concentric(radiusBase, 0), borderWidth: 1, borderColor: m.border, backgroundColor: m.codeBg, overflow: 'hidden' }}
-      />
+      {/* The row above already names the file and counts; the native header rows are clipped off. */}
+      <div style={{ paddingTop: 6, borderRadius: concentric(radiusBase, 0), borderWidth: 1, borderColor: m.border, backgroundColor: m.codeBg, overflow: 'hidden' }}>
+        {/* The clip box starts below the padding, so nothing of the headers shows through it. */}
+        <div style={{ overflow: 'hidden' }}>
+          <diff
+            patch={hunksOnly(block.patch)}
+            wordDiff
+            maxLines={open ? undefined : 12}
+            onShowMore={() => setOpen(true)}
+            theme={nativeTheme(m)}
+            style={{ marginTop: -diffHeaderClip }}
+          />
+        </div>
+      </div>
     </div>
   )
 }

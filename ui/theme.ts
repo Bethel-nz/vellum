@@ -318,20 +318,39 @@ function syntaxTheme(m: Material): GpuixTheme['syntax'] {
   } as unknown as GpuixTheme['syntax']
 }
 
+const DIFF_FILE_HEADER = 22
+const DIFF_HUNK_HEADER = 22
+/** How far a <diff> slides up so its file row and first hunk header sit outside the card. */
+export const diffHeaderClip = DIFF_FILE_HEADER + DIFF_HUNK_HEADER
+
 /** Theme for the native <markdown>, <code>, <diff> and editors. */
+/** An account's dot: the accent sequence in profile order, so no two accounts look alike. */
+export function accentFor(m: Material, profiles: Array<{ id: string }>, id: string | undefined): string {
+  const i = profiles.findIndex((p) => p.id === id)
+  return i < 0 ? m.textFaint : m.accents[i % m.accents.length]!
+}
+
+/** The last two segments of a path, for rows that show the rest in a tooltip. */
+export const shortPath = (p: string) => {
+  const parts = p.replace(/\/+$/, '').split('/').filter(Boolean)
+  return parts.length > 2 ? `…/${parts.slice(-2).join('/')}` : p
+}
+
 export function nativeTheme(m: Material): GpuixTheme {
   const dark = m.appearance === 'dark'
   return {
     appearance: m.appearance,
     bg: '#00000000',
     border: m.border,
-    text: m.textMuted,
+    // Prose reads in textUi; code never outshines it.
+    text: m.textUi,
     textMuted: m.textMuted,
     textFaint: m.textFaint,
     textDim: m.textMuted,
-    accent: m.blue,
+    // Markdown paints bullets and links with the accent: keep them quiet, not saturated.
+    accent: m.textMuted,
     caret: m.name === 'groknight' ? m.termCursor : dark ? m.text : m.accent,
-    codeText: m.termFg,
+    codeText: m.text,
     codeWash: m.codeBg,
     diffAdd: m.diffAdd,
     diffDel: m.diffDel,
@@ -347,12 +366,17 @@ export function nativeTheme(m: Material): GpuixTheme {
       mdHeadingSizes: [19, 16, 14.5, 14],
       mdHeadingLineHeights: [26, 23, 22, 22],
       mdCodeRadius: concentric(radiusBase, 2),
+      // No language label on code blocks: the header row collapses to nothing.
+      mdCodeHeaderTextSize: 0,
+      mdCodeHeaderPaddingY: 0,
       codeTextSize: type.mono.fontSize,
       codeLineHeight: type.mono.lineHeight,
       diffTextSize: type.mono.fontSize,
       diffLineHeight: 19,
-      // Below ~20 the native hunk header paints over the file header row.
-      diffFileHeaderHeight: 22,
+      // Header rows keep real heights: at 0 their text still paints over the first line.
+      // The edit card draws its own file row and clips these off the top (diffHeaderClip).
+      diffFileHeaderHeight: DIFF_FILE_HEADER,
+      diffHunkHeaderHeight: DIFF_HUNK_HEADER,
       diffRowPaddingX: 10,
     },
   }
