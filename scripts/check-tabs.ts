@@ -1,0 +1,74 @@
+// Self-check for the tab strip: + opens a note in the same folder, ⌘⇧T hides and shows the
+// strip, auto mode tucks it away while you write and the top edge brings it back, ⌃click closes.
+// The strip's state is read from where the page title sits (it moves up by the strip's height).
+//   bun scripts/check-tabs.ts
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { launch } from '@gpuix/react/automation'
+
+const home = mkdtempSync(path.join(tmpdir(), 'vellum-tabs-'))
+await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home } }).exited
+const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home } })
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+const shot = (n: string) => app.screenshot({ path: 'screenshots/tabs-' + n + '.png' })
+const titleY = async () => Math.round((await app.getByTestId('title-menu').bounds()).y)
+const tabIds = async () => (await app.getByType('div').all()).map((n) => n.testId ?? '').filter((id) => id.startsWith('tab-'))
+const tabCount = async () => (await tabIds()).length
+let failed = 0
+const expect = (label: string, ok: boolean, detail = '') => {
+  if (!ok) failed++
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}${detail ? ` (${detail})` : ''}`)
+}
+
+try {
+  const c = app.getByTestId('composer')
+  await c.waitFor({ timeoutMs: 60_000 })
+  await wait(1200)
+  const shown = await titleY()
+
+  // + makes a new note in this folder without asking
+  const before = await tabCount()
+  await app.getByTestId('new-thread').click()
+  await wait(900)
+  expect('+ adds a tab', (await tabCount()) === before + 1, `${before} → ${await tabCount()}`)
+  expect('+ asks nothing', (await app.getByTestId('choose-folder').count()) === 0)
+  await shot('1-plus')
+
+  // ⌃click closes that tab again
+  const fresh = (await tabIds()).at(-1)!
+  await app.mouse.click(await app.getByTestId(fresh).center(), { modifiers: 'ctrl' })
+  await wait(700)
+  expect('⌃click closes a tab', (await tabCount()) === before)
+
+  // ⌘⇧T hides the pinned strip and brings it back
+  await c.press('cmd-shift-t')
+  await wait(500)
+  const hidden = await titleY()
+  expect('⌘⇧T hides the strip', hidden < shown - 20, `title y ${shown} → ${hidden}`)
+  await shot('2-hidden')
+  await c.press('cmd-shift-t')
+  await wait(500)
+  expect('⌘⇧T shows it again', (await titleY()) === shown)
+
+  // auto: writing tucks the strip away, the top edge brings it back
+  await c.press('cmd-,')
+  await app.getByTestId('set-tabs-auto').click()
+  await wait(300)
+  expect('settings save auto', (await Bun.file(path.join(home, 'settings.json')).json()).tabs === 'auto')
+  await app.getByTestId('set-tabs-auto').press('escape')
+  await wait(500)
+  await c.click()
+  await c.fill('A few words')
+  await wait(600)
+  expect('auto mode tucks away while writing', (await titleY()) < shown - 20)
+  await shot('3-auto-writing')
+  await app.mouse.move({ x: 400, y: 6 })
+  await wait(600)
+  expect('top edge reveals it', (await titleY()) === shown)
+  await shot('4-auto-reveal')
+} finally {
+  await app.close()
+}
+console.log(failed ? `${failed} failed` : 'all passed')
+process.exit(failed ? 1 : 0)

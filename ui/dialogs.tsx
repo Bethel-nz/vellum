@@ -266,6 +266,7 @@ export function ThreadSwitcher({
   threads,
   profiles,
   activeId,
+  openIds = [],
   onPick,
   onNew,
 }: {
@@ -274,6 +275,8 @@ export function ThreadSwitcher({
   threads: Thread[]
   profiles: Profile[]
   activeId?: string
+  /** Open tabs, listed first so ⌘K switches among them before reaching older notes. */
+  openIds?: string[]
   onPick: (id: string) => void
   onNew: () => void
 }) {
@@ -285,12 +288,13 @@ export function ThreadSwitcher({
     const q = query.trim().toLowerCase()
     return threads.filter((t) => !q || t.title.toLowerCase().includes(q) || t.workspace.toLowerCase().includes(q))
   }, [threads, query])
-  // Group by workspace, keeping recency order inside each group.
+  // Open tabs first (in tab order), then everything else grouped by workspace, most recent first.
   const groups = useMemo(() => {
+    const open = openIds.map((id) => list.find((t) => t.id === id)).filter((t): t is Thread => Boolean(t))
     const map = new Map<string, Thread[]>()
-    for (const t of list) map.set(t.workspace, [...(map.get(t.workspace) ?? []), t])
-    return [...map.entries()]
-  }, [list])
+    for (const t of list) if (!openIds.includes(t.id)) map.set(t.workspace, [...(map.get(t.workspace) ?? []), t])
+    return [...(open.length ? ([['Open tabs', open]] as Array<[string, Thread[]]>) : []), ...map.entries()]
+  }, [list, openIds])
   const flat = groups.flatMap(([, ts]) => ts)
   const pick = (t?: Thread) => t && onPick(t.id)
 

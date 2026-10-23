@@ -95,6 +95,7 @@ export function Composer({
   workspace,
   placeholder,
   composerRef,
+  onFocusChange,
 }: {
   value: string
   tags: Tag[]
@@ -103,6 +104,8 @@ export function Composer({
   profile?: Profile
   workspace?: string
   placeholder: string
+  /** The tab strip's auto mode tucks away while you write. */
+  onFocusChange?: (focused: boolean) => void
   composerRef: RefObject<PublicInstance | null>
 }) {
   const m = useM()
@@ -192,6 +195,8 @@ export function Composer({
         }}
         onSubmit={open ? () => pick(items[active]!) : undefined}
         onKeyDown={onKeyDown}
+        onFocus={onFocusChange ? () => onFocusChange(true) : undefined}
+        onBlur={onFocusChange ? () => onFocusChange(false) : undefined}
       />
       {shell ? <Meta>{`Ctrl+Enter runs this in ${folder ?? 'the folder'}`}</Meta> : null}
     </div>

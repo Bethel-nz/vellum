@@ -25,6 +25,8 @@ export function concentric(parentRadius: number, inset: number) {
 
 export const readingWidth = 720
 export const headerHeight = 36
+/** Space from the top of the pane to the first line of the note: the header band plus 16. Set once. */
+export const contentInset = headerHeight + 16
 
 export const font = {
   sans: 'Geist',
@@ -349,7 +351,8 @@ export function nativeTheme(m: Material): GpuixTheme {
       codeLineHeight: type.mono.lineHeight,
       diffTextSize: type.mono.fontSize,
       diffLineHeight: 19,
-      diffFileHeaderHeight: 0,
+      // Below ~20 the native hunk header paints over the file header row.
+      diffFileHeaderHeight: 22,
       diffRowPaddingX: 10,
     },
   }

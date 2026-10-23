@@ -64,7 +64,7 @@ try {
   await c.press('cmd-1')
   await wait(600)
   // trust warning in the New note dialog
-  await app.getByTestId('new-thread').click()
+  await c.press('cmd-n')
   await wait(1500)
   await app.getByText(risky).click()
   await wait(800)
