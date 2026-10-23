@@ -1,5 +1,10 @@
 // Threads: the block model, the stream-json → block reducer, and persistence.
 //
+// A thread is one note. Your paragraphs and Claude's replies are both editable
+// text; tool work (activity, edits, terminals) sits between them as embeds.
+// Edits are recorded with `seen`, the text Claude last saw, so the next turn
+// can tell Claude what changed.
+//
 // <id>.jsonl is the source of truth: every raw `claude` stdout line, plus Vellum's
 // own records (type "vellum/..."). Replaying the file through `reduce` rebuilds
 // the thread exactly. <id>.md is a readable copy, rewritten on change.
@@ -21,8 +26,8 @@ export type ToolCall = {
 }
 
 export type Block =
-  | { kind: 'user'; id: string; text: string; tags: Tag[]; at: string }
-  | { kind: 'assistant'; id: string; markdown: string; at: string; streaming: boolean }
+  | { kind: 'user'; id: string; text: string; tags: Tag[]; at: string; seen?: string }
+  | { kind: 'assistant'; id: string; markdown: string; at: string; streaming: boolean; seen?: string }
   | { kind: 'activity'; id: string; summary: string; thoughts: number; items: ToolCall[] }
   | { kind: 'edit'; id: string; path: string; patch: string; added: number; removed: number; status: 'running' | 'ok' | 'error'; error?: string }
   | {
@@ -60,6 +65,8 @@ export type Thread = ThreadMeta & {
     /** tool_use id → block id that owns it */
     tools: Record<string, string>
     activityId?: string
+    /** Next block number. Ids are deterministic so replayed edits find their block. */
+    n: number
   }
 }
 
@@ -68,7 +75,12 @@ export type Thread = ThreadMeta & {
 export type VellumRecord =
   | { type: 'vellum/meta'; meta: ThreadMeta }
   | { type: 'vellum/title'; title: string }
+  /** A turn. `text` is what was newly written; it may be empty when only earlier text was edited. */
   | { type: 'vellum/user'; text: string; tags: Tag[]; at: string }
+  /** You changed a paragraph of yours or a reply of Claude's. */
+  | { type: 'vellum/edit'; blockId: string; text: string }
+  /** Claude has been told about every edit so far. */
+  | { type: 'vellum/synced' }
   | { type: 'vellum/patch'; toolUseId: string; path: string; patch: string }
   | { type: 'vellum/shell'; termId: string; command: string; at: string }
   | { type: 'vellum/shell-exit'; termId: string; exitCode: number; output: string; grid: Grid }
@@ -76,13 +88,38 @@ export type VellumRecord =
   | { type: 'vellum/stopped' }
 
 export function newThread(meta: ThreadMeta): Thread {
-  return { ...meta, blocks: [], running: false, updatedAt: meta.createdAt, r: { streams: {}, tools: {} } }
+  return { ...meta, blocks: [], running: false, updatedAt: meta.createdAt, r: { streams: {}, tools: {}, n: 0 } }
+}
+
+// ---------------------------------------------------------------- edits
+
+/** The text a block shows (yours or Claude's), or undefined for embeds. */
+export function textOfBlock(b: Block): string | undefined {
+  return b.kind === 'user' ? b.text : b.kind === 'assistant' ? b.markdown : undefined
+}
+
+/** Paragraphs edited since Claude last saw them. */
+export function pendingEdits(t: Thread) {
+  return t.blocks.filter(
+    (b): b is Extract<Block, { kind: 'user' | 'assistant' }> =>
+      (b.kind === 'user' || b.kind === 'assistant') && b.seen !== undefined,
+  )
+}
+
+const quote = (text: string) => (text.trim() ? text.trim().split('\n').map((l) => `> ${l}`).join('\n') : '> (empty)')
+
+/** A short note to Claude describing edits made to the note since its last reply. */
+export function describeEdits(t: Thread): string {
+  const edits = pendingEdits(t)
+  if (!edits.length) return ''
+  const parts = edits.map((b) => {
+    const who = b.kind === 'assistant' ? 'Part of your earlier reply' : 'Something I wrote earlier'
+    return `${who} was:\n${quote(b.seen!)}\n\nIt now reads:\n${quote(textOfBlock(b)!)}`
+  })
+  return `I edited the note since your last reply.\n\n${parts.join('\n\n')}`
 }
 
 // ---------------------------------------------------------------- reducer
-
-let seq = 0
-const bid = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${(seq++).toString(36)}`
 
 function textOf(content: unknown): string {
   if (typeof content === 'string') return content
@@ -208,6 +245,7 @@ export function reduce(thread: Thread, ev: any): Thread {
     if (i >= 0) mut()[i] = { ...f(blocks[i]) }
   }
   const r = { ...thread.r, streams: thread.r.streams, tools: thread.r.tools }
+  const bid = (prefix: string) => `${prefix}-${(r.n++).toString(36)}`
   const now = new Date().toISOString()
 
   const activity = () => {
@@ -228,10 +266,22 @@ export function reduce(thread: Thread, ev: any): Thread {
       t.title = ev.title
       break
     case 'vellum/user':
-      push({ kind: 'user', id: bid('u'), text: ev.text, tags: ev.tags ?? [], at: ev.at })
+      if (ev.text) push({ kind: 'user', id: bid('u'), text: ev.text, tags: ev.tags ?? [], at: ev.at })
       t.running = true
       r.activityId = undefined
       t.updatedAt = ev.at
+      break
+    case 'vellum/edit': {
+      const b = blocks[indexOf(ev.blockId)]
+      if (b?.kind !== 'user' && b?.kind !== 'assistant') break
+      const before = b.seen ?? textOfBlock(b)!
+      const seen = ev.text === before ? undefined : before
+      patchBlock(b.id, (x) => (x.kind === 'user' ? { ...x, text: ev.text, seen } : { ...x, markdown: ev.text, seen }))
+      t.updatedAt = now
+      break
+    }
+    case 'vellum/synced':
+      for (const b of blocks) if ((b.kind === 'user' || b.kind === 'assistant') && b.seen !== undefined) patchBlock(b.id, (x) => ({ ...x, seen: undefined }))
       break
     case 'vellum/shell':
       push({ kind: 'shell', id: bid('sh'), command: ev.command, source: 'user', termId: ev.termId })
@@ -440,7 +490,7 @@ export function toMarkdown(t: Thread): string {
   for (const b of t.blocks) {
     switch (b.kind) {
       case 'user':
-        out.push(`**You** · ${b.at}`, '', b.text, '')
+        out.push(b.text, '')
         break
       case 'assistant':
         out.push(b.markdown, '')

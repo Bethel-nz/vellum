@@ -1,4 +1,4 @@
-// Modal surfaces: "New thread" (which account, which folder) and the Cmd+K thread switcher.
+// Modal surfaces: "New note" (which account, which folder) and the Cmd+K note switcher.
 // Overlays use the opaque popup token: GPUIX can only blur the whole window.
 
 import { useMemo, useRef, useState, type ReactNode } from 'react'
@@ -156,7 +156,7 @@ export function NewThreadDialog({
   return (
     <Sheet open={open} onClose={onClose} width={480}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: 18 }}>
-        <text style={{ fontSize: 15, lineHeight: 20, color: m.text, fontWeight: 600 }}>New thread</text>
+        <text style={{ fontSize: 15, lineHeight: 20, color: m.text, fontWeight: 600 }}>New note</text>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <SectionLabel>Which account?</SectionLabel>
@@ -239,7 +239,7 @@ export function NewThreadDialog({
             <text style={{ fontSize: 13, lineHeight: 16, color: m.textMuted }}>Cancel</text>
           </Quiet>
           <PrimaryButton testId="create-thread" disabled={!ready} onPress={() => ready && onCreate(profileId!, folder!)}>
-            Create thread
+            Create note
           </PrimaryButton>
         </div>
       </div>
@@ -354,7 +354,7 @@ export function ThreadSwitcher({
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 10, paddingRight: 10, height: 38, borderTopWidth: 1, borderColor: m.border }}>
         <Quiet onPress={onNew} testId="switcher-new">
           <Icon name="plus" size={12} />
-          <Meta color={m.textMuted}>New thread</Meta>
+          <Meta color={m.textMuted}>New note</Meta>
         </Quiet>
         <div style={{ flexGrow: 1 }} />
         <Meta>↩ open · esc close</Meta>

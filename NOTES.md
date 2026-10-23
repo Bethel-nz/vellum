@@ -12,12 +12,24 @@ Findings, choices and deviations from the build prompt. Newest decisions win.
 
 ## Changes from the prompt
 
-- **No sidebar** (asked for mid-build). Threads are reached with **⌘K** (switcher grouped by
-  workspace, filter, ⌃N/⌃P, ↩). ⌘N starts a thread. `Cmd+\` is unused. The slim header holds the
-  thread title, "Open in Claude Code", the material toggle, ⌘K and +.
-- **Composer is pinned below the virtual list**, styled as the next paragraph (no box, a faint
-  hairline above). Inside the list, a growing native textarea would not trigger a row remeasure,
-  and the `@` popup anchors more reliably outside the list.
+- **No sidebar** (asked for mid-build). Notes are reached with **⌘K** (switcher grouped by
+  workspace, filter, ⌃N/⌃P, ↩).
+- **The page is one editable note** (asked for after the first build). There is no input box and
+  no chat log. Your paragraphs are borderless textareas you can edit at any time. Claude's replies
+  render as markdown and turn into their markdown source when clicked (Esc or a click outside
+  renders them again). Tool work (activity line, edits, terminals) sits between them as embeds.
+  New writing goes in the last paragraph, which is the composer inside the virtual list. A textarea
+  growing inside the list does remeasure its row (checked by eye). The list is top-aligned and
+  follows the tail.
+- **Ctrl+Enter** sends the new text at the end **plus a description of every edit** made to
+  earlier paragraphs since Claude last saw them. Each edited block keeps `seen` (the text Claude
+  saw). `vellum/edit` records change a block, and `vellum/synced` clears `seen` once the edits
+  went out. Block ids are now numbered per thread (`u-0`, `a-1`, …), so replayed edits find their block.
+- **Tab bar** across the top: open notes as tabs (icon,
+  title, unread-reply badge, last-change time). The active tab shares the page colour. Then +,
+  ⌘K and the material toggle. Under it sits the page title with a ⌄ menu: folder and account,
+  Rename, Open in Claude Code, Show folder in Finder, Close tab. The account shows on the right.
+  Shortcuts: ⌘N/⌘T new, ⌘W close, ⌘1–⌘9, ⌘⇧[ / ⌘⇧]. Open tabs persist in `settings.json`.
 - **Default profile uses Claude Code's own default config** (`configDir: null` → `CLAUDE_CONFIG_DIR`
   unset), so the account already logged in on this Mac works on first run. Profiles added in the
   app get `~/.vellum/profiles/<id>/claude/` with symlinks from `shared/`.
@@ -128,8 +140,9 @@ Not used: `ghostty-web`, `restty` (no need once option 1 worked).
 
 - `bun scripts/screenshot.ts [dir]`: fixture thread, shell run, `@` popup, switcher, new-thread
   dialog. `MATERIAL=frost` and `VELLUM_SOLID=1` select the other looks.
+- `bun scripts/check-note.ts`: two tabs, editing your own paragraph, editing a reply's source, the title menu.
 - `bun scripts/check-terminal.ts`: typed input to `read`, Ctrl+C (exit 130), interactive `top` + `q` (exit 0).
-- `bun scripts/check-pane.ts <home>`: "Open in Claude Code" pane opens and closes.
+- `bun scripts/check-pane.ts <home>`: "Open in Claude Code" (title menu) pane opens and closes.
 - `bun scripts/check-live.ts`: **spends two real turns**. Streaming, write → edit block, Bash → shell
   block, restart + resume.
 

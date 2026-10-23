@@ -41,6 +41,8 @@ export type Settings = {
   /** Manual material override from Cmd+Shift+L. Unset follows macOS. */
   material?: 'smoke' | 'frost'
   lastThreadId?: string
+  /** Thread ids open as tabs, in order. */
+  openTabs?: string[]
 }
 
 export function readSettings(): Settings {

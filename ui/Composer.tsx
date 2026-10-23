@@ -1,4 +1,4 @@
-// The composer: a plain textarea that reads as the next paragraph of the note.
+// The end of the note, where new writing goes: a plain textarea, the last paragraph of the document.
 // Enter = newline, Ctrl+Enter = send. "!" runs a shell command, "@" tags files and skills.
 
 import { useEffect, useRef, useState, type RefObject } from 'react'
@@ -7,7 +7,7 @@ import { FloatingLayer } from '@gpuix/react/floating'
 import type { Profile } from '../core/profiles'
 import { suggest, tagText, type Suggestion } from '../core/tags'
 import type { Tag } from '../core/threads'
-import { Dot, Icon, Meta, Quiet, useM } from './kit'
+import { Icon, Meta, useM } from './kit'
 import { motion as m_ } from '@gpuix/react'
 import { concentric, font, motion, radiusBase, type } from './theme'
 
@@ -93,10 +93,7 @@ export function Composer({
   onSend,
   profile,
   workspace,
-  model,
-  running,
-  onStop,
-  onProfileClick,
+  placeholder,
   composerRef,
 }: {
   value: string
@@ -105,10 +102,7 @@ export function Composer({
   onSend: () => void
   profile?: Profile
   workspace?: string
-  model?: string
-  running: boolean
-  onStop: () => void
-  onProfileClick: () => void
+  placeholder: string
   composerRef: RefObject<PublicInstance | null>
 }) {
   const m = useM()
@@ -167,7 +161,7 @@ export function Composer({
   const shell = value.startsWith('!')
   const folder = workspace ? workspace.split('/').filter(Boolean).pop() : undefined
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, position: 'relative' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, position: 'relative' }}>
       {open ? (
         <DismissableLayer onEscapeKeyDown={() => setDismissed(query)}>
           <TagPopup items={items} active={active} onPick={pick} onHover={setActive} />
@@ -177,15 +171,15 @@ export function Composer({
         ref={composerRef}
         testId="composer"
         value={value}
-        placeholder="Write…  Ctrl+Enter to send · ! to run · @ to tag"
+        placeholder={placeholder}
         minRows={1}
-        maxRows={12}
+        maxRows={10000}
         autoFocus
         theme={{ caret: m.appearance === 'dark' ? m.text : m.accent, textFaint: m.textFaint }}
         style={{
           width: '100%',
           minWidth: 0,
-          ...(shell ? { fontFamily: font.mono, fontSize: 13, lineHeight: 21 } : { fontFamily: font.sans, ...type.user }),
+          ...(shell ? { fontFamily: font.mono, fontSize: 13, lineHeight: 21 } : { fontFamily: font.sans, ...type.user, fontWeight: 500 }),
           color: m.text,
           backgroundColor: '#00000000',
           borderWidth: 0,
@@ -199,33 +193,7 @@ export function Composer({
         onSubmit={open ? () => pick(items[active]!) : undefined}
         onKeyDown={onKeyDown}
       />
-      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: -8, userSelect: 'none' }}>
-        {profile ? (
-          <Quiet onPress={onProfileClick} testId="composer-profile" title="Account">
-            <Dot color={profile.color} />
-            <Meta color={m.textMuted}>{profile.name}</Meta>
-          </Quiet>
-        ) : null}
-        {folder ? (
-          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 5, paddingLeft: 6, paddingRight: 6 }}>
-            <Icon name="folder" size={11} color={m.textFaint} />
-            <Meta>{folder}</Meta>
-          </div>
-        ) : null}
-        {model ? (
-          <div style={{ paddingLeft: 6, paddingRight: 6 }}>
-            <Meta>{model}</Meta>
-          </div>
-        ) : null}
-        <div style={{ flexGrow: 1 }} />
-        {shell ? <Meta>{`runs in ${folder ?? 'workspace'}`}</Meta> : null}
-        {running ? (
-          <Quiet onPress={onStop} testId="stop" title="Stop">
-            <Icon name="stop" size={11} color={m.textMuted} />
-            <Meta color={m.textMuted}>Stop ⌘.</Meta>
-          </Quiet>
-        ) : null}
-      </div>
+      {shell ? <Meta>{`Ctrl+Enter runs this in ${folder ?? 'the folder'}`}</Meta> : null}
     </div>
   )
 }
