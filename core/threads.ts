@@ -14,6 +14,7 @@ import path from 'node:path'
 import { createTwoFilesPatch } from 'diff'
 import type { Grid } from './ghostty'
 import { paths } from './store'
+import type { Decision, PermissionMode, Think } from './asks'
 
 /**
  * A context token in your text. Files are written `#path` or `#path:42`; skills `@skill:name`;
@@ -54,6 +55,8 @@ export type Block =
       grid?: Grid
     }
   | { kind: 'error'; id: string; text: string; login?: boolean }
+  /** An ask you answered: kept in the note as one quiet line. */
+  | { kind: 'approval'; id: string; tool: string; title: string; detail: string; decision: Decision; message?: string; at: string }
 
 export type ThreadMeta = {
   id: string
@@ -66,6 +69,8 @@ export type ThreadMeta = {
 export type Thread = ThreadMeta & {
   claudeSessionId?: string
   model?: string
+  mode?: PermissionMode
+  think?: Think
   blocks: Block[]
   running: boolean
   updatedAt: string
@@ -101,6 +106,10 @@ export type VellumRecord =
   | { type: 'vellum/stopped' }
   /** A `#path:42` tag was widened to its whole file for the rest of the session. */
   | { type: 'vellum/tag-scope'; key: string; scope: 'file' }
+  /** You answered a permission ask. */
+  | { type: 'vellum/answer'; tool: string; title: string; detail: string; decision: Decision; message?: string; at: string }
+  | { type: 'vellum/mode'; mode: PermissionMode }
+  | { type: 'vellum/think'; think: Think }
 
 export function newThread(meta: ThreadMeta): Thread {
   return { ...meta, blocks: [], running: false, updatedAt: meta.createdAt, tagScopes: {}, r: { streams: {}, tools: {}, n: 0 } }
@@ -295,6 +304,16 @@ export function reduce(thread: Thread, ev: any): Thread {
       t.updatedAt = now
       break
     }
+    case 'vellum/answer':
+      push({ kind: 'approval', id: bid('ok'), tool: ev.tool, title: ev.title, detail: ev.detail, decision: ev.decision, message: ev.message, at: ev.at })
+      r.activityId = undefined
+      break
+    case 'vellum/mode':
+      t.mode = ev.mode
+      break
+    case 'vellum/think':
+      t.think = ev.think
+      break
     case 'vellum/tag-scope':
       t.tagScopes = { ...t.tagScopes, [ev.key]: ev.scope }
       break
@@ -524,6 +543,9 @@ export function toMarkdown(t: Thread): string {
         break
       case 'error':
         out.push(`> **Error:** ${b.text}`, '')
+        break
+      case 'approval':
+        out.push(`*${b.decision === 'denied' ? 'Denied' : b.decision === 'always' ? 'Always allowed' : 'Allowed'}: ${b.title}* \`${b.detail}\`${b.message ? ` — ${b.message}` : ''}`, '')
         break
     }
   }

@@ -355,5 +355,30 @@ export const BlockView = memo(function BlockView({ block, actions }: { block: Bl
       )
     case 'error':
       return <ErrorBlock block={block} onLogin={actions.onLogin} />
+    case 'approval':
+      return <ApprovalLine block={block} />
   }
 })
+
+/** An answered ask, kept in the note as one quiet line: what was asked, what you said, and when. */
+function ApprovalLine({ block }: { block: Extract<Block, { kind: 'approval' }> }) {
+  const m = useM()
+  const denied = block.decision === 'denied'
+  const verb = denied ? 'Denied' : block.decision === 'always' ? 'Always allowed' : 'Allowed'
+  const at = new Date(block.at)
+  const time = Number.isNaN(at.getTime()) ? '' : `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <Icon name={denied ? 'x' : 'check'} size={12} color={denied ? m.danger : m.textFaint} />
+        <text style={{ ...type.meta, color: m.textMuted, flexShrink: 0 }}>{`${verb} · ${block.title}`}</text>
+        {block.tool === 'Bash' && block.detail ? (
+          <text style={{ ...type.meta, color: m.textFaint, fontFamily: font.mono, whiteSpace: 'nowrap', textOverflow: 'ellipsis', minWidth: 0, flexShrink: 1 }}>{block.detail}</text>
+        ) : null}
+        <div style={{ flexGrow: 1 }} />
+        <Meta>{time}</Meta>
+      </div>
+      {block.message ? <text style={{ ...type.meta, color: m.textMuted, paddingLeft: 20, lineClamp: 3 }}>{`“${block.message}”`}</text> : null}
+    </div>
+  )
+}

@@ -9,11 +9,12 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, render, useGpuixRequired, useWindowSize, type KeyEvent, type PublicInstance } from '@gpuix/react'
-import { Button, Field, Label, Menu, Sheet, SheetHeader, SheetSection, stripHeight, TabStrip, useToast, type MenuItem as MenuEntry } from './components'
+import { ApprovalCard, Button, Field, Label, Menu, Sheet, SheetHeader, SheetSection, stripHeight, TabStrip, useToast, type MenuItem as MenuEntry } from './components'
 import { FloatingLayer } from '@gpuix/react/floating'
 import { ease, setReducedMotion, tween } from './components/motion'
 import { ClaudeRunner, killAllRunners } from './core/claude'
 import { nameNote } from './core/title'
+import { defaultMode, type Ask, type PermissionMode, type Think } from './core/asks'
 import { createProfile, loadProfiles, profileEnv, profileForWorkspace, rememberWorkspace, updateProfile, type Profile } from './core/profiles'
 import { paths, readJson, readSettings, updateSettings, writeJson } from './core/store'
 import { promptFor, tagsIn } from './core/tags'
@@ -310,6 +311,9 @@ function App() {
   })
   // Replies that finished while their tab was in the background.
   const [unread, setUnread] = useState<Record<string, number>>({})
+  /** Permission asks waiting on you, per note, oldest first. They live as long as their process. */
+  const [asks, setAsks] = useState<Record<string, Ask[]>>({})
+  const [denying, setDenying] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, Draft>>(() => readJson(paths.drafts, {}))
   const [overlay, setOverlay] = useState<null | 'new' | 'switcher' | 'settings' | 'history'>(null)
   const [noteMenu, setNoteMenu] = useState(false)
@@ -424,8 +428,21 @@ function App() {
       if (runner) return runner
       const profile = profilesRef.current.find((p) => p.id === thread.profileId) ?? profilesRef.current[0]!
       runner = new ClaudeRunner(
-        { threadId: thread.id, workspace: thread.workspace, profile, sessionId: thread.claudeSessionId },
+        { threadId: thread.id, workspace: thread.workspace, profile, sessionId: thread.claudeSessionId, mode: thread.mode, think: thread.think },
         {
+          ask(a) {
+            setAsks((all) => ({ ...all, [thread.id]: [...(all[thread.id] ?? []), a] }))
+            if (activeRef.current !== thread.id) {
+              const title = threadsRef.current.find((t) => t.id === thread.id)?.title ?? 'A note'
+              showToastRef.current(`${title} · Claude needs your OK`)
+            }
+          },
+          askGone(requestId) {
+            setAsks((all) => ({ ...all, [thread.id]: (all[thread.id] ?? []).filter((a) => a.requestId !== requestId) }))
+          },
+          modeChanged(mode) {
+            record(thread.id, { type: 'vellum/mode', mode })
+          },
           line(raw, ev) {
             appendLine(thread.id, raw)
             dispatch(thread.id, ev)
@@ -609,6 +626,45 @@ function App() {
     })
   }, [])
 
+  // ---- approvals, mode, thinking
+
+  const pendingAsks = (active && asks[active.id]) || []
+  const answer = useCallback(
+    (key: 'allow' | 'always' | 'deny', message?: string) => {
+      const thread = threadsRef.current.find((t) => t.id === activeRef.current)
+      const a = thread && asks[thread.id]?.[0]
+      if (!thread || !a) return
+      if (key === 'deny' && message === undefined) return setDenying(true)
+      const always = key === 'always' && Boolean(a.suggestions)
+      runners.current.get(thread.id)?.answer(a.requestId, key === 'deny' ? { allow: false, message } : { allow: true, always })
+      const decision = key === 'deny' ? 'denied' : always ? 'always' : 'allowed'
+      record(thread.id, { type: 'vellum/answer', tool: a.tool, title: a.title, detail: a.detail, decision, message: message?.trim() || undefined, at: new Date().toISOString() })
+      setAsks((all) => ({ ...all, [thread.id]: (all[thread.id] ?? []).filter((x) => x.requestId !== a.requestId) }))
+      setDenying(false)
+      setTimeout(focusComposer, 30)
+    },
+    [asks, focusComposer, record],
+  )
+  useEffect(() => setDenying(false), [activeId])
+
+  const setMode = useCallback(
+    (mode: PermissionMode) => {
+      if (!active) return
+      record(active.id, { type: 'vellum/mode', mode })
+      runners.current.get(active.id)?.setMode(mode)
+      if (mode === 'bypassPermissions') showToast('Full access: nothing will ask before it runs')
+    },
+    [active, record, showToast],
+  )
+  const setThink = useCallback(
+    (think: Think) => {
+      if (!active) return
+      record(active.id, { type: 'vellum/think', think })
+      runners.current.get(active.id)?.setThink(think)
+    },
+    [active, record],
+  )
+
   const tokenCtx = useMemo(
     () => ({
       workspace: active?.workspace ?? homedir(),
@@ -769,6 +825,7 @@ function App() {
                 time: clock(t.updatedAt),
                 running: t.running,
                 unread: (unread[t.id] ?? 0) > 0,
+                needsYou: (asks[t.id]?.length ?? 0) > 0,
                 dot: accentFor(m, profiles, t.profileId),
               }))}
               activeId={activeId}
@@ -843,6 +900,12 @@ function App() {
                     composerRef={composerRef}
                     onFocusChange={setWriting}
                     tokenCtx={tokenCtx}
+                    mode={active.mode ?? defaultMode}
+                    onMode={setMode}
+                    think={active.think ?? 'on'}
+                    onThink={setThink}
+                    asking={pendingAsks.length > 0}
+                    onAskKey={(k) => answer(k)}
                   />
                 }
               />
@@ -867,6 +930,18 @@ function App() {
             <div testId="strip-hot-zone" onMouseEnter={() => setStripHover(true)} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 12 }} />
           ) : null}
           {toast}
+          <ApprovalCard
+            ask={pane ? undefined : pendingAsks[0]}
+            more={pendingAsks.length - 1}
+            denying={denying}
+            onDenying={(open) => {
+              setDenying(open)
+              if (!open) setTimeout(focusComposer, 30)
+            }}
+            onAllow={() => answer('allow')}
+            onAlways={() => answer('always')}
+            onDeny={(message) => answer('deny', message)}
+          />
         </div>
         {overlay === 'new' ? (
           <NewThreadDialog

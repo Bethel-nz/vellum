@@ -1,4 +1,5 @@
 // Vellum's components: GPUIX versions of arc-library's, styled from groknight.
+export * from './ApprovalCard'
 export * from './Badge'
 export * from './Button'
 export * from './Chip'

@@ -202,3 +202,33 @@ arrives too early. Re-run it before reading anything into that.
   6s (spikes/title-haiku.ts). Not Gemini: that would need a Google API key and a second
   dependency, and this stays on the official binary and your login. `--bare` is no use here: it
   accepts only an API key, never the subscription login.
+
+## 2026-10-23 — approvals, mode, thinking (official CLI control channel)
+
+UI-FIXES §0b asks to move to the ACP adapter. That conflicts with hard constraint #1 (only the
+official `claude` binary), so Vellum stays on `claude -p` and uses the CLI's own control
+channel, which does the same job:
+
+- Spawn with `--permission-prompts host --permission-prompt-tool stdio`, then send
+  `control_request {subtype:'initialize', hooks:null}` first.
+- An ask arrives as `control_request {subtype:'can_use_tool', tool_name, display_name, input,
+  permission_suggestions}`. Answer `control_response {subtype:'success', request_id, response:
+  {behavior:'allow', updatedInput, updatedPermissions?}}` or `{behavior:'deny', message}`. The
+  deny message reaches Claude as the tool's error ("Okay, I won't. (use vitest instead)").
+- `set_permission_mode {mode}` switches live. Modes: manual (Ask), acceptEdits (Edits, the
+  default), plan, auto, dontAsk, bypassPermissions (Full access, shown in warning yellow). ⇧⇥
+  cycles Ask → Edits → Plan → Auto; the pill's menu has all six.
+- Thinking: `set_max_thinking_tokens {0}` turns it off live. Max is `--effort max`, a spawn flag,
+  so changing it restarts the idle process (or right after the running turn) and the next turn
+  resumes the session. The pill is Think / Think ∴ / faint Think.
+- Asks live only as long as their process. A result, exit or `control_cancel_request` drops
+  them. Answers are recorded (`vellum/answer`) and stay in the note as one line; mode and think
+  are `vellum/mode` / `vellum/think` and are re-applied at spawn.
+- **Card, not block.** UI-FIXES §5b draws the ask as a block in the document. Your later ask
+  ("approval modal can come up from the bottom right like the family money card") wins: a card
+  rises into the pane's bottom-right corner, and only the resolved line goes in the document.
+  With the composer empty, ↵ allows, ⌘↵ always allows (only when the CLI offers a rule), and esc
+  opens "what to do instead". A GPUIX textarea delivers plain ↵ to `onSubmit`, not `onKeyDown`.
+- A background note with an ask gets the blue tab box and a toast.
+- `scripts/check-approval.ts` runs against `scripts/fake-claude.ts` (a `claude` shim on PATH that
+  speaks the same protocol), so the whole flow is checked without a paid turn.

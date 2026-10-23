@@ -1,15 +1,21 @@
 // The end of the note, where new writing goes: a plain textarea, the last paragraph of the document.
 // Enter = newline, ⌘↵ = send. "!" runs a shell command, "@" tags skills, folders and
 // files, "#" tags files only (type ":42" after one to point at a line).
+//
+// Under it, the meta row: the permission mode (⇧⇥ cycles Ask, Edits, Plan, Auto; click for all of
+// them) and Think (off, on, max). While Claude waits on an ask and the draft is empty, ↵ ⌘↵ esc
+// answer the approval card instead of editing.
 
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { DismissableLayer, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { FloatingLayer } from '@gpuix/react/floating'
+import { cycleModes, modeLabel, modes, type PermissionMode, type Think } from '../core/asks'
 import type { Profile } from '../core/profiles'
+import { Menu } from '../components'
 import { suggest, tagsIn, tagText, type Suggestion } from '../core/tags'
 import { TokenRow, type TokenContext } from './Tokens'
 import type { Tag } from '../core/threads'
-import { FileIcon, Icon, Meta, useM } from './kit'
+import { FileIcon, Icon, Meta, Quiet, useM } from './kit'
 import { motion as m_ } from '@gpuix/react'
 import { concentric, font, motion, radiusBase, type } from './theme'
 
@@ -100,6 +106,12 @@ export function Composer({
   composerRef,
   onFocusChange,
   tokenCtx,
+  mode,
+  onMode,
+  think,
+  onThink,
+  asking,
+  onAskKey,
 }: {
   value: string
   tags: Tag[]
@@ -113,6 +125,13 @@ export function Composer({
   /** Chips under the draft, with their hover slices. */
   tokenCtx?: TokenContext
   composerRef: RefObject<PublicInstance | null>
+  mode: PermissionMode
+  onMode: (mode: PermissionMode) => void
+  think: Think
+  onThink: (think: Think) => void
+  /** Claude is waiting on an approval in this note. */
+  asking?: boolean
+  onAskKey?: (key: 'allow' | 'always' | 'deny') => void
 }) {
   const m = useM()
   const [items, setItems] = useState<Suggestion[]>([])
@@ -144,6 +163,20 @@ export function Composer({
 
   const onKeyDown = (e: KeyEvent) => {
     const mods = e.modifiers
+    if (e.key === 'tab' && mods?.shift && !open) {
+      e.preventDefault()
+      const i = cycleModes.indexOf(mode)
+      onMode(cycleModes[(i + 1) % cycleModes.length]!)
+      return
+    }
+    if (asking && onAskKey && !value.trim() && !open) {
+      const k = e.key === 'enter' ? (mods?.cmd ? 'always' : !mods?.shift && !mods?.ctrl && !mods?.alt ? 'allow' : undefined) : e.key === 'escape' ? 'deny' : undefined
+      if (k) {
+        e.preventDefault()
+        onAskKey(k)
+        return
+      }
+    }
     if (open) {
       if (e.key === 'tab' || (mods?.cmd && e.key === 'enter')) {
         e.preventDefault()
@@ -199,13 +232,61 @@ export function Composer({
           onChange(next, tags)
           if (dismissed !== undefined && activeQuery(next) !== dismissed) setDismissed(undefined)
         }}
-        onSubmit={open ? () => pick(items[active]!) : undefined}
+        // Plain ↵ arrives here, not in onKeyDown: it picks a tag, or allows a waiting ask.
+        onSubmit={open ? () => pick(items[active]!) : asking && onAskKey && !value.trim() ? () => onAskKey('allow') : undefined}
         onKeyDown={onKeyDown}
         onFocus={onFocusChange ? () => onFocusChange(true) : undefined}
         onBlur={onFocusChange ? () => onFocusChange(false) : undefined}
       />
       {shell ? <Meta>{`⌘↵ runs this in ${folder ?? 'the folder'}`}</Meta> : null}
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: -6 }}>
+        {asking && !value.trim() ? (
+          <div style={{ paddingLeft: 6 }}>
+            <Meta color={m.blue}>Claude is waiting on you · ↵ allow · esc deny</Meta>
+          </div>
+        ) : null}
+        <div style={{ flexGrow: 1 }} />
+        <ModePill mode={mode} onMode={onMode} />
+        <ThinkPill think={think} onThink={onThink} />
+      </div>
       {tokenCtx && !shell ? <TokenRow tags={tagsIn(value, tags)} ctx={tokenCtx} testId="draft-chips" /> : null}
     </div>
+  )
+}
+
+/** The permission mode as plain text with a menu; ⇧⇥ in the composer cycles the common four. */
+function ModePill({ mode, onMode }: { mode: PermissionMode; onMode: (mode: PermissionMode) => void }) {
+  const m = useM()
+  const [open, setOpen] = useState(false)
+  const risky = mode === 'bypassPermissions'
+  return (
+    <div style={{ position: 'relative' }}>
+      <Quiet onPress={() => setOpen((v) => !v)} testId="mode-pill" title="Permission mode (⇧⇥)">
+        <text style={{ fontSize: 12, lineHeight: 16, fontWeight: 500, color: risky ? m.warning : mode === 'plan' ? m.blue : m.textMuted }}>{modeLabel(mode)}</text>
+        <Icon name="chevronDown" size={11} color={m.textFaint} />
+      </Quiet>
+      <Menu
+        open={open}
+        onClose={() => setOpen(false)}
+        side="top"
+        align="end"
+        width={300}
+        testId="mode-menu"
+        items={modes.map((x) => ({ label: x.label, hint: x.hint, checked: x.id === mode, destructive: x.id === 'bypassPermissions', testId: `mode-${x.id}`, onSelect: () => onMode(x.id) }))}
+      />
+    </div>
+  )
+}
+
+const thinkNext: Record<Think, Think> = { off: 'on', on: 'max', max: 'off' }
+
+/** Think off, on or max: faint when off, ∴ at max. A click steps through them. */
+function ThinkPill({ think, onThink }: { think: Think; onThink: (think: Think) => void }) {
+  const m = useM()
+  const title = think === 'off' ? 'Thinking off' : think === 'max' ? 'Thinking at max effort' : 'Thinking on'
+  return (
+    <Quiet onPress={() => onThink(thinkNext[think])} testId="think-pill" title={`${title} · click to change`}>
+      <text style={{ fontSize: 12, lineHeight: 16, fontWeight: 500, color: think === 'off' ? m.textFaint : m.textUi }}>{think === 'max' ? 'Think ∴' : 'Think'}</text>
+    </Quiet>
   )
 }
