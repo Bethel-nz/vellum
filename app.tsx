@@ -35,7 +35,7 @@ import {
   type Thread,
   type VellumRecord,
 } from './core/threads'
-import { BlockView, type BlockActions } from './ui/blocks'
+import { BlockView, DiffCard, type BlockActions } from './ui/blocks'
 import { Composer } from './ui/Composer'
 import { NewThreadDialog, ThreadSwitcher } from './ui/dialogs'
 import { History } from './ui/History'
@@ -65,6 +65,8 @@ const TRANSLUCENT = !SOLID && readSettings().translucent === true
 const START_BLUR = !SOLID && (TRANSLUCENT || wantsBlur(materials[readSettings().material ?? 'groknight']))
 /** Most tabs open at once: one per ⌘1–⌘9. The rest live in History (⌘Y). */
 const MAX_TABS = 9
+/** ↵ / ⌘↵ in the composer don't answer a card younger than this. */
+const ASK_KEY_DELAY_MS = 400
 const motionPref = (p: MotionPref) => setReducedMotion(p === 'system' ? undefined : p === 'reduce')
 motionPref(readSettings().motion ?? 'system')
 const FONT_DIR = path.join(import.meta.dir, 'assets', 'fonts')
@@ -629,6 +631,9 @@ function App() {
   // ---- approvals, mode, thinking
 
   const pendingAsks = (active && asks[active.id]) || []
+  /** When each ask's card first showed, so a reflexive ↵ can't approve what you haven't read. */
+  const askSeenAt = useRef(new Map<string, number>())
+  if (!pane && pendingAsks[0] && !askSeenAt.current.has(pendingAsks[0].requestId)) askSeenAt.current.set(pendingAsks[0].requestId, Date.now())
   const answer = useCallback(
     (key: 'allow' | 'always' | 'deny', message?: string) => {
       const thread = threadsRef.current.find((t) => t.id === activeRef.current)
@@ -904,8 +909,12 @@ function App() {
                     onMode={setMode}
                     think={active.think ?? 'on'}
                     onThink={setThink}
-                    asking={pendingAsks.length > 0}
-                    onAskKey={(k) => answer(k)}
+                    // Keys answer only the card that is on screen, and not in its first moments.
+                    asking={!pane && pendingAsks.length > 0}
+                    onAskKey={(k) => {
+                      const shown = pendingAsks[0] && Date.now() - askSeenAt.current.get(pendingAsks[0].requestId)! >= ASK_KEY_DELAY_MS
+                      if (shown || k === 'deny') answer(k)
+                    }}
                   />
                 }
               />
@@ -941,6 +950,7 @@ function App() {
             onAllow={() => answer('allow')}
             onAlways={() => answer('always')}
             onDeny={(message) => answer('deny', message)}
+            preview={pendingAsks[0]?.patch ? <DiffCard patch={pendingAsks[0].patch} /> : undefined}
           />
         </div>
         {overlay === 'new' ? (

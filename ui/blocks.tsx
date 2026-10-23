@@ -230,6 +230,22 @@ function ActivityBlock({ block }: { block: Extract<Block, { kind: 'activity' }> 
   )
 }
 
+/**
+ * A diff in a quiet card. The row above it names the file and counts, so the native file and
+ * first hunk header rows are clipped off (at height 0 their text would still paint).
+ */
+export function DiffCard({ patch, maxLines, onShowMore }: { patch: string; maxLines?: number; onShowMore?: () => void }) {
+  const m = useM()
+  return (
+    <div style={{ paddingTop: 6, borderRadius: concentric(radiusBase, 0), borderWidth: 1, borderColor: m.border, backgroundColor: m.codeBg, overflow: 'hidden' }}>
+      {/* The clip box starts below the padding, so nothing of the headers shows through it. */}
+      <div style={{ overflow: 'hidden' }}>
+        <diff patch={hunksOnly(patch)} wordDiff maxLines={maxLines} onShowMore={onShowMore} theme={nativeTheme(m)} style={{ marginTop: -diffHeaderClip }} />
+      </div>
+    </div>
+  )
+}
+
 function EditBlock({ block }: { block: Extract<Block, { kind: 'edit' }> }) {
   const m = useM()
   const [open, setOpen] = useState(false)
@@ -244,20 +260,7 @@ function EditBlock({ block }: { block: Extract<Block, { kind: 'edit' }> }) {
         {block.status === 'error' ? <Meta color={m.danger}>failed</Meta> : null}
       </div>
       {block.error ? <text style={{ ...type.meta, color: m.danger, lineClamp: 3 }}>{block.error}</text> : null}
-      {/* The row above already names the file and counts; the native header rows are clipped off. */}
-      <div style={{ paddingTop: 6, borderRadius: concentric(radiusBase, 0), borderWidth: 1, borderColor: m.border, backgroundColor: m.codeBg, overflow: 'hidden' }}>
-        {/* The clip box starts below the padding, so nothing of the headers shows through it. */}
-        <div style={{ overflow: 'hidden' }}>
-          <diff
-            patch={hunksOnly(block.patch)}
-            wordDiff
-            maxLines={open ? undefined : 12}
-            onShowMore={() => setOpen(true)}
-            theme={nativeTheme(m)}
-            style={{ marginTop: -diffHeaderClip }}
-          />
-        </div>
-      </div>
+      <DiffCard patch={block.patch} maxLines={open ? undefined : 12} onShowMore={() => setOpen(true)} />
     </div>
   )
 }

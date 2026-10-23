@@ -7,7 +7,7 @@
 // It never takes focus while you write: the composer forwards ↵ ⌘↵ esc here only while it is
 // empty. Clicking works the same as the keys.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion } from '@gpuix/react'
 import { concentric, font, radiusXl } from '../ui/theme'
 import { Button, Label } from './Button'
@@ -25,6 +25,9 @@ export type ApprovalView = {
   alwaysLabel?: string
 }
 
+/** An edit's diff, drawn by the caller (the card has no diff renderer of its own). */
+export type ApprovalPreview = ReactNode
+
 function waited(at: string, now: number) {
   const s = Math.max(0, Math.floor((now - new Date(at).getTime()) / 1000))
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
@@ -38,8 +41,11 @@ export function ApprovalCard({
   onAllow,
   onAlways,
   onDeny,
+  preview,
 }: {
   ask?: ApprovalView
+  /** Shown instead of the detail line: what an edit would change. */
+  preview?: ApprovalPreview
   /** Asks queued behind this one. */
   more?: number
   /** The deny field is open. */
@@ -49,10 +55,10 @@ export function ApprovalCard({
   onAlways: () => void
   onDeny: (message: string) => void
 }) {
-  return <AnimatePresence>{ask ? <Card key={ask.requestId} ask={ask} more={more} denying={denying} onDenying={onDenying} onAllow={onAllow} onAlways={onAlways} onDeny={onDeny} /> : null}</AnimatePresence>
+  return <AnimatePresence>{ask ? <Card key={ask.requestId} ask={ask} preview={preview} more={more} denying={denying} onDenying={onDenying} onAllow={onAllow} onAlways={onAlways} onDeny={onDeny} /> : null}</AnimatePresence>
 }
 
-function Card({ ask, more, denying, onDenying, onAllow, onAlways, onDeny }: { ask: ApprovalView; more: number; denying: boolean; onDenying: (open: boolean) => void; onAllow: () => void; onAlways: () => void; onDeny: (message: string) => void }) {
+function Card({ ask, preview, more, denying, onDenying, onAllow, onAlways, onDeny }: { ask: ApprovalView; preview?: ApprovalPreview; more: number; denying: boolean; onDenying: (open: boolean) => void; onAllow: () => void; onAlways: () => void; onDeny: (message: string) => void }) {
   const m = useM()
   const [now, setNow] = useState(Date.now())
   const [message, setMessage] = useState('')
@@ -97,9 +103,14 @@ function Card({ ask, more, denying, onDenying, onAllow, onAlways, onDeny }: { as
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <text style={{ fontSize: 13.5, lineHeight: 18, fontWeight: 500, color: m.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{ask.title}</text>
-          {ask.detail && ask.detail !== ask.title.split(' ').slice(1).join(' ') ? (
-            <div style={{ paddingLeft: 10, paddingRight: 10, paddingTop: 7, paddingBottom: 7, borderRadius: concentric(radiusXl, pad - 4), backgroundColor: m.codeBg, borderWidth: 1, borderColor: m.border }}>
-              <text testId="approval-detail" style={{ fontSize: 12.5, lineHeight: 18, color: m.text, fontFamily: font.mono, lineClamp: 4 }}>{ask.detail}</text>
+          {preview ? (
+            <div testId="approval-preview" style={{ maxHeight: 240, overflowY: 'scroll', scrollbarColor: m.scrollbar, scrollbarWidth: 6 }}>
+              {preview}
+            </div>
+          ) : ask.detail && ask.detail !== ask.title.split(' ').slice(1).join(' ') ? (
+            // The whole command, never clamped: long ones scroll inside the card.
+            <div style={{ maxHeight: 168, overflowY: 'scroll', scrollbarColor: m.scrollbar, scrollbarWidth: 6, paddingLeft: 10, paddingRight: 10, paddingTop: 7, paddingBottom: 7, borderRadius: concentric(radiusXl, pad - 4), backgroundColor: m.codeBg, borderWidth: 1, borderColor: m.border }}>
+              <text testId="approval-detail" style={{ fontSize: 12.5, lineHeight: 18, color: m.text, fontFamily: font.mono }}>{ask.detail}</text>
             </div>
           ) : null}
         </div>

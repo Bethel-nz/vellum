@@ -20,7 +20,7 @@ if (argv[argv.indexOf('--output-format') + 1] === 'json') {
 let turn = 0
 let waiting: { id: string; resolve: (r: any) => void } | undefined
 
-async function runTurn() {
+async function runTurn(text: string) {
   turn++
   out({ type: 'system', subtype: 'init', session_id: 'fake-session', model: 'fake-model' })
   const id = `ask-${turn}`
@@ -31,17 +31,18 @@ async function runTurn() {
       request_id: id,
       request: {
         subtype: 'can_use_tool',
-        tool_name: 'Bash',
-        display_name: 'Bash',
-        input: { command: 'bun test ui/theme.test.ts', description: 'Run the theme tests' },
+        // A turn that mentions an edit asks for one, so the card's diff preview can be checked.
+        ...(/\bedit\b/i.test(text)
+          ? { tool_name: 'Edit', display_name: 'Edit', input: { file_path: `${process.cwd()}/ui/theme.ts`, old_string: 'export const radiusXl = 14', new_string: 'export const radiusXl = 16' } }
+          : { tool_name: 'Bash', display_name: 'Bash', input: { command: 'bun test ui/theme.test.ts', description: 'Run the theme tests' } }),
         permission_suggestions: [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'bun test:*' }], behavior: 'allow', destination: 'localSettings' }],
       },
     })
   })
   const allowed = answer?.behavior === 'allow'
-  const text = allowed ? 'Ran it: 2 pass.' : `Okay, I won't.${answer?.message ? ` (${answer.message})` : ''}`
-  out({ type: 'assistant', message: { id: `m${turn}`, role: 'assistant', content: [{ type: 'text', text }] } })
-  out({ type: 'result', subtype: 'success', is_error: false, result: text, session_id: 'fake-session' })
+  const reply = allowed ? 'Ran it: 2 pass.' : `Okay, I won't.${answer?.message ? ` (${answer.message})` : ''}`
+  out({ type: 'assistant', message: { id: `m${turn}`, role: 'assistant', content: [{ type: 'text', text: reply }] } })
+  out({ type: 'result', subtype: 'success', is_error: false, result: reply, session_id: 'fake-session' })
 }
 
 let buf = ''
@@ -64,7 +65,8 @@ for await (const chunk of process.stdin) {
         w.resolve(ev.response.response)
       }
     } else if (ev.type === 'user') {
-      void runTurn()
+      const c = ev.message?.content
+      void runTurn(typeof c === 'string' ? c : (c ?? []).map((x: any) => x.text ?? '').join(' '))
     }
   }
 }

@@ -32,9 +32,11 @@ export type Ask = {
   /** The command, path or URL, in mono. */
   detail: string
   input: Record<string, unknown>
-  /** Rules the CLI offers for "always allow"; absent when it offers none. */
+  /** For edits: the change itself, as a unified diff against the file on disk. */
+  patch?: string
+  /** The one allow-rule suggestion the card names; only this is sent on "always allow". */
   suggestions?: unknown[]
-  /** A short label for the always-allow rule, e.g. `bun test`. */
+  /** Every rule in that suggestion, e.g. `bun test`. */
   alwaysLabel?: string
   at: string
 }
@@ -67,19 +69,21 @@ export function describe(tool: string, input: any, workspace: string, displayNam
     case 'WebSearch':
       return { title: 'Search the web', detail: String(input?.query ?? '') }
     default: {
-      const detail = JSON.stringify(input ?? {})
-      return { title: displayName || tool, detail: detail.length > 160 ? detail.slice(0, 157) + '…' : detail }
+      // In full: you approve what you can read, never a cut-down version of it.
+      return { title: displayName || tool, detail: JSON.stringify(input ?? {}, null, 2) }
     }
   }
 }
 
-/** The rule text an always-allow would add, for the button label. */
-export function alwaysLabel(suggestions: any[] | undefined): string | undefined {
+/**
+ * The always-allow offer: the first suggestion that only adds allow rules, and a label naming
+ * every rule in it. Mode changes, directory grants and anything else the CLI suggests are never
+ * sent, because the card doesn't show them.
+ */
+export function alwaysOffer(suggestions: any[] | undefined): { suggestions: unknown[]; label: string } | undefined {
   for (const s of suggestions ?? []) {
-    for (const r of s?.rules ?? []) {
-      if (r?.ruleContent) return String(r.ruleContent).replace(/:\*$/, '')
-      if (r?.toolName) return String(r.toolName)
-    }
-    if (s?.type === 'setMode' && s?.mode) return `${modeLabel(s.mode)} mode`
+    if (s?.type !== 'addRules' || s?.behavior !== 'allow' || !Array.isArray(s.rules) || !s.rules.length) continue
+    const names = s.rules.map((r: any) => (r?.ruleContent ? String(r.ruleContent).replace(/:\*$/, '') : String(r?.toolName ?? ''))).filter(Boolean)
+    if (names.length === s.rules.length) return { suggestions: [s], label: names.join(', ') }
   }
 }

@@ -15,7 +15,7 @@
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { createTwoFilesPatch } from 'diff'
-import { alwaysLabel, defaultMode, describe, type Ask, type PermissionMode, type Think } from './asks'
+import { alwaysOffer, defaultMode, describe, type Ask, type PermissionMode, type Think } from './asks'
 import type { Profile } from './profiles'
 import { profileEnv } from './profiles'
 import { relPath, type VellumRecord } from './threads'
@@ -263,7 +263,7 @@ export class ClaudeRunner {
       return
     }
     const { title, detail } = describe(req.tool_name, req.input, this.#target.workspace, req.display_name)
-    const suggestions = Array.isArray(req.permission_suggestions) && req.permission_suggestions.length ? req.permission_suggestions : undefined
+    const offer = alwaysOffer(Array.isArray(req.permission_suggestions) ? req.permission_suggestions : undefined)
     const ask: Ask = {
       requestId: ev.request_id,
       threadId: this.#target.threadId,
@@ -271,8 +271,9 @@ export class ClaudeRunner {
       title,
       detail,
       input: req.input ?? {},
-      suggestions,
-      alwaysLabel: alwaysLabel(suggestions),
+      patch: ['Edit', 'Write', 'MultiEdit'].includes(req.tool_name) ? filePatch(this.#target.workspace, req.tool_name, req.input ?? {}) : undefined,
+      suggestions: offer?.suggestions,
+      alwaysLabel: offer?.label,
       at: new Date().toISOString(),
     }
     this.#asks.set(ask.requestId, ask)
