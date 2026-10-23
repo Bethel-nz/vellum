@@ -1,0 +1,27 @@
+{
+  "name": "vellum",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot app.tsx",
+    "start": "bun app.tsx",
+    "typecheck": "tsc --noEmit",
+    "screenshot": "bun scripts/screenshot.ts"
+  },
+  "dependencies": {
+    "@gpuix/native": "0.11.0",
+    "@gpuix/react": "0.11.0",
+    "diff": "9.0.0",
+    "libghostty-vt-node": "0.1.0",
+    "react": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "@types/culori": "^4.0.1",
+    "@types/diff": "^8.0.0",
+    "@types/react": "^19.3.0",
+    "culori": "^4.0.2",
+    "typescript": "^7.0.2"
+  }
+}
