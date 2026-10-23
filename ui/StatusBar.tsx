@@ -12,13 +12,13 @@ import { useState } from 'react'
 import { DismissableLayer, motion, type PublicInstance } from '@gpuix/react'
 import { FloatingLayer } from '@gpuix/react/floating'
 import { useRef } from 'react'
-import { Button, Label, Menu, Tooltip } from '../components'
+import { Button, closedByOutsidePress, Label, markOutsideClose, Menu, Tooltip } from '../components'
 import { duration, ease, offset, tween } from '../components/motion'
 import { modeLabel, modes, type PermissionMode, type Think } from '../core/asks'
 import { fallbackModels, formatTokens, shortModel, type ContextUse, type ModelOption } from '../core/models'
 import type { IconName } from './icons'
 import { Icon, useM } from './kit'
-import { concentric, font, radiusBase, radiusXl } from './theme'
+import { concentric, elevation, font, radiusBase, radiusXl } from './theme'
 
 export const statusBarHeight = 28
 
@@ -64,6 +64,8 @@ export function StatusBar({
   const m = useM()
   const [menu, setMenu] = useState<'mode' | 'model' | 'context' | null>(null)
   const close = () => setMenu(null)
+  // A press on an open menu's own trigger closes it (closedByOutsidePress), rather than reopening.
+  const toggle = (k: 'mode' | 'model' | 'context') => setMenu((cur) => (cur === k || closedByOutsidePress() ? null : k))
   const list = models ?? fallbackModels
   const picked = list.find((x) => x.value === (model ?? 'default'))
   const risky = mode === 'bypassPermissions'
@@ -73,7 +75,7 @@ export function StatusBar({
     <div testId="status-bar" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 2, height: statusBarHeight }}>
       <div style={{ position: 'relative' }}>
         <Tooltip label={`${modeLabel(mode)} · permission mode`} shortcut="⇧⇥" side="top">
-          <Button onPress={() => setMenu(menu === 'mode' ? null : 'mode')} selected={menu === 'mode'} testId="mode-pill" title={`${modeLabel(mode)} (⇧⇥)`} style={iconButton}>
+          <Button onPress={() => toggle('mode')} selected={menu === 'mode'} testId="mode-pill" title={`${modeLabel(mode)} (⇧⇥)`} style={iconButton}>
             <Icon name={modeIcon[mode]} size={14} color={modeColor} />
           </Button>
         </Tooltip>
@@ -96,7 +98,7 @@ export function StatusBar({
       </Tooltip>
 
       <div style={{ position: 'relative' }}>
-        <Button onPress={() => setMenu(menu === 'model' ? null : 'model')} selected={menu === 'model'} testId="model-pill" title="Model" style={{ paddingLeft: 7, paddingRight: 7, height: 24, minHeight: 24 }}>
+        <Button onPress={() => toggle('model')} selected={menu === 'model'} testId="model-pill" title="Model" style={{ paddingLeft: 7, paddingRight: 7, height: 24, minHeight: 24 }}>
           <text style={{ fontSize: 12, lineHeight: 16, fontWeight: 500, color: m.textMuted, whiteSpace: 'nowrap' }}>{shortModel(picked, model ? undefined : resolvedModel)}</text>
         </Button>
         <Menu
@@ -120,7 +122,7 @@ export function StatusBar({
       </div>
 
       <div style={{ position: 'relative' }}>
-        <Button onPress={() => setMenu(menu === 'context' ? null : 'context')} selected={menu === 'context'} testId="context-pill" title="Context" style={{ gap: 6, paddingLeft: 6, paddingRight: 7, height: 24, minHeight: 24 }}>
+        <Button onPress={() => toggle('context')} selected={menu === 'context'} testId="context-pill" title="Context" style={{ gap: 6, paddingLeft: 6, paddingRight: 7, height: 24, minHeight: 24 }}>
           <Ring fraction={context?.window ? context.used / context.window : 0} />
           {context?.used ? <text style={{ fontSize: 11.5, lineHeight: 15, color: m.textFaint, fontFamily: font.mono }}>{formatTokens(context.used)}</text> : null}
         </Button>
@@ -175,7 +177,10 @@ function ContextCard({ context, running, onClose, onCompact }: { context?: Conte
   return (
     <DismissableLayer onEscapeKeyDown={onClose} initialFocus={() => panel.current?.id ?? null}>
       <FloatingLayer side="top" align="start" sideOffset={6} style={{ width: 280 }}>
-        <div ref={panel} testId="context-card" tabIndex={0} onMouseDownOutside={onClose} style={{ keyboardFocusDim: false }}>
+        <div ref={panel} testId="context-card" tabIndex={0} onMouseDownOutside={() => {
+            markOutsideClose()
+            onClose()
+          }} style={{ keyboardFocusDim: false }}>
           <motion.div
             initial={{ opacity: 0, top: offset.menu }}
             animate={{ opacity: 1, top: 0 }}
@@ -190,7 +195,7 @@ function ContextCard({ context, running, onClose, onCompact }: { context?: Conte
               borderRadius: radiusXl,
               borderWidth: 1,
               borderColor: m.border,
-              boxShadow: { offsetX: 0, offsetY: 12, blurRadius: 32, spreadRadius: 0, color: m.shadow },
+              boxShadow: elevation(m, 'popover'),
             }}
           >
             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>

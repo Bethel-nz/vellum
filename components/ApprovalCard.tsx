@@ -9,7 +9,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion } from '@gpuix/react'
-import { concentric, font, radiusXl } from '../ui/theme'
+import { concentric, elevation, font, radiusXl } from '../ui/theme'
 import { Button, Label } from './Button'
 import { Dot } from './Dot'
 import { Field } from './Field'
@@ -93,7 +93,7 @@ function Card({ ask, preview, more, denying, onDenying, onAllow, onAlways, onDen
           borderRadius: radiusXl,
           borderWidth: 1,
           borderColor: m.borderFocused,
-          boxShadow: { offsetX: 0, offsetY: 18, blurRadius: 44, spreadRadius: 0, color: m.shadow },
+          boxShadow: elevation(m, 'card'),
         }}
       >
         <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>

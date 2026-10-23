@@ -332,6 +332,24 @@ const DIFF_HUNK_HEADER = 22
 export const diffHeaderClip = DIFF_FILE_HEADER + DIFF_HUNK_HEADER
 
 /** Theme for the native <markdown>, <code>, <diff> and editors. */
+/**
+ * Shadows by how far a surface floats. Popovers (menus, the picker, the context card, toasts)
+ * sit close to the page: a short, soft shadow at half the material's strength. The old
+ * 12/32 at full strength drew a dark square halo around every menu on the dark materials,
+ * the "extra fading panel" behind a dropdown. Sheets and dialogs keep the deep one; a scrim
+ * dims around them anyway.
+ */
+export function elevation(m: Material, level: 'popover' | 'card' | 'sheet') {
+  const [y, blur, k] = level === 'popover' ? [4, 12, 0.45] : level === 'card' ? [8, 20, 0.6] : [18, 48, 1]
+  return { offsetX: 0, offsetY: y, blurRadius: blur, spreadRadius: 0, color: withAlpha(m.shadow, k) }
+}
+
+/** `#rrggbbaa` with its alpha scaled by `k`. */
+function withAlpha(hex: string, k: number) {
+  const a = hex.length === 9 ? parseInt(hex.slice(7), 16) : 255
+  return hex.slice(0, 7) + Math.round(a * k).toString(16).padStart(2, '0')
+}
+
 /** An account's dot: the accent sequence in profile order, so no two accounts look alike. */
 export function accentFor(m: Material, profiles: Array<{ id: string }>, id: string | undefined): string {
   const i = profiles.findIndex((p) => p.id === id)

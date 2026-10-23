@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { AnimatePresence, DismissableLayer, motion, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { FloatingLayer } from '@gpuix/react/floating'
-import { concentric, radiusBase } from '../ui/theme'
+import { concentric, elevation, radiusBase } from '../ui/theme'
 import type { IconName } from '../ui/icons'
 import { Icon } from './Icon'
 import { Kbd } from './Kbd'
@@ -41,6 +41,16 @@ const PAD = 5
 
 const heightOf = (it: MenuItem) => (it.kind === 'separator' ? SEPARATOR : it.kind === 'label' ? LABEL : ROW)
 const selectable = (it: MenuItem) => (it.kind ?? 'item') === 'item' && !(it as { disabled?: boolean }).disabled
+
+let outsideCloseAt = 0
+/**
+ * True right after a menu closed on a press outside it. A press on the menu's own trigger is
+ * outside it too: the menu closes on mouse-down, then the trigger's click would open it again.
+ * Triggers check this so a second click closes the menu.
+ */
+export const closedByOutsidePress = () => Date.now() - outsideCloseAt < 250
+/** For popovers that aren't a Menu but close the same way (the context card). */
+export const markOutsideClose = () => void (outsideCloseAt = Date.now())
 
 export function Menu({
   open,
@@ -121,7 +131,10 @@ function MenuPanel({ onClose, items, header, width, side, align, testId }: { onC
     <DismissableLayer onEscapeKeyDown={onClose} initialFocus={() => panel.current?.id ?? null}>
       <FloatingLayer side={side} align={align} sideOffset={6} style={{ width }}>
         {/* The plain div owns focus, keys and outside clicks; motion.div only animates. */}
-        <div ref={panel} testId={testId} tabIndex={0} onKeyDown={onKeyDown} onMouseDownOutside={onClose} style={{ keyboardFocusDim: false }}>
+        <div ref={panel} testId={testId} tabIndex={0} onKeyDown={onKeyDown} onMouseDownOutside={() => {
+            outsideCloseAt = Date.now()
+            onClose()
+          }} style={{ keyboardFocusDim: false }}>
         <motion.div
           onMouseLeave={() => setActive(-1)}
           initial={{ opacity: 0, top: from }}
@@ -137,7 +150,7 @@ function MenuPanel({ onClose, items, header, width, side, align, testId }: { onC
             borderRadius: concentric(radiusBase + PAD, 0),
             borderWidth: 1,
             borderColor: m.border,
-            boxShadow: { offsetX: 0, offsetY: 12, blurRadius: 32, spreadRadius: 0, color: m.shadow },
+            boxShadow: elevation(m, 'popover'),
           }}
         >
           {/* One highlight for every row: glides for the pointer, jumps for the keyboard. */}

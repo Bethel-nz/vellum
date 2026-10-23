@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from '@gpuix/react'
-import { concentric, radiusBase } from '../ui/theme'
+import { concentric, elevation, radiusBase } from '../ui/theme'
 import { Dot } from './Dot'
 import { duration, ease, offset, tween } from './motion'
 import { useM } from './theme'
@@ -51,7 +51,7 @@ function Toast({ shown }: { shown: Shown | null }) {
             borderRadius: concentric(radiusBase + 4, 0),
             borderWidth: 1,
             borderColor: m.border,
-            boxShadow: { offsetX: 0, offsetY: 8, blurRadius: 24, spreadRadius: 0, color: m.shadow },
+            boxShadow: elevation(m, 'popover'),
           }}
         >
           <div testId="toast" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>

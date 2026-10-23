@@ -17,7 +17,7 @@ import { TokenRow, type TokenContext } from './Tokens'
 import type { Tag } from '../core/threads'
 import { FileIcon, Icon, Meta, Quiet, useM } from './kit'
 import { motion as m_ } from '@gpuix/react'
-import { concentric, font, motion, radiusBase, type } from './theme'
+import { concentric, elevation, font, motion, radiusBase, type } from './theme'
 
 /** The "@query" or "#query" being typed at the end of the draft, trigger included. */
 function activeQuery(text: string): string | undefined {
@@ -50,7 +50,7 @@ function TagPopup({
         borderRadius: concentric(radiusBase + 4, 0),
         borderWidth: 1,
         borderColor: m.border,
-        boxShadow: { offsetX: 0, offsetY: 8, blurRadius: 24, spreadRadius: 0, color: m.shadow },
+        boxShadow: elevation(m, 'popover'),
       }}
     >
       <m_.div

@@ -9,7 +9,7 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, render, useGpuixRequired, useWindowSize, type KeyEvent, type PublicInstance } from '@gpuix/react'
-import { ApprovalCard, Button, Field, Label, Menu, Sheet, SheetHeader, SheetSection, stripHeight, TabStrip, useToast, type MenuItem as MenuEntry } from './components'
+import { ApprovalCard, Button, closedByOutsidePress, Field, Label, Menu, Sheet, SheetHeader, SheetSection, stripHeight, TabStrip, useToast, type MenuItem as MenuEntry } from './components'
 import { FloatingLayer } from '@gpuix/react/floating'
 import { ease, setReducedMotion, tween } from './components/motion'
 import { ClaudeRunner, killAllRunners } from './core/claude'
@@ -904,7 +904,7 @@ function App() {
               }
               onPick={(id) => {
                 // The current pill is the note's title: pressing it opens its menu.
-                if (id === activeId) return setNoteMenu((v) => !v)
+                if (id === activeId) return setNoteMenu((v) => !v && !closedByOutsidePress())
                 setActiveId(id)
                 setTimeout(focusComposer, 50)
               }}
