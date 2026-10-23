@@ -383,3 +383,61 @@ export function nativeTheme(m: Material): GpuixTheme {
     },
   }
 }
+
+// ---------------------------------------------------------------- diffs
+
+/**
+ * Diffs read in Pierre (~/dev/pierre-theme): Pierre Dark on the dark materials, Pierre Light on
+ * frost. Its add/delete washes and syntax are tuned for reviewing changes, which groknight's
+ * editor colours are not. Everything else in the card stays the material's.
+ */
+const pierre = {
+  dark: {
+    text: '#fafafa', lineNumber: '#737373', add: '#07c4801f', del: '#ff2e3f1f', addInk: '#07c480', delInk: '#ff2e3f',
+    syntax: {
+      keyword: '#ff678d', function: '#9d6afb', string: '#5ecc71', comment: '#737373', number: '#68cdf2',
+      typeName: '#d568ea', constant: '#ffd452', tag: '#ff855e', variable: '#ffa359', punctuation: '#636363', link: '#9d6afb', special: '#ffab16',
+      operator: '#08c0ef', parameter: '#a3a3a3', attribute: '#60d199', escape: '#61d5c0',
+    },
+  },
+  light: {
+    text: '#0a0a0a', lineNumber: '#737373', add: '#18a46c26', del: '#d52c3626', addInk: '#18a46c', delInk: '#d52c36',
+    syntax: {
+      keyword: '#d32a61', function: '#693acf', string: '#199f43', comment: '#737373', number: '#1ca1c7',
+      typeName: '#a631be', constant: '#d5a910', tag: '#d5512f', variable: '#d47628', punctuation: '#636363', link: '#693acf', special: '#d5901c',
+      operator: '#08c0ef', parameter: '#636363', attribute: '#18a46c', escape: '#16a994',
+    },
+  },
+}
+
+/** Theme for <diff>: the native theme with Pierre's ink, washes and syntax, and a tight gutter. */
+export function diffTheme(m: Material): GpuixTheme {
+  const p = m.appearance === 'dark' ? pierre.dark : pierre.light
+  const base = nativeTheme(m)
+  const x = p.syntax
+  return {
+    ...base,
+    codeText: p.text,
+    textFaint: p.lineNumber,
+    diffAdd: p.add,
+    diffDel: p.del,
+    syntax: {
+      keyword: x.keyword, function: x.function, functionBuiltin: x.function, string: x.string, stringSpecial: x.string,
+      comment: x.comment, number: x.number, boolean: x.number, typeName: x.typeName, typeBuiltin: x.typeName,
+      attribute: x.attribute, constant: x.constant, tag: x.tag, variable: x.variable, property: x.variable,
+      punctuation: x.punctuation, operator: x.operator, escape: x.escape, variableSpecial: x.special, label: x.link,
+      parameter: x.parameter, ['constructor' as string]: x.typeName,
+    } as unknown as GpuixTheme['syntax'],
+    metrics: {
+      ...base.metrics,
+      // One narrow column per side and a slim marker: the gutter was most of the card's width.
+      diffGutterWidth: 30,
+      diffMarkerWidth: 14,
+      diffRowPaddingX: 8,
+      diffAccentBarWidth: 2,
+    },
+  }
+}
+
+/** Pierre's add/delete ink, for counts next to a diff. */
+export const diffInk = (m: Material) => (m.appearance === 'dark' ? { add: pierre.dark.addInk, del: pierre.dark.delInk } : { add: pierre.light.addInk, del: pierre.light.delInk })

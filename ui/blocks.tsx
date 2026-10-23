@@ -4,14 +4,14 @@
 
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyEvent } from '@gpuix/react'
-import { hunksOnly, type Block, type Tag, type ToolCall } from '../core/threads'
+import { forDiff, type Block, type Tag, type ToolCall } from '../core/threads'
 import { getTerm } from '../core/term'
 import { FileIcon, Icon, Meta, Quiet, useM } from './kit'
 import { TerminalBlock } from './TerminalBlock'
 import { TokenText, type TokenContext } from './Tokens'
 import { tokens } from '../core/tags'
 import { splitFences } from '../core/fences'
-import { concentric, diffHeaderClip, font, nativeTheme, radiusBase, type } from './theme'
+import { concentric, diffHeaderClip, diffTheme, font, nativeTheme, radiusBase, type } from './theme'
 
 const COMMIT_MS = 500
 
@@ -240,7 +240,7 @@ export function DiffCard({ patch, maxLines, onShowMore }: { patch: string; maxLi
     <div style={{ paddingTop: 6, borderRadius: concentric(radiusBase, 0), borderWidth: 1, borderColor: m.border, backgroundColor: m.codeBg, overflow: 'hidden' }}>
       {/* The clip box starts below the padding, so nothing of the headers shows through it. */}
       <div style={{ overflow: 'hidden' }}>
-        <diff patch={hunksOnly(patch)} wordDiff maxLines={maxLines} onShowMore={onShowMore} theme={nativeTheme(m)} style={{ marginTop: -diffHeaderClip }} />
+        <diff patch={forDiff(patch)} wordDiff maxLines={maxLines} onShowMore={onShowMore} theme={diffTheme(m)} style={{ marginTop: -diffHeaderClip }} />
       </div>
     </div>
   )

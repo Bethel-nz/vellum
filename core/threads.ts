@@ -189,6 +189,17 @@ export function relPath(workspace: string, file: string) {
 }
 
 /** Drop the ---/+++ file header: the edit block already names the file. */
+/**
+ * A patch as <diff> wants it: the `---`/`+++` lines stay, because that is where it learns the
+ * file's language for highlighting; `Index:` and `====` go. The header rows are clipped in the UI.
+ */
+export function forDiff(patch: string) {
+  return patch
+    .split('\n')
+    .filter((l) => !l.startsWith('Index: ') && !/^=+$/.test(l))
+    .join('\n')
+}
+
 export function hunksOnly(patch: string) {
   return patch
     .split('\n')

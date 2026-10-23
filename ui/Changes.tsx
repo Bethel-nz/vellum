@@ -10,9 +10,8 @@ import { Button, Dot, FileIcon, Icon, Label, SidePanel } from '../components'
 import { duration, ease, tween } from '../components/motion'
 import { collectChanges, keepPrompt, type FileChange, type Hunk } from '../core/changes'
 import type { Thread } from '../core/threads'
-import { DiffCard } from './blocks'
 import { Meta, useM } from './kit'
-import { concentric, font, radiusXl } from './theme'
+import { concentric, diffHeaderClip, diffInk, diffTheme, font, radiusXl } from './theme'
 
 export function Changes({ open, onClose, thread, onAdd }: { open: boolean; onClose: () => void; thread?: Thread; onAdd: (paragraph: string) => void }) {
   const m = useM()
@@ -85,8 +84,8 @@ function FileRow({ file, open, onToggle, picked, onPick }: { file: FileChange; o
         <text style={{ fontSize: 13.5, lineHeight: 18, fontWeight: 500, color: m.text, whiteSpace: 'nowrap', flexShrink: 0 }}>{name}</text>
         <text style={{ fontSize: 12, lineHeight: 16, color: m.textFaint, fontFamily: font.mono, whiteSpace: 'nowrap', textOverflow: 'ellipsis-start', flexShrink: 1, minWidth: 0 }}>{dir}</text>
         <div style={{ flexGrow: 1 }} />
-        <text style={{ fontSize: 12, lineHeight: 16, color: m.success, fontFamily: font.mono, flexShrink: 0 }}>{`+${file.added}`}</text>
-        <text style={{ fontSize: 12, lineHeight: 16, color: m.danger, fontFamily: font.mono, flexShrink: 0 }}>{`−${file.removed}`}</text>
+        <text style={{ fontSize: 12, lineHeight: 16, color: diffInk(m).add, fontFamily: font.mono, flexShrink: 0 }}>{`+${file.added}`}</text>
+        <text style={{ fontSize: 12, lineHeight: 16, color: diffInk(m).del, fontFamily: font.mono, flexShrink: 0 }}>{`−${file.removed}`}</text>
         {file.status === 'running' ? <Dot color={m.accent} size={6} pulse /> : file.status === 'error' ? <Icon name="info" size={13} color={m.danger} /> : null}
         <Icon name={open ? 'chevronDown' : 'chevronRight'} size={12} color={m.textFaint} />
       </Button>
@@ -108,17 +107,20 @@ function FileRow({ file, open, onToggle, picked, onPick }: { file: FileChange; o
 
 function HunkView({ hunk, picked, onPick }: { hunk: Hunk; picked: boolean; onPick: () => void }) {
   const m = useM()
+  const ink = diffInk(m)
+  // One card per hunk: its header row, then the diff. No card inside a card.
   return (
-    <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 4, padding: 4, borderRadius: concentric(radiusXl, 6), backgroundColor: picked ? m.skillBg : '#00000000' }}>
-      {/* GPUIX borders take one colour for all sides, so the violet tick is its own bar. */}
-      {picked ? <div style={{ position: 'absolute', left: 0, top: 6, bottom: 6, width: 2, borderRadius: 1, backgroundColor: m.accent }} /> : null}
-      <Button onPress={onPick} testId={`hunk-${hunk.id}`} title={picked ? 'Deselect this hunk' : 'Select this hunk'} style={{ height: 24, gap: 8, paddingLeft: 6, paddingRight: 6, justifyContent: 'flex-start' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', borderRadius: concentric(radiusXl, 6), borderWidth: 1, borderColor: picked ? m.accent + '88' : m.border, backgroundColor: m.codeBg, overflow: 'hidden' }}>
+      <Button onPress={onPick} testId={`hunk-${hunk.id}`} title={picked ? 'Deselect this hunk' : 'Select this hunk'} style={{ height: 28, gap: 8, paddingLeft: 10, paddingRight: 10, borderRadius: 0, justifyContent: 'flex-start', backgroundColor: picked ? m.skillBg : '#00000000' }}>
         <Icon name={picked ? 'check' : 'plus'} size={12} color={picked ? m.accent : m.textFaint} />
         <text style={{ fontSize: 11.5, lineHeight: 15, color: picked ? m.textUi : m.textFaint, fontFamily: font.mono, whiteSpace: 'nowrap' }}>{hunk.header}</text>
         <div style={{ flexGrow: 1 }} />
-        <Meta>{`+${hunk.added} −${hunk.removed}`}</Meta>
+        <text style={{ fontSize: 11.5, lineHeight: 15, color: ink.add, fontFamily: font.mono }}>{`+${hunk.added}`}</text>
+        <text style={{ fontSize: 11.5, lineHeight: 15, color: ink.del, fontFamily: font.mono }}>{`−${hunk.removed}`}</text>
       </Button>
-      <DiffCard patch={hunk.patch} />
+      <div style={{ overflow: 'hidden', borderTopWidth: 1, borderColor: m.border }}>
+        <diff patch={`--- a/${hunk.path}\n+++ b/${hunk.path}\n${hunk.patch}`} wordDiff theme={diffTheme(m)} style={{ marginTop: -diffHeaderClip }} />
+      </div>
     </div>
   )
 }
