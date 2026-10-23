@@ -8,7 +8,7 @@ import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
 
 const home = mkdtempSync(path.join(tmpdir(), 'vellum-tokens-'))
-await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home } }).exited
+await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 const workspace = path.resolve(import.meta.dir, '..')
 const id = '20261023-tokens'
 const at = '2026-10-23T15:00:00.000Z'
@@ -27,7 +27,7 @@ writeFileSync(
 )
 writeFileSync(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: id, openTabs: [id] }))
 
-const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home } })
+const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } })
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const shot = (n: string) => app.screenshot({ path: 'screenshots/tokens-' + n + '.png' })
 let failed = 0

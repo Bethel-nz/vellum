@@ -12,12 +12,12 @@ import { launch } from '@gpuix/react/automation'
 const out = process.argv[2] ?? 'screenshots'
 mkdirSync(out, { recursive: true })
 const home = process.env.VELLUM_HOME ?? mkdtempSync(path.join(tmpdir(), 'vellum-'))
-await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, MATERIAL: process.env.MATERIAL ?? 'groknight' }, stdout: 'inherit' }).exited
+await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home'), MATERIAL: process.env.MATERIAL ?? 'groknight' }, stdout: 'inherit' }).exited
 
 const app = await launch({
   command: 'bun',
   args: ['app.tsx'],
-  env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, ...(process.env.VELLUM_SOLID ? { VELLUM_SOLID: '1' } : {}) },
+  env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home'), ...(process.env.VELLUM_SOLID ? { VELLUM_SOLID: '1' } : {}) },
 })
 const shot = async (name: string) => {
   await new Promise((r) => setTimeout(r, 400))

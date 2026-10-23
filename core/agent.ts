@@ -11,9 +11,11 @@
 // Before a session is resumed, nothing else may have it open (core/locks.ts).
 
 import { existsSync, realpathSync } from 'node:fs'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { RequestPermissionRequest, SessionConfigOption, SessionNotification } from '@agentclientprotocol/sdk'
 import { AcpConnection, RpcFailure } from './acp'
+import { defaultClaudeJson, linkAccount, mergeMcpServers } from './accounts'
 import { defaultMode, describe, type Ask, type PermissionMode, type Think } from './asks'
 import { filePatch } from './files'
 import { acquire, liveHolder, release } from './locks'
@@ -48,6 +50,8 @@ type Listener = {
   models?(list: ModelOption[]): void
   /** Who this account is, from the adapter's `_auth/status_update`. */
   account?(a: { email?: string; plan?: string; label?: string }): void
+  /** Something worth a toast, not a place in the note (a merged link, an MCP clash). */
+  notice?(text: string): void
 }
 
 /** Vellum's mode names → the adapter's mode ids. */
@@ -192,6 +196,7 @@ export class AgentRunner {
       this.#locked = sessionId
     }
     this.#stopping = false
+    this.#prepare(profile)
     const conn = new AcpConnection(agentArgv(), { cwd: workspace, env: agentEnv(profile) }, {
       request: (method, params, id) => this.#onRequest(method, params, id),
       notification: (method, params) => this.#onNotification(method, params),
@@ -243,6 +248,25 @@ export class AgentRunner {
     if (this.#target.think && this.#target.think !== 'on') want.push(['thought_level', effortFor(this.#target.think)])
     for (const [cat, value] of want) await this.#applyConfig(cat, value)
     return id
+  }
+
+  /**
+   * Before an account's agent starts: its links to ~/.claude are right, and it has every MCP
+   * server the other accounts have. Nothing of this account is running yet, so its .claude.json
+   * has no other writer.
+   */
+  #prepare(profile: Profile) {
+    if (!profile.configDir) return
+    try {
+      const fixed = linkAccount(profile.id, profile.configDir).filter((a) => a.did !== 'linked')
+      if (fixed.length)
+        this.#listener.notice?.(`${profile.name}: merged ${fixed.map((a) => a.name).join(', ')} into ~/.claude${fixed.some((a) => a.backup) ? ' (the old copies are in ~/.vellum/backups)' : ''}`)
+      const others = [defaultClaudeJson(), ...this.#target.configDirs.filter((d): d is string => Boolean(d) && d !== profile.configDir).map((d) => path.join(d, '.claude.json'))]
+      const mcp = mergeMcpServers(path.join(profile.configDir, '.claude.json'), others)
+      if (mcp.conflicts.length) this.#listener.notice?.(`MCP servers set up differently on two accounts: ${mcp.conflicts.join(', ')}. ${profile.name} uses the most recent.`)
+    } catch (e) {
+      this.#listener.notice?.(`Couldn't link ${profile.name} to ~/.claude: ${String((e as Error)?.message ?? e)}`)
+    }
   }
 
   // ---------------------------------------------------------------- config options

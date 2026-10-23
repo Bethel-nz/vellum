@@ -1,12 +1,9 @@
-// Profiles are Claude accounts, separated purely by CLAUDE_CONFIG_DIR.
+// Profiles are Claude accounts, separated by CLAUDE_CONFIG_DIR: each has its own login.
 //
-// Vellum never reads, copies or displays credential files. A profile folder gets
-// symlinks to the shared config (settings, CLAUDE.md, skills, agents, commands)
-// and nothing else: the login and the session history (projects/) stay per profile.
+// Vellum never reads, copies or displays credential files. A profile folder links your setup and
+// history from ~/.claude (core/accounts.ts), so the login is the only thing that differs.
 
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { linkShared } from './platform'
-import path from 'node:path'
+import { linkAccount } from './accounts'
 import { paths, readJson, writeJson } from './store'
 
 export type Profile = {
@@ -26,8 +23,6 @@ export type Profile = {
   avatarImage?: string
 }
 
-const SHARED = ['settings.json', 'CLAUDE.md', 'skills', 'agents', 'commands'] as const
-// Never linked from shared/: .credentials.json, .claude.json, projects/
 const PROFILE_COLORS = ['#1447e6', '#c2453a', '#2f8a5b', '#9352c2', '#8a6200', '#1a7680']
 
 export function loadProfiles(): Profile[] {
@@ -45,16 +40,6 @@ export function saveProfiles(list: Profile[]) {
   writeJson(paths.profiles, list)
 }
 
-function ensureShared() {
-  mkdirSync(paths.shared, { recursive: true })
-  for (const name of SHARED) {
-    const target = path.join(paths.shared, name)
-    if (existsSync(target)) continue
-    if (name.includes('.')) writeFileSync(target, name.endsWith('.json') ? '{}\n' : '')
-    else mkdirSync(target, { recursive: true })
-  }
-}
-
 function slug(name: string, taken: Set<string>) {
   const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'profile'
   let id = base
@@ -66,12 +51,7 @@ export function createProfile(name: string): Profile[] {
   const list = loadProfiles()
   const id = slug(name, new Set(list.map((p) => p.id)))
   const dir = paths.profileDir(id)
-  mkdirSync(dir, { recursive: true })
-  ensureShared()
-  for (const entry of SHARED) {
-    const link = path.join(dir, entry)
-    if (!existsSync(link)) linkShared(path.join(paths.shared, entry), link)
-  }
+  linkAccount(id, dir)
   const profile: Profile = {
     id,
     name,

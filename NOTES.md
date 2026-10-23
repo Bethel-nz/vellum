@@ -438,3 +438,31 @@ Agent SDK (`CLAUDE_CODE_EXECUTABLE`), with your login, per account through `CLAU
   - **`--email` on a login again.** A logged-out account keeps its last email, and its next login
     passes `--email` (claude's own flag) so the browser asks for that account. This is an addition
     to the ACP method's args.
+
+## 2026-10-24 — accounts share ~/.claude
+
+- **Linked, not copied** (core/accounts.ts). Each Vellum account's config dir links these to
+  ~/.claude: settings.json, settings.local.json, CLAUDE.md, history.jsonl, skills, agents,
+  commands, output-styles, plugins, themes, projects, file-history, session-env, todos, plans,
+  paste-cache. Per account: .claude.json (login identity, MCP, trust), credentials, sessions/
+  (live process registry), caches, telemetry. An allowlist: new things Claude adds stay private.
+  Nothing is created in ~/.claude ahead of time.
+- **The link check** runs at launch and before every agent start. An entry that isn't a link to
+  ~/.claude is merged in first, then linked: JSON deep-merged (permission lists combined, the
+  newer file wins a clash, and ~/.claude's file is only rewritten when the merge adds something),
+  .jsonl lines combined, folders merged entry by entry, other files keep the newer non-empty copy.
+  What was replaced goes to ~/.vellum/backups/<account>/; a link's old target (the retired
+  ~/.vellum/shared) is copied, never moved. A toast says what was merged.
+- **MCP servers** (user scope, `mcpServers` in .claude.json) are combined into an account's
+  .claude.json before its agent starts, from ~/.claude.json and every other account. Only that
+  key of that file is written, and only then, when no claude of that account runs. A name set up
+  differently on two accounts: the most recently changed file wins, with a toast. Project-scoped
+  MCP (`projects[path].mcpServers`) isn't merged yet.
+- ~/.vellum/shared is retired (left on disk; nothing reads it).
+- Checks never touch the real ~/.claude: every check script sets `VELLUM_CLAUDE_HOME` to a scratch
+  folder. Confirmed with a listing and checksums of ~/.claude before and after a run of four checks.
+- core/accounts.test.ts: 9 cases (fresh link, idempotent, old shared link, settings that became a
+  real file, session lines from both sides, mergeJson, MCP merge, no needless rewrite, a folder
+  only the account has).
+- **Not done yet:** relinking the real `work` account. Doing it from the session was blocked by
+  the permission check; it happens on the next launch of Vellum (with a toast), or by hand.

@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
 const home = mkdtempSync(path.join(tmpdir(), 'vellum-login-'))
-await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home } }).exited
+await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 const fake = path.resolve(import.meta.dir, 'fake-acp.ts')
 const bin = path.join(home, 'bin')
 mkdirSync(bin, { recursive: true })
@@ -25,7 +25,7 @@ writeFileSync(log, '')
 const app = await launch({
   command: 'bun',
   args: ['app.tsx'],
-  env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_AGENT: fake, PATH: `${bin}:${process.env.PATH}`, FAKE_DEFAULT_CONFIG: defaultConfig, FAKE_ACP_LOG: log, FAKE_NEXT_LOGIN: nextLogin },
+  env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home'), VELLUM_AGENT: fake, PATH: `${bin}:${process.env.PATH}`, FAKE_DEFAULT_CONFIG: defaultConfig, FAKE_ACP_LOG: log, FAKE_NEXT_LOGIN: nextLogin },
 })
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const shot = (n: string) => app.screenshot({ path: 'screenshots/login-' + n + '.png' })

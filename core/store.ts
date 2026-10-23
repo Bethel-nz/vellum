@@ -3,8 +3,9 @@
 //   ~/.vellum/
 //     settings.json
 //     profiles.json
-//     shared/                      settings.json, CLAUDE.md, skills/, agents/, commands/
-//     profiles/<id>/claude/        CLAUDE_CONFIG_DIR for that profile
+//     profiles/<id>/claude/        CLAUDE_CONFIG_DIR for that profile (links into ~/.claude)
+//     backups/<id>/                whatever a link replaced, before it was merged into ~/.claude
+//     locks/<sessionId>            which Vellum window drives a session
 //     threads/<id>.jsonl           raw events, append-only, source of truth
 //     threads/<id>.md              readable transcript, rewritten on change
 
@@ -17,14 +18,13 @@ export const paths = {
   home,
   settings: path.join(home, 'settings.json'),
   profiles: path.join(home, 'profiles.json'),
-  shared: path.join(home, 'shared'),
   profileDir: (id: string) => path.join(home, 'profiles', id, 'claude'),
   threads: path.join(home, 'threads'),
   /** Unsent writing at the end of each note, so a quit (⌘Q, ⌘W) loses nothing. */
   drafts: path.join(home, 'drafts.json'),
 }
 
-for (const dir of [home, paths.shared, paths.threads]) mkdirSync(dir, { recursive: true })
+for (const dir of [home, paths.threads]) mkdirSync(dir, { recursive: true })
 
 export function readJson<T>(file: string, fallback: T): T {
   if (!existsSync(file)) return fallback

@@ -14,6 +14,7 @@ import { FloatingLayer } from '@gpuix/react/floating'
 import { ease, setReducedMotion, tween } from './components/motion'
 import { AgentRunner, killAllAgents } from './core/agent'
 import { accountStatus, loginCommand, loginMethods, logout, sameLogin } from './core/auth'
+import { linkAccount } from './core/accounts'
 import { identityFor, machineAvatar, realName } from './core/avatar'
 import { cacheModels, cachedModels, type ModelOption } from './core/models'
 import { StatusBar } from './ui/StatusBar'
@@ -470,6 +471,9 @@ function App() {
             setModels((all) => ({ ...all, [profile.id]: list }))
             cacheModels(profile.id, list)
           },
+          notice(text) {
+            showToastRef.current(text)
+          },
           account(a) {
             const p = profilesRef.current.find((x) => x.id === profile.id)
             if (p && (p.email !== a.email || p.plan !== a.label || p.loggedIn !== true)) setProfiles(updateProfile(profile.id, { email: a.email, plan: a.label, loggedIn: true }))
@@ -711,8 +715,20 @@ function App() {
     [refreshAccount],
   )
 
-  // Who every account is, once at launch (about 200 ms each, no model turn).
+  // Once at launch: every account's links to ~/.claude, then who each one is (about 200 ms each,
+  // no model turn).
   useEffect(() => {
+    const merged: string[] = []
+    for (const p of profilesRef.current) {
+      if (!p.configDir) continue
+      try {
+        const fixed = linkAccount(p.id, p.configDir).filter((a) => a.did !== 'linked')
+        if (fixed.length) merged.push(`${p.name} (${fixed.map((a) => a.name).join(', ')})`)
+      } catch (e) {
+        showToastRef.current(`Couldn't link ${p.name} to ~/.claude: ${String((e as Error)?.message ?? e)}`)
+      }
+    }
+    if (merged.length) showToastRef.current(`Linked to ~/.claude: ${merged.join('; ')}. Old copies are in ~/.vellum/backups.`)
     void (async () => {
       for (const p of profilesRef.current) await refreshAccount(p.id)
     })()

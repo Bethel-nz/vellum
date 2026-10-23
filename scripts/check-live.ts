@@ -22,7 +22,7 @@ writeFileSync(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: i
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 type App = Awaited<ReturnType<typeof launch>>
 async function turn(text: string, shot: string, before?: (app: App) => Promise<void>) {
-  const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home } })
+  const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } })
   try {
     const composer = app.getByTestId('composer')
     await composer.waitFor({ timeoutMs: 60_000 })
