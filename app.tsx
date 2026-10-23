@@ -228,9 +228,10 @@ function PageTitle({
           />
           </div>
         ) : (
-          <Button onPress={() => setMenu((v) => !v)} selected={menu} testId="title-menu" title="Note menu" style={{ height: 30, paddingLeft: 8, paddingRight: 6 }}>
+          <Button onPress={() => setMenu((v) => !v)} testId="title-menu" title="Note menu" style={{ height: 30, paddingLeft: 8, paddingRight: 6 }}>
+            {/* No pressed wash while open: the panel already says so, and a second box read as clutter. */}
             <text style={{ fontSize: 17, lineHeight: 22, fontWeight: 600, color: m.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{thread.title}</text>
-            <Icon name="chevronDown" size={13} color={m.textMuted} />
+            <Icon name="chevronDown" size={13} color={menu ? m.text : m.textMuted} />
           </Button>
         )}
         <Menu

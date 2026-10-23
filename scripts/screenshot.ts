@@ -57,6 +57,13 @@ await app.getByTestId('choose-folder').waitFor()
 await app.getByTestId('choose-folder').press('escape')
 await Bun.sleep(400)
 
+await app.getByTestId('title-menu').click()
+await app.getByTestId('title-menu-panel').waitFor()
+await Bun.sleep(1500)
+await shot('08-title-menu')
+await app.getByTestId('title-menu-panel').press('escape')
+await Bun.sleep(300)
+
 await app.getByTestId('composer').press('cmd-,')
 await app.getByTestId('settings').waitFor()
 await shot('07-settings')
