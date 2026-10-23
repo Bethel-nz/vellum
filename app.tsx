@@ -12,8 +12,7 @@ import { motion, render, useGpuixRequired, useWindowSize, type KeyEvent, type Pu
 import { ApprovalCard, Button, closedByOutsidePress, Field, Label, Menu, Sheet, SheetHeader, SheetSection, stripHeight, TabStrip, useToast, type MenuItem as MenuEntry } from './components'
 import { FloatingLayer } from '@gpuix/react/floating'
 import { ease, setReducedMotion, tween } from './components/motion'
-import { ClaudeRunner, killAllRunners } from './core/claude'
-import { nameNote } from './core/title'
+import { AgentRunner, killAllAgents } from './core/agent'
 import { identityFor, machineAvatar, realName } from './core/avatar'
 import { cacheModels, cachedModels, type ModelOption } from './core/models'
 import { StatusBar } from './ui/StatusBar'
@@ -342,7 +341,9 @@ function App() {
   const showToastRef = useRef(showToast)
   showToastRef.current = showToast
   const composerRef = useRef<PublicInstance>(null)
-  const runners = useRef(new Map<string, ClaudeRunner>())
+  const runners = useRef(new Map<string, AgentRunner>())
+  /** The word-cut title a note got on its first send; the agent's own title replaces only that. */
+  const provisional = useRef(new Map<string, string>())
   const profilesRef = useRef(profiles)
   profilesRef.current = profiles
   // Threads go through a ref first, so a send right after an edit sees the edit.
@@ -438,8 +439,17 @@ function App() {
       let runner = runners.current.get(thread.id)
       if (runner) return runner
       const profile = profilesRef.current.find((p) => p.id === thread.profileId) ?? profilesRef.current[0]!
-      runner = new ClaudeRunner(
-        { threadId: thread.id, workspace: thread.workspace, profile, sessionId: thread.claudeSessionId, mode: thread.mode, think: thread.think, model: thread.modelPick },
+      runner = new AgentRunner(
+        {
+          threadId: thread.id,
+          workspace: thread.workspace,
+          profile,
+          configDirs: profilesRef.current.map((p) => p.configDir),
+          sessionId: thread.claudeSessionId,
+          mode: thread.mode,
+          think: thread.think,
+          model: thread.modelPick,
+        },
         {
           ask(a) {
             setAsks((all) => ({ ...all, [thread.id]: [...(all[thread.id] ?? []), a] }))
@@ -458,12 +468,22 @@ function App() {
             setModels((all) => ({ ...all, [profile.id]: list }))
             cacheModels(profile.id, list)
           },
+          account(a) {
+            const p = profilesRef.current.find((x) => x.id === profile.id)
+            if (p && (p.email !== a.email || p.plan !== a.label || p.loggedIn !== true)) setProfiles(updateProfile(profile.id, { email: a.email, plan: a.label, loggedIn: true }))
+          },
           line(raw, ev) {
             appendLine(thread.id, raw)
             dispatch(thread.id, ev)
-            if (ev.type === 'assistant') setLoggedIn(profile.id, true)
-            if (ev.type === 'result' && /not logged in/i.test(String(ev.result ?? ''))) setLoggedIn(profile.id, false)
-            if (ev.type === 'result' && activeRef.current !== thread.id) {
+            // The agent names the conversation; that replaces the word-cut title, never yours.
+            if (ev.type === 'acp/update' && ev.update?.sessionUpdate === 'session_info_update' && typeof ev.update.title === 'string') {
+              const cut = provisional.current.get(thread.id)
+              if (cut && threadsRef.current.find((t) => t.id === thread.id)?.title === cut) {
+                provisional.current.delete(thread.id)
+                record(thread.id, { type: 'vellum/title', title: ev.update.title })
+              }
+            }
+            if (ev.type === 'acp/end' && activeRef.current !== thread.id) {
               setUnread((u) => ({ ...u, [thread.id]: (u[thread.id] ?? 0) + 1 }))
               const title = threadsRef.current.find((t) => t.id === thread.id)?.title ?? 'A note'
               showToastRef.current(`${title} · Claude replied`, 'success')
@@ -471,6 +491,7 @@ function App() {
           },
           record(rec) {
             record(thread.id, rec)
+            if (rec.type === 'vellum/error' && rec.login) setLoggedIn(profile.id, false)
           },
         },
       )
@@ -530,14 +551,9 @@ function App() {
     record(thread.id, { type: 'vellum/user', text, tags, at: new Date().toISOString() })
     if (edits) record(thread.id, { type: 'vellum/synced' })
     if (text && !thread.blocks.some((b) => b.kind === 'user') && (thread.title === 'Untitled' || thread.title === 'New thread')) {
-      const provisional = titleFrom(text)
-      record(thread.id, { type: 'vellum/title', title: provisional })
-      const profile = profilesRef.current.find((p) => p.id === thread.profileId)
-      // The small model renames it shortly, unless you renamed it first.
-      if (profile?.loggedIn !== false && profile)
-        nameNote(text, profile, thread.workspace).then((title) => {
-          if (title && threadsRef.current.find((t) => t.id === thread.id)?.title === provisional) record(thread.id, { type: 'vellum/title', title })
-        })
+      const cut = titleFrom(text)
+      record(thread.id, { type: 'vellum/title', title: cut })
+      provisional.current.set(thread.id, cut)
     }
     const prompt = text ? promptFor(text, tags, { workspace: thread.workspace, scopes: thread.tagScopes }) : ''
     runnerFor(thread).send([edits, prompt].filter(Boolean).join('\n\n'))
@@ -563,13 +579,16 @@ function App() {
     (id: string) => {
       const i = tabs.indexOf(id)
       const next = tabs.filter((x) => x !== id)
+      // Its agent ends with the tab (and lets go of the session); the next message starts it again.
+      void runners.current.get(id)?.dispose()
+      runners.current.delete(id)
       setTabs(next)
       if (id === activeId) setActiveId(next[Math.min(Math.max(i, 0), next.length - 1)])
     },
     [tabs, activeId],
   )
 
-  /** Closing a tab leaves its Claude session alone, unless Claude is mid-turn: then ask first. */
+  /** Closing a tab ends its agent; mid-turn, it asks first. */
   const closeTab = useCallback(
     (id: string) => {
       if (threadsRef.current.find((t) => t.id === id)?.running) setConfirmClose(id)
@@ -798,7 +817,7 @@ function App() {
 
   useEffect(() => {
     const cleanup = () => {
-      killAllRunners()
+      killAllAgents()
       killAllTerms()
     }
     process.on('exit', cleanup)

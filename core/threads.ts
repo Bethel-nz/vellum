@@ -98,6 +98,10 @@ export type Thread = ThreadMeta & {
     activityId?: string
     /** Next block number. Ids are deterministic so replayed edits find their block. */
     n: number
+    /** ACP: the kind of the last session update, so a run of thought chunks counts once. */
+    last?: string
+    /** ACP: tool call id → the tool's name, learned from its first update. */
+    toolNames?: Record<string, string>
   }
 }
 
@@ -126,6 +130,12 @@ export type VellumRecord =
   | { type: 'vellum/model'; model?: string }
   /** You asked Claude to compact; the line itself comes with the CLI's compact_boundary. */
   | { type: 'vellum/compact'; at: string }
+
+/** What an ACP agent said, as logged in the thread (core/agent.ts). */
+export type AcpRecord =
+  | { type: 'acp/session'; sessionId: string; agent: string; profileId: string }
+  | { type: 'acp/update'; update: any }
+  | { type: 'acp/end'; stopReason: string }
 
 export function newThread(meta: ThreadMeta): Thread {
   return { ...meta, blocks: [], running: false, updatedAt: meta.createdAt, tagScopes: {}, r: { streams: {}, tools: {}, n: 0 } }
@@ -222,6 +232,20 @@ export function hunksOnly(patch: string) {
     .split('\n')
     .filter((l) => !l.startsWith('Index: ') && !/^=+$/.test(l) && !l.startsWith('--- ') && !l.startsWith('+++ '))
     .join('\n')
+}
+
+/**
+ * A unified patch from the Claude tool's own result (`structuredPatch` hunks, real line numbers),
+ * or the whole new file for a create.
+ */
+export function patchFromToolResponse(file: string, r: any): string | undefined {
+  if (!r || typeof r !== 'object') return
+  if (r.type === 'create' && typeof r.content === 'string') return createTwoFilesPatch(file, file, '', r.content, '', '', { context: 3 })
+  if (!Array.isArray(r.structuredPatch) || !r.structuredPatch.length) return
+  const hunks = r.structuredPatch.map(
+    (h: any) => `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@\n${(h.lines ?? []).join('\n')}`,
+  )
+  return `--- ${file}\n+++ ${file}\n${hunks.join('\n')}\n`
 }
 
 /** Fallback patch from the tool input alone (line numbers relative to the snippet). */
@@ -381,6 +405,140 @@ export function reduce(thread: Thread, ev: any): Thread {
       t.running = false
       for (const b of blocks) if (b.kind === 'assistant' && b.streaming) patchBlock(b.id, (x) => ({ ...x, streaming: false }))
       break
+
+    case 'acp/session':
+      t.claudeSessionId = ev.sessionId
+      break
+
+    case 'acp/end': {
+      t.running = false
+      r.last = undefined
+      for (const b of blocks) if (b.kind === 'assistant' && b.streaming) patchBlock(b.id, (x) => ({ ...x, streaming: false }))
+      // Tools still marked running never finished (a cancel or a crash).
+      for (const b of blocks) {
+        if (b.kind === 'activity' && b.items.some((it) => it.status === 'running'))
+          patchBlock(b.id, (x) => ({ ...x, items: x.items.map((it: ToolCall) => (it.status === 'running' ? { ...it, status: 'error', error: 'Stopped' } : it)) }))
+        else if (b.kind === 'edit' && b.status === 'running') patchBlock(b.id, (x) => ({ ...x, status: 'error', error: 'Stopped' }))
+      }
+      const why: Record<string, string> = {
+        max_tokens: 'The reply hit its length limit.',
+        max_turn_requests: 'Claude stopped after too many steps in one turn.',
+        refusal: 'Claude declined to continue.',
+      }
+      if (why[ev.stopReason]) push({ kind: 'error', id: bid('err'), text: why[ev.stopReason]! })
+      t.updatedAt = now
+      break
+    }
+
+    case 'acp/update': {
+      const u = ev.update ?? {}
+      const kind: string = u.sessionUpdate
+      const prev = r.last
+      r.last = kind
+      switch (kind) {
+        case 'agent_message_chunk': {
+          if (u.content?.type !== 'text') break
+          const key = `acp:${u.messageId ?? ''}`
+          const id = r.streams[key]
+          // Keep writing into the reply only while nothing has come between.
+          if (id && blocks[blocks.length - 1]?.id === id) patchBlock(id, (b) => ({ ...b, markdown: b.markdown + u.content.text }))
+          else if (u.content.text) {
+            const nid = bid('a')
+            r.streams = { ...r.streams, [key]: nid }
+            push({ kind: 'assistant', id: nid, markdown: u.content.text, at: now, streaming: true })
+            r.activityId = undefined
+          }
+          break
+        }
+        case 'agent_thought_chunk': {
+          if (prev === 'agent_thought_chunk') break
+          const id = activity()
+          patchBlock(id, (b) => ({ ...b, thoughts: b.thoughts + 1 }))
+          resummarize(id)
+          break
+        }
+        case 'plan': {
+          const id = activity()
+          const act = blocks[indexOf(id)]
+          if (act?.kind === 'activity' && !act.items.some((it) => it.name === 'TodoWrite'))
+            patchBlock(id, (b) => ({ ...b, items: [...b.items, { id: `plan-${id}`, name: 'TodoWrite', detail: 'plan', status: 'ok' }] }))
+          resummarize(id)
+          break
+        }
+        case 'tool_call':
+        case 'tool_call_update': {
+          const callId: string = u.toolCallId
+          if (!callId) break
+          const name: string = u._meta?.claudeCode?.toolName ?? r.toolNames?.[callId] ?? u.name ?? (u.kind === 'execute' ? 'Bash' : u.kind === 'edit' ? 'Edit' : u.kind ?? 'Tool')
+          if (!r.toolNames?.[callId]) r.toolNames = { ...r.toolNames, [callId]: name }
+          const input = u.rawInput && Object.keys(u.rawInput).length ? u.rawInput : undefined
+          const status = u.status === 'completed' ? 'ok' : u.status === 'failed' ? 'error' : undefined
+          const output = typeof u.rawOutput === 'string' ? u.rawOutput : u.rawOutput != null ? JSON.stringify(u.rawOutput) : undefined
+          let id = r.tools[callId]
+          if (!id) {
+            id = EDIT_TOOLS.has(name) ? bid('ed') : name === 'Bash' ? bid('sh') : activity()
+            r.tools = { ...r.tools, [callId]: id }
+            if (EDIT_TOOLS.has(name)) {
+              push({ kind: 'edit', id, path: '', patch: '', added: 0, removed: 0, status: 'running' })
+              r.activityId = undefined
+            } else if (name === 'Bash') {
+              push({ kind: 'shell', id, command: '', source: 'agent', termId: callId })
+              r.activityId = undefined
+            } else {
+              patchBlock(id, (b) => ({ ...b, items: [...b.items, { id: callId, name, detail: name, status: 'running' }] }))
+              resummarize(id)
+            }
+          }
+          const b = blocks[indexOf(id)]
+          if (b?.kind === 'edit') {
+            const file = String(input?.file_path ?? input?.notebook_path ?? u.locations?.[0]?.path ?? '')
+            const rel = file ? relPath(t.workspace, file) : b.path
+            const response = u._meta?.claudeCode?.toolResponse
+            const diff = (u.content ?? []).find((c: any) => c?.type === 'diff')
+            // Best first: the tool's own hunks; then the agent's before/after; then the input.
+            const patch =
+              (response && patchFromToolResponse(rel, response)) ||
+              (diff && !b.patch ? createTwoFilesPatch(rel, rel, String(diff.oldText ?? ''), String(diff.newText ?? ''), '', '', { context: 3 }) : undefined) ||
+              (input && !b.patch ? patchFromInput(name, input) : undefined)
+            patchBlock(id, (x) => ({
+              ...x,
+              path: rel,
+              ...(patch ? { patch, ...countPatch(patch) } : {}),
+              ...(status ? { status, error: status === 'error' ? output : undefined } : {}),
+            }))
+          } else if (b?.kind === 'shell') {
+            patchBlock(id, (x) => ({
+              ...x,
+              ...(input?.command ? { command: String(input.command) } : {}),
+              ...(status ? { output: output ?? '', exitCode: status === 'error' ? 1 : 0 } : {}),
+            }))
+          } else if (b?.kind === 'activity') {
+            patchBlock(id, (x) => ({
+              ...x,
+              items: x.items.map((it: ToolCall) =>
+                it.id === callId
+                  ? { ...it, ...(input ? { detail: toolDetail(t.workspace, name, input) } : {}), ...(status ? { status, error: status === 'error' ? (output ?? '').slice(0, 400) : undefined } : {}) }
+                  : it,
+              ),
+            }))
+            resummarize(id)
+          }
+          break
+        }
+        case 'usage_update':
+          if (typeof u.used === 'number') t.context = { used: u.used, window: typeof u.size === 'number' ? u.size : t.context?.window }
+          if (typeof u._meta?.['_claude/model'] === 'string') t.model = u._meta['_claude/model']
+          break
+        case 'compaction_update':
+          if (u.status === 'completed') {
+            push({ kind: 'compact', id: bid('cp'), trigger: t.running ? 'manual' : 'auto', at: now })
+            r.activityId = undefined
+          }
+          break
+      }
+      t.updatedAt = now
+      break
+    }
 
     case 'system':
       if (ev.subtype === 'init') {

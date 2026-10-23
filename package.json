@@ -7,9 +7,12 @@
     "dev": "bun --hot app.tsx",
     "start": "bun app.tsx",
     "typecheck": "tsc --noEmit",
+    "test": "bun test ./core",
     "screenshot": "bun scripts/screenshot.ts"
   },
   "dependencies": {
+    "@agentclientprotocol/claude-agent-acp": "0.95.0",
+    "@agentclientprotocol/sdk": "2.0.2",
     "@gpuix/native": "0.11.0",
     "@gpuix/react": "0.11.0",
     "diff": "9.0.0",

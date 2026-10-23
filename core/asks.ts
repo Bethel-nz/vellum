@@ -38,6 +38,8 @@ export type Ask = {
   suggestions?: unknown[]
   /** Every rule in that suggestion, e.g. `bun test`. */
   alwaysLabel?: string
+  /** ACP: the permission options this ask offered, by what they do. */
+  optionIds?: { allow?: string; always?: string; reject?: string }
   at: string
 }
 

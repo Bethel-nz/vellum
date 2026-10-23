@@ -15,7 +15,7 @@
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import { readWorkspaceFile } from './claude'
+import { readWorkspaceFile } from './files'
 import type { Profile } from './profiles'
 import { scopeKey, type Tag } from './threads'
 

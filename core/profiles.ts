@@ -18,6 +18,10 @@ export type Profile = {
   workspaces: string[]
   /** Set after a headless run succeeds or reports "Not logged in". */
   loggedIn?: boolean
+  /** Who is logged in here, as the agent reports it (`_auth/status_update`). */
+  email?: string
+  /** The plan's label, e.g. "Claude Pro". */
+  plan?: string
   /** An image to show beside your paragraphs on this account, instead of the Mac's picture. */
   avatarImage?: string
 }

@@ -1,8 +1,8 @@
-// Live end-to-end check against the real `claude` CLI (spends two small turns).
+// Live end-to-end check through the Claude ACP adapter and the real `claude` (spends two small turns).
 //   bun scripts/check-live.ts
 // Turn 1 streams a reply, writes a file (edit block) and runs a command (shell block).
 // Then the app is restarted, the first paragraph is edited in place, and turn 2 must
-// resume the same Claude session and answer from the edited text.
+// resume the same Claude session and answer from the edited text. Any permission card is allowed.
 import { mkdirSync, mkdtempSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -32,7 +32,10 @@ async function turn(text: string, shot: string, before?: (app: App) => Promise<v
     await composer.press('cmd-enter')
     await app.getByText('Working…').waitFor({ timeoutMs: 20_000 })
     const started = Date.now()
-    while ((await app.getByText('Working…').count()) > 0 && Date.now() - started < 180_000) await wait(1000)
+    while ((await app.getByText('Working…').count()) > 0 && Date.now() - started < 180_000) {
+      if ((await app.getByTestId('approval-allow').count()) === 1) await app.getByTestId('approval-allow').click()
+      await wait(1000)
+    }
     await wait(800)
     await app.screenshot({ path: shot })
     console.log('turn done in', Math.round((Date.now() - started) / 1000), 's')
@@ -59,10 +62,24 @@ await turn('What is my favourite colour, and which file did you create? Answer i
 })
 
 const lines = readFileSync(path.join(home, 'threads', `${id}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l))
-const inits = lines.filter((l) => l.type === 'system' && l.subtype === 'init').map((l) => l.session_id)
-console.log('session ids:', [...new Set(inits)])
-console.log('results:', lines.filter((l) => l.type === 'result').map((l) => `${l.subtype}/${l.is_error}: ${String(l.result).slice(0, 80)}`))
-console.log('edits recorded:', lines.filter((l) => l.type === 'vellum/edit').length, 'synced:', lines.filter((l) => l.type === 'vellum/synced').length)
-console.log('notes.txt:', JSON.stringify(readFileSync(path.join(ws, 'notes.txt'), 'utf8')))
-console.log('md exists:', readFileSync(path.join(home, 'threads', `${id}.md`), 'utf8').split('\n').slice(0, 12).join('\n'))
+const sessions = [...new Set(lines.filter((l) => l.type === 'acp/session').map((l) => l.sessionId))]
+const ends = lines.filter((l) => l.type === 'acp/end').map((l) => l.stopReason)
+const errors = lines.filter((l) => l.type === 'vellum/error').map((l) => l.text)
+// The last reply, from its chunks.
+const lastTurn = lines.slice(lines.map((l) => l.type).lastIndexOf('vellum/user'))
+const reply = lastTurn.filter((l) => l.type === 'acp/update' && l.update.sessionUpdate === 'agent_message_chunk').map((l) => l.update.content.text).join('')
+let failed = 0
+const expect = (label: string, ok: boolean, detail = '') => {
+  if (!ok) failed++
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}${detail ? ` (${detail})` : ''}`)
+}
+expect('one session across the restart', sessions.length === 1, sessions.join(', '))
+expect('both turns ended normally', ends.length === 2 && ends.every((e) => e === 'end_turn'), ends.join(', '))
+expect('no errors', errors.length === 0, errors.join(' | '))
+expect('notes.txt holds hello', readFileSync(path.join(ws, 'notes.txt'), 'utf8').trim() === 'hello')
+expect('the edit reached Claude', lines.some((l) => l.type === 'vellum/edit') && lines.some((l) => l.type === 'vellum/synced'))
+expect('the answer uses the edited paragraph', /green/i.test(reply) && !/blue/i.test(reply), reply)
+expect('the readable copy is written', readFileSync(path.join(home, 'threads', `${id}.md`), 'utf8').includes('notes.txt'))
 console.log('home', home)
+console.log(failed ? `${failed} failed` : 'all passed')
+process.exit(failed ? 1 : 0)

@@ -1,11 +1,9 @@
-// Models and context. The list comes from the CLI's `initialize` response (what this account can
-// use, Fable only with usage credits), cached per profile so the switcher has it before the first
-// turn of a session. Until then the four stable aliases stand in. `value` is what `--model` and
-// the `set_model` control request take; "default" means no flag at all.
+// Models and context. The list is the agent's `model` config option (what this account can use,
+// Fable only with usage credits), cached per profile so the switcher has it before a session
+// starts. Until then the four stable aliases stand in. "default" is the account's own default.
 //
-// Context is how full the conversation is: the last top-level assistant message's input, cache
-// and output tokens, against the window the result's `modelUsage` reports for that model
-// (spikes/models-usage.ts).
+// Context is how full the conversation is: the agent's `usage_update` (used of size). Older notes,
+// from before ACP, count it from the last assistant message's usage against the result's window.
 
 import { paths, readJson, writeJson } from './store'
 import path from 'node:path'
@@ -29,16 +27,6 @@ export function cachedModels(): Record<string, ModelOption[]> {
 
 export function cacheModels(profileId: string, list: ModelOption[]) {
   writeJson(cacheFile(), { ...cachedModels(), [profileId]: list })
-}
-
-/** The `models` array of an initialize response, keeping only the fields Vellum shows. */
-export function modelsFromInit(response: any): ModelOption[] | undefined {
-  const list = response?.models
-  if (!Array.isArray(list)) return
-  const out = list
-    .filter((x: any) => typeof x?.value === 'string' && typeof x?.displayName === 'string')
-    .map((x: any): ModelOption => ({ value: x.value, displayName: x.displayName, description: typeof x.description === 'string' ? x.description : undefined, resolvedModel: typeof x.resolvedModel === 'string' ? x.resolvedModel : undefined }))
-  return out.length ? out : undefined
 }
 
 /** "claude-opus-5-5" → "Opus 5.5", "claude-haiku-5-5[1m]" → "Haiku 5.5". */

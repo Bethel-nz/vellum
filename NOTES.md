@@ -9,6 +9,8 @@ Findings, choices and deviations from the build prompt. Newest decisions win.
 - `libghostty-vt-node` 0.1.0 (wasm build of libghostty-vt, upstream commit `4c6215bb`)
 - `diff` 9.0.0 for unified patches
 - `claude` 2.1.296 on macOS 27.0.1, Apple Silicon
+- `@agentclientprotocol/claude-agent-acp` **0.95.0** (the agent) and `@agentclientprotocol/sdk` **2.0.2**
+  (types only), both pinned exactly. ACP protocol v1; v2 is a draft (2026-07-20) and isn't used.
 
 ## Changes from the prompt
 
@@ -205,6 +207,8 @@ arrives too early. Re-run it before reading anything into that.
 
 ## 2026-10-23 — approvals, mode, thinking (official CLI control channel)
 
+> Superseded by the ACP entry below: the control channel and `claude -p` are gone.
+
 UI-FIXES §0b asks to move to the ACP adapter. That conflicts with hard constraint #1 (only the
 official `claude` binary), so Vellum stays on `claude -p` and uses the CLI's own control
 channel, which does the same job:
@@ -363,3 +367,43 @@ channel, which does the same job:
   selected (it used to be selected but invisible).
 - `bun scripts/check-new-note.ts`: + makes nothing until Create, Create uses the current folder
   and account, a picked recent folder is used. check-tabs now expects + to ask.
+
+## 2026-10-24 — Vellum speaks ACP
+
+The earlier build refused UI-FIXES §0b (move to the ACP adapter) because of the "only the official
+binary" rule. That was the wrong call: you asked for ACP, and it's what lets Codex and opencode in
+later. The rule's intent still holds: the adapter runs your installed `claude` through the Claude
+Agent SDK (`CLAUDE_CODE_EXECUTABLE`), with your login, per account through `CLAUDE_CONFIG_DIR`.
+
+- **Shape.** `core/acp.ts` is a plain JSON-RPC-over-stdio connection, agent-agnostic. `core/agent.ts`
+  is one adapter process per open note (`bun …/claude-agent-acp/dist/index.js`): initialize →
+  `session/new`, or `session/resume` when the note has a session (no replay: the .jsonl already has
+  it). The SDK package is used for types only; the transport is ours.
+- **Log.** The .jsonl now holds `acp/session`, `acp/update` (every session/update except the
+  slash-command list and config echoes) and `acp/end` (stopReason). The reducer maps them to the
+  same blocks as before, so older `claude -p` notes still replay. Edit diffs come from the tool's
+  own `structuredPatch` (real line numbers); before that, the agent's old/new text.
+- **Mode, model, effort** are the session's config options, set live with
+  `session/set_config_option`: no respawn for thinking any more. Think off/on/max is effort
+  low/default/max. Mode `manual` is the adapter's `default`. The agent's starting values (the
+  adapter starts in `auto` when ~/.claude says so) never overwrite your pick.
+- **Asks** are `session/request_permission`, answered with one of its options. The always button
+  shows the agent's own words ("Don't ask again for bun test commands", "Auto-accept edits"),
+  because that is exactly what gets applied. ACP's reject has no reason field, so the note you
+  write goes in as your next message; the adapter queues it.
+- **Titles** come from the agent (`session_info_update`) and replace only the word-cut title.
+  The separate `claude -p --model haiku` naming call is gone (core/title.ts removed).
+- **Account identity** arrives as `_auth/status_update` (email, plan) and is kept on the profile.
+- **Closing a tab ends its agent.** Each adapter process brings its own claude, so closed tabs no
+  longer pile up processes.
+- **One writer per session** (core/locks.ts), ahead of the shared history. Before a resume,
+  Vellum reads every account's `sessions/<pid>.json` (Claude's own registry: pid, sessionId,
+  procStart) and refuses if a live process other than ours has the session open, naming where
+  (terminal, Desktop, an SDK host). `~/.vellum/locks/<sessionId>` keeps two Vellum windows apart.
+- Checks: `bun run test` (core only),
+  core/acp-reduce.test.ts replays a real turn (fixtures/acp-turn.jsonl, sanitized from
+  spikes/acp-turn.ts). check-approval runs against scripts/fake-acp.ts (`VELLUM_AGENT`).
+  check-live passed through the real adapter: one session across a restart, notes.txt written,
+  `cat` run, and "Green; I created notes.txt." after the paragraph was edited. Two turns, 22 s
+  and 11 s.
+- `spikes/out/` is git-ignored: raw traces carry the account's email.

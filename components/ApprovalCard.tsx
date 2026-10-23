@@ -23,6 +23,7 @@ export type ApprovalView = {
   title: string
   detail: string
   at: string
+  /** The agent's own wording for its "always" option, e.g. "Don't ask again for bun test commands". */
   alwaysLabel?: string
 }
 
@@ -166,8 +167,8 @@ function Card({ ask, preview, more, denying, onDenying, onAllow, onAlways, onDen
                 <text style={{ fontSize: 11, lineHeight: 14, color: m.pane, fontFamily: font.mono }}>↵</text>
               </Button>
               {ask.alwaysLabel ? (
-                <Button onPress={onAlways} testId="approval-always" title={`Always allow ${ask.alwaysLabel} in this folder`} style={{ flexShrink: 1, minWidth: 0 }}>
-                  <text style={{ fontSize: 12.5, lineHeight: 16, fontWeight: 500, color: m.textUi, whiteSpace: 'nowrap', textOverflow: 'ellipsis', flexShrink: 1, minWidth: 0 }}>{`Always allow ${ask.alwaysLabel}`}</text>
+                <Button onPress={onAlways} testId="approval-always" title={ask.alwaysLabel} style={{ flexShrink: 1, minWidth: 0 }}>
+                  <text style={{ fontSize: 12.5, lineHeight: 16, fontWeight: 500, color: m.textUi, whiteSpace: 'nowrap', textOverflow: 'ellipsis', flexShrink: 1, minWidth: 0 }}>{ask.alwaysLabel}</text>
                   <Kbd>⌘↵</Kbd>
                 </Button>
               ) : null}
