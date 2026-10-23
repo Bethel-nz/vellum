@@ -13,6 +13,7 @@ import { ApprovalCard, Button, closedByOutsidePress, Field, Label, Menu, Sheet, 
 import { FloatingLayer } from '@gpuix/react/floating'
 import { ease, setReducedMotion, tween } from './components/motion'
 import { AgentRunner, killAllAgents } from './core/agent'
+import { accountStatus, loginCommand, loginMethods, logout } from './core/auth'
 import { identityFor, machineAvatar, realName } from './core/avatar'
 import { cacheModels, cachedModels, type ModelOption } from './core/models'
 import { StatusBar } from './ui/StatusBar'
@@ -85,7 +86,8 @@ const FONTS = [
 ]
 
 type Pane =
-  | { kind: 'login'; profileId: string; session: TermSession }
+  /** `label` is what runs, as you'd type it (the agent hands `--cli auth login` to claude). */
+  | { kind: 'login'; profileId: string; session: TermSession; label: string }
   | { kind: 'claude'; threadId: string; session: TermSession }
 
 type Draft = { text: string; tags: Tag[] }
@@ -287,7 +289,7 @@ function TerminalPane({ pane, title, hint, onClose }: { pane: Pane; title: strin
           <Meta color={m.textMuted}>Close</Meta>
         </Quiet>
       </div>
-      <TerminalBlock session={pane.session} title={pane.session.argv.join(' ')} mode="full" autoFocus testId="pane-term" />
+      <TerminalBlock session={pane.session} title={pane.kind === 'login' ? pane.label : pane.session.argv.join(' ')} mode="full" autoFocus testId="pane-term" />
     </div>
   )
 }
@@ -614,27 +616,111 @@ function App() {
     [focusComposer, openNote, setThreads],
   )
 
-  const openLogin = useCallback((profileId: string) => {
-    const profile = profilesRef.current.find((p) => p.id === profileId)
+  /** Ask who an account is (no model turn) and keep it on the profile. */
+  const refreshAccount = useCallback(async (profileId: string, given?: Profile) => {
+    const profile = given ?? profilesRef.current.find((p) => p.id === profileId)
     if (!profile) return
-    setOverlay(null)
-    if (!hasPty) {
-      // No PTY on Windows: /login runs in a console window of its own, under this profile.
-      openConsole([claudeBin()], homedir(), profileEnv(profile))
-      showToastRef.current(`Type /login in the new window to sign ${profile.name} in`)
-      return
-    }
-    const session = startTerm({ argv: [claudeBin()], cwd: homedir(), env: profileEnv(profile), cols: 100, rows: 30 })
-    setPane({ kind: 'login', profileId, session })
-    session.exited.then(() => setPane((p) => (p?.session === session ? null : p)))
+    const s = await accountStatus(profile)
+    if (!s) return
+    const p = given ?? profilesRef.current.find((x) => x.id === profileId)
+    if (p && (p.loggedIn !== s.loggedIn || p.email !== s.email || p.plan !== s.plan))
+      setProfiles(updateProfile(profileId, { loggedIn: s.loggedIn, email: s.email, plan: s.plan }))
+    return s
   }, [])
+
+  const [authBusy, setAuthBusy] = useState<Set<string>>(new Set())
+  const busy = (id: string, on: boolean) =>
+    setAuthBusy((b) => {
+      const next = new Set(b)
+      if (on) next.add(id)
+      else next.delete(id)
+      return next
+    })
+
+  /** Log an account in with the agent's own login method, in a terminal you can see. */
+  const openLogin = useCallback(
+    async (profileId: string) => {
+      const profile = profilesRef.current.find((p) => p.id === profileId)
+      if (!profile) return
+      busy(profileId, true)
+      const methods = await loginMethods(profile)
+      const { argv, env } = loginCommand(profile, methods[0]!)
+      setOverlay(null)
+      const done = async () => {
+        const s = await refreshAccount(profileId)
+        busy(profileId, false)
+        if (s?.loggedIn) showToastRef.current(`${profile.name} is logged in${s.email ? ` as ${s.email}` : ''}`, 'success')
+        else showToastRef.current(`${profile.name} is still not logged in`)
+        return s?.loggedIn
+      }
+      if (!hasPty) {
+        // No PTY on Windows: the login runs in a console window of its own; watch for it to land.
+        openConsole(argv, homedir(), env)
+        showToastRef.current(`Finish logging in to ${profile.name} in the new window`)
+        const started = Date.now()
+        const poll = async () => {
+          const s = await accountStatus(profile)
+          if (s?.loggedIn) return done()
+          if (Date.now() - started < 10 * 60_000) setTimeout(poll, 3000)
+          else busy(profileId, false)
+        }
+        setTimeout(poll, 3000)
+        return
+      }
+      const session = startTerm({ argv, cwd: homedir(), env, cols: 100, rows: 30 })
+      setPane({ kind: 'login', profileId, session, label: ['claude', ...methods[0]!.args.filter((a) => a !== '--cli')].join(' ') })
+      session.exited.then(async () => {
+        setPane((p) => (p?.session === session ? null : p))
+        await done()
+        setTimeout(focusComposer, 50)
+      })
+    },
+    [refreshAccount],
+  )
+
+  const logOut = useCallback(
+    async (profileId: string) => {
+      const profile = profilesRef.current.find((p) => p.id === profileId)
+      if (!profile) return
+      busy(profileId, true)
+      // Notes on this account stop their agents first; the next message would fail anyway.
+      for (const t of threadsRef.current) if (t.profileId === profileId) {
+        await runners.current.get(t.id)?.dispose()
+        runners.current.delete(t.id)
+      }
+      const ok = await logout(profile)
+      await refreshAccount(profileId)
+      busy(profileId, false)
+      showToastRef.current(ok ? `${profile.name} is logged out` : `Couldn't log ${profile.name} out`)
+    },
+    [refreshAccount],
+  )
+
+  /** A new account: made, then asked who it is (nobody yet, unless its folder already had a login). */
+  const addAccount = useCallback(
+    (name: string) => {
+      const list = createProfile(name)
+      setProfiles(list)
+      const added = list[list.length - 1]!
+      void refreshAccount(added.id, added)
+    },
+    [refreshAccount],
+  )
+
+  // Who every account is, once at launch (about 200 ms each, no model turn).
+  useEffect(() => {
+    void (async () => {
+      for (const p of profilesRef.current) await refreshAccount(p.id)
+    })()
+  }, [refreshAccount])
 
   const openClaude = useCallback(() => {
     if (!active?.claudeSessionId) return
     const profile = profilesRef.current.find((p) => p.id === active.profileId)
     if (!profile) return
-    // One writer per session: stop the headless process while the interactive one runs.
-    runners.current.get(active.id)?.interrupt()
+    // One writer per session: the note's agent ends (and lets go of the session) before claude opens it.
+    void runners.current.get(active.id)?.dispose()
+    runners.current.delete(active.id)
     if (!hasPty) {
       openConsole([claudeBin(), '--resume', active.claudeSessionId], active.workspace, profileEnv(profile))
       showToastRef.current('Opened in a Claude Code window')
@@ -944,7 +1030,7 @@ function App() {
             <TerminalPane
               pane={pane}
               title={pane.kind === 'login' ? `Log in · ${loginProfile?.name ?? ''}` : 'Claude Code'}
-              hint={pane.kind === 'login' ? 'Type /login and finish in the browser, then /exit.' : 'Interactive session on this note. Quit claude or close to return.'}
+              hint={pane.kind === 'login' ? 'Finish in your browser. This closes by itself once you are in.' : 'Interactive session on this note. Quit claude or close to return.'}
               onClose={closePane}
             />
           ) : active ? (
@@ -1043,7 +1129,7 @@ function App() {
             initialFolder={active?.workspace}
             suggestProfile={(folder) => profileForWorkspace(profiles, folder)?.id}
             onCreate={createThread}
-            onAddProfile={(name) => setProfiles(createProfile(name))}
+            onAddProfile={addAccount}
             onLogin={openLogin}
           />
         ) : null}
@@ -1073,6 +1159,11 @@ function App() {
             setMotionSetting(next)
             updateSettings({ motion: next })
           }}
+          profiles={profiles}
+          busy={authBusy}
+          onLogin={openLogin}
+          onLogout={logOut}
+          onAddProfile={addAccount}
         />
         <Sheet open={confirmClose !== null} onClose={() => setConfirmClose(null)} width={400} testId="confirm-close">
           <SheetHeader title="Claude is still working" onClose={() => setConfirmClose(null)} />

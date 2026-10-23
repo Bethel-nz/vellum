@@ -5,10 +5,42 @@
 // "edit"), then a tool call, a reply, usage and end_turn. A prompt within a second of a "no" is the
 // note that came with it, and gets a plain answer. `/compact` answers with a compaction. Every message it
 // receives is appended to $FAKE_ACP_LOG as {in: msg}.
+//
+// With `--cli auth login|logout|status` it plays the account side (scripts/check-login.ts puts a
+// `claude` shim on PATH that runs this file with --cli): a marker file in the account's config dir
+// ($CLAUDE_CONFIG_DIR, or $FAKE_DEFAULT_CONFIG for the default account) means logged in.
 //   VELLUM_AGENT=scripts/fake-acp.ts (scripts/check-approval.ts sets it)
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import path from 'node:path'
 
-const log = (o: unknown) => process.env.FAKE_ACP_LOG && appendFileSync(process.env.FAKE_ACP_LOG, JSON.stringify(o) + '\n')
+if (process.argv.includes('--cli')) {
+  const args = process.argv.slice(2).filter((a) => a !== '--cli')
+  const dir = process.env.CLAUDE_CONFIG_DIR ?? process.env.FAKE_DEFAULT_CONFIG ?? '/tmp/fake-acp-default'
+  const marker = path.join(dir, '.fake-login')
+  log({ cli: args, dir })
+  if (args[0] === 'auth' && args[1] === 'status') {
+    const loggedIn = existsSync(marker)
+    process.stdout.write(JSON.stringify(loggedIn ? { loggedIn, authMethod: 'claude.ai', apiProvider: 'firstParty', email: `${path.basename(path.dirname(dir))}@example.com`, subscriptionType: 'max' } : { loggedIn, authMethod: 'none' }) + '\n')
+    process.exit(loggedIn ? 0 : 1)
+  }
+  if (args[0] === 'auth' && args[1] === 'login') {
+    process.stdout.write('Opening your browser to log in…\r\n')
+    await Bun.sleep(600)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(marker, 'yes')
+    process.stdout.write('Login successful.\r\n')
+    process.exit(0)
+  }
+  if (args[0] === 'auth' && args[1] === 'logout') {
+    rmSync(marker, { force: true })
+    process.exit(0)
+  }
+  process.exit(2)
+}
+
+function log(o: unknown) {
+  if (process.env.FAKE_ACP_LOG) appendFileSync(process.env.FAKE_ACP_LOG, JSON.stringify(o) + '\n')
+}
 const out = (o: unknown) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...(o as object) }) + '\n')
 const update = (sessionId: string, u: unknown) => out({ method: 'session/update', params: { sessionId, update: u } })
 
@@ -98,7 +130,9 @@ async function handle(msg: any) {
         protocolVersion: 1,
         agentCapabilities: { loadSession: true, sessionCapabilities: { resume: {} }, promptCapabilities: { image: true } },
         agentInfo: { name: 'fake-acp', version: '0' },
-        authMethods: [],
+        authMethods: msg.params?.clientCapabilities?.auth?.terminal
+          ? [{ id: 'claude-ai-login', name: 'Claude Subscription', type: 'terminal', args: ['--cli', 'auth', 'login', '--claudeai'] }]
+          : [],
       })
     case 'session/new':
       out({ method: '_auth/status_update', params: { authStatus: { kind: 'account', label: 'Claude Pro', account: { plan: 'pro', email: 'fake@example.com' } } } })

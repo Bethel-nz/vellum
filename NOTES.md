@@ -407,3 +407,26 @@ Agent SDK (`CLAUDE_CODE_EXECUTABLE`), with your login, per account through `CLAU
   `cat` run, and "Green; I created notes.txt." after the paragraph was edited. Two turns, 22 s
   and 11 s.
 - `spikes/out/` is git-ignored: raw traces carry the account's email.
+
+## 2026-10-24 — logging in, through the agent
+
+- **Who an account is**: `claude auth status --json` under its `CLAUDE_CONFIG_DIR` (core/auth.ts).
+  No model turn, about 200 ms; it exits 1 with `loggedIn: false` for an empty config dir. Every
+  account is checked at launch and after a login or logout, and keeps `email` and `plan`
+  ("Claude Pro") on its profile.
+- **Log in** is ACP's terminal authentication: the agent lists its methods at initialize (the
+  adapter offers `claude-ai-login` and `console-login`), and Vellum runs the agent again with the
+  method's args (`--cli auth login --claudeai`, which the adapter hands to your claude) in the
+  inline terminal. When it exits, the account is checked again and a toast says who is in; no
+  more typing /login and /exit. The pane's header reads `claude auth login --claudeai`. Windows
+  has no PTY: the login gets its own console window and Vellum polls the status every 3 s.
+- **Log out** ends the agents of that account's notes first, then `--cli auth logout`.
+- **Settings › Accounts**: each account with its email and plan (or "Not logged in"), Log in or
+  Log out, and Add account (which checks the new one at once).
+- **"Open in Claude Code" ends the note's agent** before the interactive claude resumes the
+  session. Interrupting it, as before, left the ACP process holding the session open.
+- `bun scripts/check-login.ts` runs it against scripts/fake-acp.ts, which also plays
+  `--cli auth login|logout|status` with a marker file per account, behind a `claude` shim on PATH.
+- check-approval failed once in four runs with an uncaught automation timeout (the background
+  window ticking slowly, as noted above), and passed the other three.
+- **Not verified with a real login yet.** The real flow opens the browser; it needs a person.

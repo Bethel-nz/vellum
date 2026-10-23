@@ -419,7 +419,7 @@ export function nativeTheme(m: Material): GpuixTheme {
  */
 const pierre = {
   dark: {
-    text: '#fafafa', lineNumber: '#737373', add: '#07c4801f', del: '#ff2e3f1f', addInk: '#07c480', delInk: '#ff2e3f',
+    text: '#fafafa', lineNumber: '#737373', addInk: '#60d199', delInk: '#ff6762',
     syntax: {
       keyword: '#ff678d', function: '#9d6afb', string: '#5ecc71', comment: '#737373', number: '#68cdf2',
       typeName: '#d568ea', constant: '#ffd452', tag: '#ff855e', variable: '#ffa359', punctuation: '#636363', link: '#9d6afb', special: '#ffab16',
@@ -427,7 +427,7 @@ const pierre = {
     },
   },
   light: {
-    text: '#0a0a0a', lineNumber: '#737373', add: '#18a46c26', del: '#d52c3626', addInk: '#18a46c', delInk: '#d52c36',
+    text: '#0a0a0a', lineNumber: '#737373', addInk: '#07c480', delInk: '#ff2e3f',
     syntax: {
       keyword: '#d32a61', function: '#693acf', string: '#199f43', comment: '#737373', number: '#1ca1c7',
       typeName: '#a631be', constant: '#d5a910', tag: '#d5512f', variable: '#d47628', punctuation: '#636363', link: '#693acf', special: '#d5901c',
@@ -443,10 +443,12 @@ export function diffTheme(m: Material): GpuixTheme {
   const x = p.syntax
   return {
     ...base,
+    text: p.text,
     codeText: p.text,
     textFaint: p.lineNumber,
-    diffAdd: p.add,
-    diffDel: p.del,
+    // Native diff applies its own row/word washes; solid ink keeps markers and gutters legible.
+    diffAdd: p.addInk,
+    diffDel: p.delInk,
     syntax: {
       keyword: x.keyword, function: x.function, functionBuiltin: x.function, string: x.string, stringSpecial: x.string,
       comment: x.comment, number: x.number, boolean: x.number, typeName: x.typeName, typeBuiltin: x.typeName,

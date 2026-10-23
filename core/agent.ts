@@ -57,10 +57,15 @@ const fromAgentMode = (id: string): PermissionMode => (id === 'default' ? 'manua
 const effortFor = (t: Think) => (t === 'off' ? 'low' : t === 'max' ? 'max' : 'default')
 
 /** The agent program: the bundled adapter, run by this Bun. VELLUM_AGENT swaps in a fake for checks. */
-function agentArgv(): string[] {
+export function agentArgv(): string[] {
   if (process.env.VELLUM_AGENT) return [process.execPath, process.env.VELLUM_AGENT]
   const entry = fileURLToPath(import.meta.resolve('@agentclientprotocol/claude-agent-acp/dist/index.js'))
   return [process.execPath, entry]
+}
+
+/** The agent's environment for an account: its config dir, and your own `claude` to run. */
+export function agentEnv(profile: Profile): Record<string, string> {
+  return { ...profileEnv(profile), CLAUDE_CODE_EXECUTABLE: claudeBin() }
 }
 
 const sentence = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s)
@@ -187,7 +192,7 @@ export class AgentRunner {
       this.#locked = sessionId
     }
     this.#stopping = false
-    const conn = new AcpConnection(agentArgv(), { cwd: workspace, env: { ...profileEnv(profile), CLAUDE_CODE_EXECUTABLE: claudeBin() } }, {
+    const conn = new AcpConnection(agentArgv(), { cwd: workspace, env: agentEnv(profile) }, {
       request: (method, params, id) => this.#onRequest(method, params, id),
       notification: (method, params) => this.#onNotification(method, params),
     })
