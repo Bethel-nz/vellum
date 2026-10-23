@@ -39,6 +39,8 @@ import { BlockView, DiffCard, type BlockActions } from './ui/blocks'
 import { Composer } from './ui/Composer'
 import { NewThreadDialog, ThreadSwitcher } from './ui/dialogs'
 import { History } from './ui/History'
+import { Changes } from './ui/Changes'
+import { changeCount } from './core/changes'
 import { Dot, Icon, Kbd, MaterialContext, Meta, Quiet, useM } from './ui/kit'
 import { SettingsSheet, type MotionPref, type TabMode } from './ui/SettingsSheet'
 import { CELL_W, TerminalBlock } from './ui/TerminalBlock'
@@ -317,7 +319,7 @@ function App() {
   const [asks, setAsks] = useState<Record<string, Ask[]>>({})
   const [denying, setDenying] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, Draft>>(() => readJson(paths.drafts, {}))
-  const [overlay, setOverlay] = useState<null | 'new' | 'switcher' | 'settings' | 'history'>(null)
+  const [overlay, setOverlay] = useState<null | 'new' | 'switcher' | 'settings' | 'history' | 'changes'>(null)
   const [noteMenu, setNoteMenu] = useState(false)
   const [pane, setPane] = useState<Pane | null>(null)
   // Tab strip: the mode from settings, ⌘⇧T flipping it, and the top-edge hover in auto mode.
@@ -733,6 +735,9 @@ function App() {
     } else if (key === 'y') {
       e.preventDefault()
       setOverlay((o) => (o === 'history' ? null : 'history'))
+    } else if (key === 'd' && mods.shift) {
+      e.preventDefault()
+      setOverlay((o) => (o === 'changes' ? null : 'changes'))
     } else if (key === '.') {
       e.preventDefault()
       interrupt()
@@ -864,6 +869,12 @@ function App() {
               onNew={newHere}
               trailing={
                 <>
+                  {active && changeCount(active) ? (
+                    <Button onPress={() => setOverlay('changes')} testId="open-changes" title="Changes in this note (⇧⌘D)">
+                      <Icon name="diff" size={13} />
+                      <Label muted>{`${changeCount(active)} ${changeCount(active) === 1 ? 'file' : 'files'}`}</Label>
+                    </Button>
+                  ) : null}
                   <Button onPress={() => setOverlay('switcher')} testId="open-switcher" title="Find a note (⌘K)">
                     <Icon name="search" size={13} />
                     <Kbd>⌘K</Kbd>
@@ -1017,6 +1028,18 @@ function App() {
             </Button>
           </div>
         </Sheet>
+        <Changes
+          open={overlay === 'changes'}
+          onClose={() => setOverlay(null)}
+          thread={active}
+          onAdd={(paragraph) => {
+            if (!active) return
+            const d = draftsRef.current[active.id] ?? { text: '', tags: [] }
+            setDraft(active.id, d.text.trim() ? `${d.text.trimEnd()}\n\n${paragraph}` : paragraph, d.tags)
+            setOverlay(null)
+            setTimeout(focusComposer, 50)
+          }}
+        />
         <History
           open={overlay === 'history'}
           onClose={() => setOverlay(null)}

@@ -18,7 +18,7 @@ import { createTwoFilesPatch } from 'diff'
 import { alwaysOffer, defaultMode, describe, type Ask, type PermissionMode, type Think } from './asks'
 import type { Profile } from './profiles'
 import { profileEnv } from './profiles'
-import { relPath, type VellumRecord } from './threads'
+import { patchFromInput, relPath, type VellumRecord } from './threads'
 
 export type RunnerTarget = {
   threadId: string
@@ -271,7 +271,8 @@ export class ClaudeRunner {
       title,
       detail,
       input: req.input ?? {},
-      patch: ['Edit', 'Write', 'MultiEdit'].includes(req.tool_name) ? filePatch(this.#target.workspace, req.tool_name, req.input ?? {}) : undefined,
+      // Against the file on disk when it can be; otherwise straight from the tool's own strings.
+      patch: ['Edit', 'Write', 'MultiEdit'].includes(req.tool_name) ? (filePatch(this.#target.workspace, req.tool_name, req.input ?? {}) ?? patchFromInput(req.tool_name, req.input ?? {})) : undefined,
       suggestions: offer?.suggestions,
       alwaysLabel: offer?.label,
       at: new Date().toISOString(),
@@ -339,7 +340,12 @@ export function filePatch(workspace: string, name: string, input: any): string |
       const from = String(e.old_string ?? '')
       const to = String(e.new_string ?? '')
       if (!from || !after.includes(from)) return
-      after = e.replace_all ? after.split(from).join(to) : after.replace(from, to)
+      // Literal, as the Edit tool does: a string replacement would read `$&` or `$1` in `to`.
+      if (e.replace_all) after = after.split(from).join(to)
+      else {
+        const i = after.indexOf(from)
+        after = after.slice(0, i) + to + after.slice(i + from.length)
+      }
     }
   }
   const label = relPath(workspace, abs)

@@ -102,7 +102,9 @@ function Card({ ask, preview, more, denying, onDenying, onAllow, onAlways, onDen
           <text style={{ fontSize: 11.5, lineHeight: 14, color: m.textFaint, fontFamily: font.mono }}>{waited(ask.at, now)}</text>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <text style={{ fontSize: 13.5, lineHeight: 18, fontWeight: 500, color: m.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{ask.title}</text>
+          {/* Wraps rather than clipping: a long path must never hide behind an ellipsis. */}
+          <text style={{ fontSize: 13.5, lineHeight: 18, fontWeight: 500, color: m.text }}>{ask.title}</text>
+          {preview && ask.detail ? <text testId="approval-path" style={{ fontSize: 11.5, lineHeight: 16, color: m.textMuted, fontFamily: font.mono }}>{ask.detail}</text> : null}
           {preview ? (
             <div testId="approval-preview" style={{ maxHeight: 240, overflowY: 'scroll', scrollbarColor: m.scrollbar, scrollbarWidth: 6 }}>
               {preview}
