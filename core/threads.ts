@@ -15,6 +15,7 @@ import { createTwoFilesPatch } from 'diff'
 import type { Grid } from './ghostty'
 import { paths } from './store'
 import type { Decision, PermissionMode, Think } from './asks'
+import { contextFromUsage, windowFromResult, type ContextUse } from './models'
 
 /**
  * A context token in your text. Files are written `#path` or `#path:42`; skills `@skill:name`;
@@ -55,6 +56,8 @@ export type Block =
       grid?: Grid
     }
   | { kind: 'error'; id: string; text: string; login?: boolean }
+  /** The CLI summarized the conversation so far to free up context (/compact, or on its own when full). */
+  | { kind: 'compact'; id: string; trigger: 'manual' | 'auto'; preTokens?: number; at: string }
   /** An ask you answered: kept in the note as one quiet line. */
   | { kind: 'approval'; id: string; tool: string; title: string; detail: string; decision: Decision; message?: string; at: string }
 
@@ -68,7 +71,12 @@ export type ThreadMeta = {
 
 export type Thread = ThreadMeta & {
   claudeSessionId?: string
+  /** The model the CLI reported at init (a resolved id, e.g. claude-opus-5-5). */
   model?: string
+  /** The model you picked in the switcher (a `--model` value); undefined is the account default. */
+  modelPick?: string
+  /** How full the conversation is, from the last reply's usage. */
+  context?: ContextUse
   mode?: PermissionMode
   think?: Think
   blocks: Block[]
@@ -110,6 +118,9 @@ export type VellumRecord =
   | { type: 'vellum/answer'; tool: string; title: string; detail: string; decision: Decision; message?: string; at: string }
   | { type: 'vellum/mode'; mode: PermissionMode }
   | { type: 'vellum/think'; think: Think }
+  | { type: 'vellum/model'; model?: string }
+  /** You asked Claude to compact; the line itself comes with the CLI's compact_boundary. */
+  | { type: 'vellum/compact'; at: string }
 
 export function newThread(meta: ThreadMeta): Thread {
   return { ...meta, blocks: [], running: false, updatedAt: meta.createdAt, tagScopes: {}, r: { streams: {}, tools: {}, n: 0 } }
@@ -326,6 +337,13 @@ export function reduce(thread: Thread, ev: any): Thread {
     case 'vellum/think':
       t.think = ev.think
       break
+    case 'vellum/model':
+      t.modelPick = ev.model
+      break
+    case 'vellum/compact':
+      t.running = true
+      t.updatedAt = now
+      break
     case 'vellum/tag-scope':
       t.tagScopes = { ...t.tagScopes, [ev.key]: ev.scope }
       break
@@ -363,6 +381,13 @@ export function reduce(thread: Thread, ev: any): Thread {
       if (ev.subtype === 'init') {
         t.claudeSessionId = ev.session_id
         if (ev.model) t.model = ev.model
+      } else if (ev.subtype === 'compact_boundary') {
+        const meta = ev.compact_metadata ?? {}
+        push({ kind: 'compact', id: bid('cp'), trigger: meta.trigger === 'auto' ? 'auto' : 'manual', preTokens: typeof meta.pre_tokens === 'number' ? meta.pre_tokens : undefined, at: now })
+        r.activityId = undefined
+        // The boundary reports both sizes (spikes/compact.ts), so the ring drops at once.
+        const after = typeof meta.post_tokens === 'number' ? meta.post_tokens : 0
+        t.context = { window: t.context?.window, used: after }
       }
       break
 
@@ -384,6 +409,8 @@ export function reduce(thread: Thread, ev: any): Thread {
 
     case 'assistant': {
       if (ev.parent_tool_use_id) break
+      const used = contextFromUsage(ev.message?.usage)
+      if (used) t.context = { ...t.context, used }
       const msgId: string = ev.message?.id ?? ''
       for (const c of ev.message?.content ?? []) {
         if (c.type === 'text') {
@@ -459,6 +486,8 @@ export function reduce(thread: Thread, ev: any): Thread {
 
     case 'result': {
       t.running = false
+      const window = windowFromResult(ev.modelUsage, t.model)
+      if (window) t.context = { used: t.context?.used ?? 0, window }
       for (const b of blocks) if (b.kind === 'assistant' && b.streaming) patchBlock(b.id, (x) => ({ ...x, streaming: false }))
       const failed = ev.is_error || (ev.subtype && ev.subtype !== 'success')
       if (failed) {
@@ -555,6 +584,9 @@ export function toMarkdown(t: Thread): string {
         break
       case 'error':
         out.push(`> **Error:** ${b.text}`, '')
+        break
+      case 'compact':
+        out.push('---', '', `*${b.trigger === 'auto' ? 'Context was full; Claude summarized everything above.' : 'Claude summarized everything above.'}*`, '')
         break
       case 'approval':
         out.push(`*${b.decision === 'denied' ? 'Denied' : b.decision === 'always' ? 'Always allowed' : 'Allowed'}: ${b.title}* \`${b.detail}\`${b.message ? ` — ${b.message}` : ''}`, '')

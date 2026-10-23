@@ -1,5 +1,5 @@
-// The approval card: Claude is waiting for your OK on a tool. It rises into the bottom-right
-// corner of the pane (after the "Pending" card in a money app): a blue Waiting pill and the
+// The approval card: Claude is waiting for your OK on a tool. It rises out of the status bar in
+// the bottom-left corner of the pane, next to the mode it answers to (after the "Pending" card in a money app): a blue Waiting pill and the
 // time it has waited, the verb and scope (`Run in vellum/`), the command in mono, then the
 // answers with their keys. ↵ allows, ⌘↵ always allows (only when the CLI offers a rule), esc
 // opens a one-line "what to do instead" field whose ↵ denies with that message.
@@ -27,6 +27,9 @@ export type ApprovalView = {
 
 /** An edit's diff, drawn by the caller (the card has no diff renderer of its own). */
 export type ApprovalPreview = ReactNode
+
+/** Clear of the status bar (28 high, 10 from the bottom) with a little air. */
+const CARD_BOTTOM = 46
 
 function waited(at: string, now: number) {
   const s = Math.max(0, Math.floor((now - new Date(at).getTime()) / 1000))
@@ -69,7 +72,7 @@ function Card({ ask, preview, more, denying, onDenying, onAllow, onAlways, onDen
   const pad = 14
   return (
     // The corner is held by a plain box: the rise animates `top`, which would override `bottom`.
-    <div style={{ position: 'absolute', right: 16, bottom: 16, width: 384 }}>
+    <div style={{ position: 'absolute', left: 12, bottom: CARD_BOTTOM, width: 384 }}>
     <motion.div
       initial={{ opacity: 0, top: offset.toast }}
       animate={{ opacity: 1, top: 0 }}

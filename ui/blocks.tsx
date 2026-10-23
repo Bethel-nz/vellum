@@ -12,6 +12,7 @@ import { TokenText, type TokenContext } from './Tokens'
 import { tokens } from '../core/tags'
 import { splitFences } from '../core/fences'
 import type { Identity } from '../core/avatar'
+import { formatTokens } from '../core/models'
 import { copyText, primary } from '../core/platform'
 import { concentric, diffHeaderClip, diffInk, diffTheme, font, nativeTheme, radiusBase, type } from './theme'
 
@@ -403,8 +404,27 @@ export const BlockView = memo(function BlockView({ block, actions }: { block: Bl
       return <ErrorBlock block={block} onLogin={actions.onLogin} />
     case 'approval':
       return <ApprovalLine block={block} />
+    case 'compact':
+      return <CompactLine block={block} />
   }
 })
+
+/** Where the CLI summarized everything above: a hairline across the page, like a fold. */
+function CompactLine({ block }: { block: Extract<Block, { kind: 'compact' }> }) {
+  const m = useM()
+  const at = new Date(block.at)
+  const time = Number.isNaN(at.getTime()) ? '' : ` · ${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+  const what = block.trigger === 'auto' ? 'Context was full, so Claude summarized everything above' : 'Claude summarized everything above'
+  const from = block.preTokens ? ` · ${formatTokens(block.preTokens)} tokens before` : ''
+  return (
+    <div testId={`compact-${block.id}`} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 6, paddingBottom: 6 }}>
+      <div style={{ flexGrow: 1, height: 1, backgroundColor: m.border }} />
+      <Icon name="fold" size={12} color={m.textFaint} />
+      <text style={{ ...type.meta, color: m.textMuted, flexShrink: 0 }}>{`${what}${from}${time}`}</text>
+      <div style={{ flexGrow: 1, height: 1, backgroundColor: m.border }} />
+    </div>
+  )
+}
 
 /** An answered ask, kept in the note as one quiet line: what was asked, what you said, and when. */
 function ApprovalLine({ block }: { block: Extract<Block, { kind: 'approval' }> }) {

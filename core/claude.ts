@@ -16,6 +16,7 @@ import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { createTwoFilesPatch } from 'diff'
 import { alwaysOffer, defaultMode, describe, type Ask, type PermissionMode, type Think } from './asks'
+import { modelsFromInit, type ModelOption } from './models'
 import { claudeBin } from './platform'
 import type { Profile } from './profiles'
 import { profileEnv } from './profiles'
@@ -28,6 +29,8 @@ export type RunnerTarget = {
   sessionId?: string
   mode?: PermissionMode
   think?: Think
+  /** A `--model` value from the initialize list; undefined is the account's default. */
+  model?: string
 }
 
 type Listener = {
@@ -41,6 +44,8 @@ type Listener = {
   askGone(requestId: string): void
   /** The CLI changed the mode itself (e.g. leaving plan mode). */
   modeChanged?(mode: PermissionMode): void
+  /** The models this account can use, from the initialize response. */
+  models?(list: ModelOption[]): void
 }
 
 const live = new Set<ClaudeRunner>()
@@ -56,6 +61,7 @@ export class ClaudeRunner {
   #seq = 0
   /** Respawn before the next turn (effort changed while a turn ran). */
   #stale = false
+  #initId: string | undefined
 
   constructor(target: RunnerTarget, listener: Listener) {
     this.#target = target
@@ -80,6 +86,12 @@ export class ClaudeRunner {
   setMode(mode: PermissionMode) {
     this.#target = { ...this.#target, mode }
     if (this.#proc) this.#control({ subtype: 'set_permission_mode', mode })
+  }
+
+  /** Switch the model: live through `set_model` if the process is up, else `--model` at the next spawn. */
+  setModel(model: string | undefined) {
+    this.#target = { ...this.#target, model }
+    if (this.#proc) this.#control({ subtype: 'set_model', model: model ?? 'default' })
   }
 
   /** Thinking off applies live; on and max change `--effort`, so the process restarts between turns. */
@@ -123,8 +135,10 @@ export class ClaudeRunner {
     stdin.flush()
   }
 
-  #control(request: Record<string, unknown>) {
-    this.#write({ type: 'control_request', request_id: `vellum-${++this.#seq}`, request })
+  #control(request: Record<string, unknown>): string {
+    const id = `vellum-${++this.#seq}`
+    this.#write({ type: 'control_request', request_id: id, request })
+    return id
   }
 
   /** Quietly end an idle process so the next turn respawns with the new flags. */
@@ -155,7 +169,7 @@ export class ClaudeRunner {
 
   #ensure() {
     if (this.#proc) return this.#proc
-    const { workspace, profile, sessionId, mode, think } = this.#target
+    const { workspace, profile, sessionId, mode, think, model } = this.#target
     const argv = [
       claudeBin(), '-p',
       '--input-format', 'stream-json',
@@ -164,6 +178,7 @@ export class ClaudeRunner {
       '--permission-mode', mode ?? defaultMode,
       '--permission-prompts', 'host', '--permission-prompt-tool', 'stdio',
       ...(think === 'max' ? ['--effort', 'max'] : []),
+      ...(model && model !== 'default' ? ['--model', model] : []),
       ...(sessionId ? ['--resume', sessionId] : []),
     ]
     this.#stderr = ''
@@ -179,7 +194,7 @@ export class ClaudeRunner {
     this.#read(proc)
     this.#readStderr(proc)
     // The host opens the control channel before the first turn, as an SDK host does.
-    this.#control({ subtype: 'initialize', hooks: null })
+    this.#initId = this.#control({ subtype: 'initialize', hooks: null })
     if (think === 'off') this.#control({ subtype: 'set_max_thinking_tokens', max_thinking_tokens: 0 })
     proc.exited.then((code) => {
       if (this.#proc === proc) this.#proc = undefined
@@ -238,13 +253,20 @@ export class ClaudeRunner {
       if (this.#asks.delete(ev.request_id)) this.#listener.askGone(ev.request_id)
       return
     }
-    if (ev.type === 'control_response') return
+    if (ev.type === 'control_response') {
+      const r = ev.response
+      if (r?.request_id === this.#initId && r.subtype === 'success') {
+        const list = modelsFromInit(r.response)
+        if (list) this.#listener.models?.(list)
+      }
+      return
+    }
     if (ev.type === 'system' && ev.subtype === 'status' && ev.permissionMode && ev.permissionMode !== this.#target.mode) {
       this.#target = { ...this.#target, mode: ev.permissionMode }
       this.#listener.modeChanged?.(ev.permissionMode)
     }
-    // Hooks and status chatter are not part of the document.
-    if (ev.type === 'system' && ev.subtype !== 'init') return
+    // Hooks and status chatter are not part of the document; a compaction is.
+    if (ev.type === 'system' && ev.subtype !== 'init' && ev.subtype !== 'compact_boundary') return
     if (ev.type === 'rate_limit_event') return
     if (ev.type === 'system' && ev.subtype === 'init') this.sessionId = ev.session_id
     if (ev.type === 'result') {

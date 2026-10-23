@@ -115,6 +115,7 @@ function MenuPanel({ onClose, items, header, width, side, align, testId }: { onC
   const hi = items[active]
   const danger = hi && (hi.kind ?? 'item') === 'item' && (hi as { destructive?: boolean }).destructive
   const from = side === 'bottom' ? -offset.menu : offset.menu
+  const rows = items.filter((it) => (it.kind ?? 'item') === 'item').length
   let row = 0
   return (
     <DismissableLayer onEscapeKeyDown={onClose} initialFocus={() => panel.current?.id ?? null}>
@@ -172,7 +173,8 @@ function MenuPanel({ onClose, items, header, width, side, align, testId }: { onC
                 onClick={() => pick(i)}
                 initial={{ opacity: 0, top: from * 0.4 }}
                 animate={{ opacity: 1, top: 0 }}
-                transition={tween({ duration: duration.standard, ease: ease.enter, delay: Math.min(n, stagger.maxItems) * stagger.item })}
+                // Rows arrive from the trigger outward: top-down below it, bottom-up above it.
+                transition={tween({ duration: duration.standard, ease: ease.enter, delay: Math.min(side === 'top' ? rows - 1 - n : n, stagger.maxItems) * stagger.item })}
                 style={{ position: 'relative', height: ROW }}
               >
                 <div testId={it.testId} style={{ height: ROW, display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 9, paddingLeft: 9, paddingRight: 8, cursor: it.disabled ? 'default' : 'pointer' }}>

@@ -15,6 +15,8 @@ import { ease, setReducedMotion, tween } from './components/motion'
 import { ClaudeRunner, killAllRunners } from './core/claude'
 import { nameNote } from './core/title'
 import { identityFor, machineAvatar, realName } from './core/avatar'
+import { cacheModels, cachedModels, type ModelOption } from './core/models'
+import { StatusBar } from './ui/StatusBar'
 import { defaultMode, type Ask, type PermissionMode, type Think } from './core/asks'
 import { createProfile, loadProfiles, profileEnv, profileForWorkspace, rememberWorkspace, updateProfile, type Profile } from './core/profiles'
 import { paths, readJson, readSettings, updateSettings, writeJson } from './core/store'
@@ -321,6 +323,7 @@ function App() {
   const [unread, setUnread] = useState<Record<string, number>>({})
   /** Permission asks waiting on you, per note, oldest first. They live as long as their process. */
   const [asks, setAsks] = useState<Record<string, Ask[]>>({})
+  const [models, setModels] = useState<Record<string, ModelOption[]>>(cachedModels)
   const [denying, setDenying] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, Draft>>(() => readJson(paths.drafts, {}))
   const [overlay, setOverlay] = useState<null | 'new' | 'switcher' | 'settings' | 'history' | 'changes'>(null)
@@ -436,7 +439,7 @@ function App() {
       if (runner) return runner
       const profile = profilesRef.current.find((p) => p.id === thread.profileId) ?? profilesRef.current[0]!
       runner = new ClaudeRunner(
-        { threadId: thread.id, workspace: thread.workspace, profile, sessionId: thread.claudeSessionId, mode: thread.mode, think: thread.think },
+        { threadId: thread.id, workspace: thread.workspace, profile, sessionId: thread.claudeSessionId, mode: thread.mode, think: thread.think, model: thread.modelPick },
         {
           ask(a) {
             setAsks((all) => ({ ...all, [thread.id]: [...(all[thread.id] ?? []), a] }))
@@ -450,6 +453,10 @@ function App() {
           },
           modeChanged(mode) {
             record(thread.id, { type: 'vellum/mode', mode })
+          },
+          models(list) {
+            setModels((all) => ({ ...all, [profile.id]: list }))
+            cacheModels(profile.id, list)
           },
           line(raw, ev) {
             appendLine(thread.id, raw)
@@ -686,6 +693,21 @@ function App() {
     },
     [active, record],
   )
+  const setModel = useCallback(
+    (model: string | undefined) => {
+      if (!active) return
+      record(active.id, { type: 'vellum/model', model })
+      runners.current.get(active.id)?.setModel(model)
+    },
+    [active, record],
+  )
+  /** /compact as a turn of its own: no paragraph of yours, just the fold line when it lands. */
+  const compact = useCallback(() => {
+    const thread = threadsRef.current.find((t) => t.id === activeRef.current)
+    if (!thread || thread.running || !thread.claudeSessionId) return
+    record(thread.id, { type: 'vellum/compact', at: new Date().toISOString() })
+    runnerFor(thread).send('/compact')
+  }, [record, runnerFor])
 
   const tokenCtx = useMemo(
     () => ({
@@ -939,8 +961,6 @@ function App() {
                     tokenCtx={tokenCtx}
                     mode={active.mode ?? defaultMode}
                     onMode={setMode}
-                    think={active.think ?? 'on'}
-                    onThink={setThink}
                     // Keys answer only the card that is on screen, and not in its first moments.
                     asking={!pane && pendingAsks.length > 0}
                     onAskKey={(k) => {
@@ -961,6 +981,21 @@ function App() {
                   background: { type: 'linear-gradient', angle: 180, stops: [{ color: m.pane, position: 0 }, { color: `${m.pane.slice(0, 7)}00`, position: 1 }] },
                 }}
               />
+              <div style={{ position: 'absolute', left: 10, bottom: 10 }}>
+                <StatusBar
+                  mode={active.mode ?? defaultMode}
+                  onMode={setMode}
+                  think={active.think ?? 'on'}
+                  onThink={setThink}
+                  models={models[active.profileId]}
+                  model={active.modelPick}
+                  resolvedModel={active.model}
+                  onModel={setModel}
+                  context={active.context}
+                  running={active.running}
+                  onCompact={compact}
+                />
+              </div>
               </div>
             </>
           ) : (

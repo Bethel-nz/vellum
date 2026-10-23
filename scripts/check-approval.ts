@@ -27,6 +27,7 @@ const shot = (n: string) => app.screenshot({ path: 'screenshots/approval-' + n +
 const sent = () => readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
 const answers = () => sent().flatMap((e) => (e.answer ? [e.answer.response] : []))
 const controls = () => sent().flatMap((e) => (e.control ? [e.control] : []))
+const ids = async (prefix: string) => (await app.getByType('div').all()).map((n) => n.testId ?? '').filter((id) => id.startsWith(prefix))
 let failed = 0
 const expect = (label: string, ok: boolean, detail = '') => {
   if (!ok) failed++
@@ -98,7 +99,12 @@ try {
   await c.press('shift-tab')
   await wait(500)
   expect('⇧⇥ sets plan mode live', controls().some((r) => r.subtype === 'set_permission_mode' && r.mode === 'plan'))
-  expect('the pill says Plan', (await app.getByTestId('mode-pill').textContent()).includes('Plan'))
+  await app.getByTestId('mode-pill').click()
+  await wait(400)
+  expect('the mode icon opens its menu upward', (await app.getByTestId('mode-menu').count()) === 1 && (await app.getByTestId('mode-menu').bounds()).y < (await app.getByTestId('mode-pill').bounds()).y)
+  await shot('4-mode-menu')
+  await app.getByTestId('mode-menu').press('escape')
+  await wait(300)
   // Think max is a spawn flag: the idle process restarts and the next turn runs with --effort max
   const spawns = () => sent().flatMap((e) => (e.argv && !e.argv.includes('json') ? [e.argv as string[]] : []))
   const turn = async (text: string) => {
@@ -122,6 +128,31 @@ try {
   const records = readFileSync(path.join(home, 'threads', `${JSON.parse(readFileSync(path.join(home, 'settings.json'), 'utf8')).lastThreadId}.jsonl`), 'utf8')
   expect('mode and think are recorded', records.includes('"vellum/mode"') && records.includes('"vellum/think"'))
   await shot('5-pills')
+
+  // the model switcher has the account's list from initialize, and switches live
+  expect('the model reads Opus 5.5', (await app.getByTestId('model-pill').textContent()).includes('Opus 5.5'))
+  await app.getByTestId('model-pill').click()
+  await wait(400)
+  expect('the list came from initialize', (await app.getByTestId('model-haiku').count()) === 1)
+  await shot('6-model-menu')
+  await app.getByTestId('model-haiku').click()
+  await wait(500)
+  expect('picking Haiku sets it live', controls().some((r) => r.subtype === 'set_model' && r.model === 'haiku'))
+  expect('the model reads Haiku 5.5', (await app.getByTestId('model-pill').textContent()).includes('Haiku 5.5'))
+
+  // context: the ring's count, the card, and Compact
+  expect('context shows the tokens', (await app.getByTestId('context-pill').textContent()).includes('24k'))
+  await app.getByTestId('context-pill').click()
+  await wait(400)
+  expect('the card shows used of window', (await app.getByTestId('context-used').textContent()).includes('24k / 200k'))
+  await shot('7-context')
+  await app.getByTestId('compact').click()
+  await wait(1500)
+  const after = readFileSync(path.join(home, 'threads', `${JSON.parse(readFileSync(path.join(home, 'settings.json'), 'utf8')).lastThreadId}.jsonl`), 'utf8')
+  expect('Compact sends /compact as its own turn', after.includes('"vellum/compact"') && !after.includes('"text":"/compact"'))
+  expect('the fold line is in the note', (await ids('compact-')).length === 1)
+  expect('the ring drops to the summary', (await app.getByTestId('context-pill').textContent()).includes('1.9k'))
+  await shot('8-compacted')
 } finally {
   await app.close()
 }

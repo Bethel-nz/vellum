@@ -304,3 +304,29 @@ channel, which does the same job:
 - **Unverified**: only macOS was run. The Windows and Linux branches were exercised by faking
   `process.platform` (labels, keys, shell argv), not on a real machine. GPUIX ships
   linux-x64-gnu and win32 x64/arm64 builds.
+
+## 2026-10-23 — the status bar: mode, thinking, model, context, compacting
+
+- **Bottom-left, small, upward.** The mode and thinking left the composer for a status bar in
+  the note's bottom-left corner (ui/StatusBar.tsx): the mode as an icon (shield Ask, pencil
+  Edits, checklist Plan, bolt Auto, ban Don't ask, open lock Full access in amber), thinking as a
+  bulb (faint off, plain on, accent with a dot at max), the model as its short name, context as
+  a ring with the count. Names live in tooltips and menus. Everything opens upward from there,
+  the approval card included (it moved from bottom-right to just above the bar); the toast moved
+  to bottom-right. Menus above their trigger now stagger rows bottom-up, from the trigger
+  outward; that was the "opens top to bottom" feel.
+- **Models come from the CLI.** `initialize` answers with the account's list (`value`,
+  `displayName`, `description`, `resolvedModel`; Fable only with usage credits). Vellum caches
+  it per profile in ~/.vellum/models.json, so the switcher has it before a session's first turn,
+  and falls back to default/opus/sonnet/haiku. A pick is `vellum/model`: `set_model` on a live
+  process, `--model` at the next spawn; "default" means no flag (spikes/models-usage.ts).
+- **Context** is the last top-level reply's `input + cache_creation + cache_read + output`
+  tokens, against `modelUsage[model].contextWindow` from the result (haiku and opus report 1M
+  on this account). The ring turns amber at 70% and red at 90%.
+- **Compacting** is `/compact` sent as a stream-json user turn of its own (no paragraph of
+  yours, `vellum/compact` marks it running). The CLI answers `system/compact_boundary` with
+  `pre_tokens` and `post_tokens`, so the ring drops at once, and the note gets a hairline fold:
+  "Claude summarized everything above · 24k tokens before". Auto-compaction lands the same line
+  with "Context was full". It cost $0.001 on haiku (spikes/compact.ts).
+- fake-claude answers `initialize` with two models, honours `set_model`, reports usage and a
+  200k window, and answers `/compact` with a boundary, so check-approval covers all of it.
