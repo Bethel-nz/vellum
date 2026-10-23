@@ -9,7 +9,7 @@ import type { Profile } from '../core/profiles'
 import { suggest, tagsIn, tagText, type Suggestion } from '../core/tags'
 import { TokenRow, type TokenContext } from './Tokens'
 import type { Tag } from '../core/threads'
-import { Icon, Meta, useM } from './kit'
+import { FileIcon, Icon, Meta, useM } from './kit'
 import { motion as m_ } from '@gpuix/react'
 import { concentric, font, motion, radiusBase, type } from './theme'
 
@@ -72,7 +72,7 @@ function TagPopup({
               cursor: 'pointer',
             }}
           >
-            <Icon name={s.type === 'skill' ? 'sparkle' : s.type === 'folder' ? 'folder' : 'file'} size={13} />
+            {s.type === 'file' ? <FileIcon path={s.value} size={13} /> : <Icon name={s.type === 'skill' ? 'sparkle' : 'folder'} size={13} />}
             <text style={{ flexGrow: 1, minWidth: 0, fontSize: 12.5, lineHeight: 16, color: m.text, fontFamily: s.type === 'skill' ? font.sans : font.mono, whiteSpace: 'nowrap', textOverflow: 'ellipsis-start' }}>
               {s.type === 'skill' ? s.value : s.label}
             </text>

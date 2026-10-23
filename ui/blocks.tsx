@@ -6,7 +6,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyEvent } from '@gpuix/react'
 import { hunksOnly, type Block, type Tag, type ToolCall } from '../core/threads'
 import { getTerm } from '../core/term'
-import { Icon, Meta, Quiet, useM } from './kit'
+import { FileIcon, Icon, Meta, Quiet, useM } from './kit'
 import { TerminalBlock } from './TerminalBlock'
 import { TokenText, type TokenContext } from './Tokens'
 import { tokens } from '../core/tags'
@@ -237,6 +237,7 @@ function EditBlock({ block }: { block: Extract<Block, { kind: 'edit' }> }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <text style={{ fontSize: 13, lineHeight: 18, color: m.textMuted }}>Edit</text>
+        <FileIcon path={block.path} size={12} />
         <text style={{ fontSize: 12.5, lineHeight: 18, color: m.text, fontFamily: font.mono }}>{block.path}</text>
         <text style={{ ...type.meta, color: m.success, fontFamily: font.mono }}>{`+${block.added}`}</text>
         <text style={{ ...type.meta, color: m.danger, fontFamily: font.mono }}>{`−${block.removed}`}</text>

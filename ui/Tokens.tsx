@@ -110,7 +110,7 @@ function TokenChip({ token, hover, testId }: { token: Extract<Token, { kind: 'ta
   const key = keyOf(token.tag)
   const label = token.tag.type === 'skill' ? token.tag.value : token.text.replace(/^[#@]/, '')
   return (
-    <Chip kind={chipKind(token.tag)} testId={testId} onHover={token.tag.type === 'file' ? (inside) => (inside ? hover.enter(key) : hover.leave()) : undefined}>
+    <Chip kind={chipKind(token.tag)} path={token.tag.type === 'file' ? token.tag.value : undefined} testId={testId} onHover={token.tag.type === 'file' ? (inside) => (inside ? hover.enter(key) : hover.leave()) : undefined}>
       {label}
     </Chip>
   )

@@ -119,12 +119,12 @@ export type Material = {
   scrollbarHover: string
   shadow: string
   /** Syntax colours for <code>, <markdown> and <diff>. */
-  syntax: { keyword: string; function: string; string: string; comment: string; number: string; typeName: string; constant: string; tag: string; variable: string; punctuation: string; link: string }
+  syntax: { keyword: string; function: string; string: string; comment: string; number: string; typeName: string; constant: string; tag: string; variable: string; punctuation: string; link: string; special: string }
   /** Account dots, in profile order. */
   accents: string[]
 }
 
-const accents = ['#BBB0FF', '#7aa2f7', '#9ece6a', '#ff9e64', '#7dcfff', '#e0af68', '#f7768e']
+const accents = ['#BBB0FF', '#7aa2f7', '#9ece6a', '#ff9e64', '#7dcfff', '#e0af68', '#f7768e', '#1abc9c']
 
 export const groknight: Material = {
   name: 'groknight',
@@ -174,7 +174,8 @@ export const groknight: Material = {
   shadow: '#00000099',
   syntax: {
     keyword: '#BBB0FF', function: '#FFA86B', string: '#C8E997', comment: '#60e67d', number: '#f8ca73',
-    typeName: '#f8ca73', constant: '#fe6767', tag: '#fe6767', variable: '#ffffff', punctuation: '#d6d3d1', link: '#f6a9ff',
+    typeName: '#f8ca73', constant: '#f8ca73', tag: '#fe6767', variable: '#ffffff', punctuation: '#d6d3d1', link: '#f6a9ff',
+    special: '#fe6767',
   },
   accents,
 }
@@ -227,7 +228,7 @@ export const smoke: Material = {
   shadow: '#00000066',
   syntax: {
     keyword: '#c39ae0', function: '#98b9f2', string: '#97d8b0', comment: '#66666e', number: '#ecca85',
-    typeName: '#8ad6dc', constant: '#ecca85', tag: '#e5766b', variable: '#fafafa', punctuation: '#a1a1aa', link: '#98b9f2',
+    typeName: '#8ad6dc', constant: '#ecca85', tag: '#e5766b', variable: '#fafafa', punctuation: '#a1a1aa', special: '#ecca85', link: '#98b9f2',
   },
   accents,
 }
@@ -280,7 +281,7 @@ export const frost: Material = {
   shadow: '#0000001f',
   syntax: {
     keyword: '#8040b0', function: '#2457c5', string: '#1f7a4a', comment: '#8a8a92', number: '#8a6200',
-    typeName: '#1a7680', constant: '#8a6200', tag: '#b4372d', variable: '#171717', punctuation: '#57575f', link: '#2457c5',
+    typeName: '#1a7680', constant: '#8a6200', tag: '#b4372d', variable: '#171717', punctuation: '#57575f', special: '#8a6200', link: '#2457c5',
   },
   accents,
 }
@@ -314,7 +315,8 @@ function syntaxTheme(m: Material): GpuixTheme['syntax'] {
     keyword: x.keyword, function: x.function, functionBuiltin: x.function, string: x.string, stringSpecial: x.string,
     comment: x.comment, number: x.number, boolean: x.number, typeName: x.typeName, typeBuiltin: x.typeName,
     attribute: x.number, constant: x.constant, tag: x.tag, variable: x.variable, property: x.variable,
-    punctuation: x.punctuation, operator: x.punctuation,
+    punctuation: x.punctuation, operator: x.punctuation, escape: x.number, variableSpecial: x.special, label: x.link,
+    ['constructor' as string]: x.special,
   } as unknown as GpuixTheme['syntax']
 }
 
