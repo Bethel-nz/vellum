@@ -1,4 +1,4 @@
-// Self-check for the tab strip: + opens a note in the same folder, ⌘⇧T hides and shows the
+// Self-check for the tab strip: + opens a note in the same folder, ⌃← ⌃→ cycle, ⌘⇧T hides and shows the
 // strip, auto mode tucks it away while you write and the top edge brings it back, ⌃click closes.
 // The strip's state is read from where the page title sits (it moves up by the strip's height).
 //   bun scripts/check-tabs.ts
@@ -34,6 +34,19 @@ try {
   expect('+ adds a tab', (await tabCount()) === before + 1, `${before} → ${await tabCount()}`)
   expect('+ asks nothing', (await app.getByTestId('choose-folder').count()) === 0)
   await shot('1-plus')
+
+  // ⌃← ⌃→ step through the tabs, even from the composer. The current tab is the wide one.
+  const current = async () => {
+    for (const id of await tabIds()) if ((await app.getByTestId(id).bounds()).width > 40) return id
+  }
+  const [first, second] = await tabIds()
+  await c.click()
+  await c.press('ctrl-left')
+  await wait(500)
+  expect('⌃← goes to the previous tab', (await current()) === first, `${await current()}`)
+  await c.press('ctrl-right')
+  await wait(500)
+  expect('⌃→ goes to the next tab', (await current()) === second)
 
   // ⌃click closes that tab again
   const fresh = (await tabIds()).at(-1)!

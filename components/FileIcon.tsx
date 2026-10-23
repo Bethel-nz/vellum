@@ -48,9 +48,10 @@ function tone(m: Material, t: Tone) {
 
 export function fileGlyph(path: string): [number, Tone] {
   const name = path.split('/').pop() ?? path
-  if (byName[name]) return byName[name]
+  // Own keys only: a file called `constructor` must not resolve to Object.prototype's.
+  if (Object.hasOwn(byName, name)) return byName[name]!
   const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : ''
-  return byExt[ext] ?? FILE
+  return Object.hasOwn(byExt, ext) ? byExt[ext]! : FILE
 }
 
 /** A file-type glyph sized like an Icon. `muted` drops the colour, for dense rows. */

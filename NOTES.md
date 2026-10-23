@@ -29,7 +29,7 @@ Findings, choices and deviations from the build prompt. Newest decisions win.
   title, unread-reply badge, last-change time). The active tab shares the page colour. Then +,
   ⌘K and the material toggle. Under it sits the page title with a ⌄ menu: folder and account,
   Rename, Open in Claude Code, Show folder in Finder, Close tab. The account shows on the right.
-  Shortcuts: ⌘N/⌘T new, ⇧⌘W close tab, ⌘1–⌘9, ⌘⇧[ / ⌘⇧]. Open tabs persist in `settings.json`.
+  Shortcuts: ⌘N/⌘T new, ⇧⌘W close tab, ⌘1–⌘9, ⌘⇧[ / ⌘⇧], ⌃← / ⌃→ (macOS gives ⌃-arrows to Spaces by default; turn that off in Keyboard Shortcuts › Mission Control to use them here). Open tabs persist in `settings.json`.
 - **Default profile uses Claude Code's own default config** (`configDir: null` → `CLAUDE_CONFIG_DIR`
   unset), so the account already logged in on this Mac works on first run. Profiles added in the
   app get `~/.vellum/profiles/<id>/claude/` with symlinks from `shared/`.

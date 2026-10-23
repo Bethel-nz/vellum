@@ -626,10 +626,21 @@ function App() {
 
   // ---- shortcuts
 
+  const cycleTab = (step: number) => {
+    const i = activeId ? tabs.indexOf(activeId) : -1
+    if (tabs.length) setActiveId(tabs[(i + step + tabs.length) % tabs.length])
+  }
+
   shortcuts.current = (e: KeyEvent) => {
     const mods = e.modifiers
-    if (!mods?.cmd) return
     const key = (e.key ?? '').toLowerCase()
+    // ⌃← ⌃→ step through the tabs (macOS text fields give ⌃-arrows no meaning of their own).
+    if (mods?.ctrl && !mods.cmd && !mods.alt && (key === 'left' || key === 'right' || key === 'arrowleft' || key === 'arrowright')) {
+      e.preventDefault()
+      cycleTab(key.endsWith('left') ? -1 : 1)
+      return
+    }
+    if (!mods?.cmd) return
     if ((key === 'n' || key === 't') && !mods.shift) {
       e.preventDefault()
       setOverlay('new')
@@ -643,9 +654,7 @@ function App() {
       if (id) setActiveId(id)
     } else if (mods.shift && (key === '[' || key === ']' || key === '{' || key === '}' || key === 'bracketleft' || key === 'bracketright')) {
       e.preventDefault()
-      const step = key === '[' || key === '{' || key === 'bracketleft' ? -1 : 1
-      const i = activeId ? tabs.indexOf(activeId) : -1
-      if (tabs.length) setActiveId(tabs[(i + step + tabs.length) % tabs.length])
+      cycleTab(key === '[' || key === '{' || key === 'bracketleft' ? -1 : 1)
     } else if (key === 'k') {
       e.preventDefault()
       setOverlay((o) => (o === 'switcher' ? null : 'switcher'))
