@@ -14,6 +14,7 @@ import { Button, Label } from './Button'
 import { Dot } from './Dot'
 import { Field } from './Field'
 import { Kbd } from './Kbd'
+import { Scroll } from './Scroll'
 import { duration, ease, offset, spring, tween } from './motion'
 import { useM } from './theme'
 
@@ -109,14 +110,14 @@ function Card({ ask, preview, more, denying, onDenying, onAllow, onAlways, onDen
           <text style={{ fontSize: 13.5, lineHeight: 18, fontWeight: 500, color: m.text }}>{ask.title}</text>
           {preview && ask.detail ? <text testId="approval-path" style={{ fontSize: 11.5, lineHeight: 16, color: m.textMuted, fontFamily: font.mono }}>{ask.detail}</text> : null}
           {preview ? (
-            <div testId="approval-preview" style={{ maxHeight: 240, overflowY: 'scroll', scrollbarColor: m.scrollbar, scrollbarWidth: 6 }}>
+            <Scroll testId="approval-preview" style={{ maxHeight: 240 }}>
               {preview}
-            </div>
+            </Scroll>
           ) : ask.detail && ask.detail !== ask.title.split(' ').slice(1).join(' ') ? (
             // The whole command, never clamped: long ones scroll inside the card.
-            <div style={{ maxHeight: 168, overflowY: 'scroll', scrollbarColor: m.scrollbar, scrollbarWidth: 6, paddingLeft: 10, paddingRight: 10, paddingTop: 7, paddingBottom: 7, borderRadius: concentric(radiusXl, pad - 4), backgroundColor: m.codeBg, borderWidth: 1, borderColor: m.border }}>
+            <Scroll style={{ maxHeight: 168, borderRadius: concentric(radiusXl, pad - 4), backgroundColor: m.codeBg, borderWidth: 1, borderColor: m.border }} padding={{ left: 10, right: 10, top: 7, bottom: 7 }}>
               <text testId="approval-detail" style={{ fontSize: 12.5, lineHeight: 18, color: m.text, fontFamily: font.mono }}>{ask.detail}</text>
-            </div>
+            </Scroll>
           ) : null}
         </div>
         <AnimatePresence initial={false}>

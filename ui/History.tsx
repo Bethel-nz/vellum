@@ -4,7 +4,7 @@
 
 import { useMemo, useRef, useState } from 'react'
 import type { KeyEvent, PublicInstance } from '@gpuix/react'
-import { Button, SidePanel } from '../components'
+import { Button, Scroll, SidePanel } from '../components'
 import { keys, primary } from '../core/platform'
 import type { Profile } from '../core/profiles'
 import type { Thread } from '../core/threads'
@@ -96,7 +96,7 @@ export function History({
           <Icon name="x" size={13} />
         </Button>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, overflowY: 'scroll', scrollbarColor: m.scrollbar, scrollbarWidth: 6, padding: 6 }}>
+      <Scroll style={{ flexGrow: 1 }} padding={6}>
         {flat.length === 0 ? (
           <div style={{ padding: 14 }}>
             <text style={{ fontSize: 13, lineHeight: 18, color: m.textMuted }}>{threads.length ? 'No note matches.' : 'No notes yet.'}</text>
@@ -123,7 +123,7 @@ export function History({
             })}
           </div>
         ))}
-      </div>
+      </Scroll>
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', paddingLeft: 16, paddingRight: 12, height: 36, borderTopWidth: 1, borderColor: m.border, flexShrink: 0 }}>
         <Meta>{keys('↩ open · ⌃N ⌃P move · esc close')}</Meta>
       </div>

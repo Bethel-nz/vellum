@@ -8,7 +8,7 @@
 import { useMemo, useState } from 'react'
 import type { EventPayload } from '@gpuix/react'
 import { motion } from '@gpuix/react'
-import { Button, Dot, Field, FileIcon, Icon, Label, SidePanel } from '../components'
+import { Button, Dot, Field, FileIcon, Icon, Label, Scroll, SidePanel } from '../components'
 import { duration, ease, tween } from '../components/motion'
 import { collectChanges, type FileChange, type Hunk } from '../core/changes'
 import type { HunkNote, Thread } from '../core/threads'
@@ -53,7 +53,7 @@ export function Changes({ open, onClose, thread, onAdd }: { open: boolean; onClo
           <Icon name="x" size={13} />
         </Button>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, overflowY: 'scroll', scrollbarColor: m.scrollbar, scrollbarWidth: 6, paddingLeft: 8, paddingRight: 8, paddingBottom: 8 }}>
+      <Scroll style={{ flexGrow: 1 }} padding={{ left: 8, right: 8, bottom: 8 }}>
         {groups.length === 0 ? (
           <div style={{ padding: 14 }}>
             <text style={{ fontSize: 13, lineHeight: 18, color: m.textMuted }}>Claude hasn't changed any files in this note.</text>
@@ -70,7 +70,7 @@ export function Changes({ open, onClose, thread, onAdd }: { open: boolean; onClo
             })}
           </div>
         ))}
-      </div>
+      </Scroll>
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6, height: 50, paddingLeft: 12, paddingRight: 12, borderTopWidth: 1, borderColor: m.border, flexShrink: 0 }}>
         <Button onPress={() => setPicked(selected.length === all.length ? {} : Object.fromEntries(all.map((h) => [h.id, true])))} testId="changes-select-all" disabled={!all.length}>
           <Label muted>{selected.length === all.length && all.length ? 'Select none' : 'Select all'}</Label>

@@ -18,7 +18,7 @@ import path from 'node:path'
 import type { Profile } from '../core/profiles'
 import type { Thread } from '../core/threads'
 import { Dot, Icon, Kbd, Meta, Quiet, useM } from './kit'
-import { Tooltip } from '../components'
+import { Scroll, Tooltip } from '../components'
 import { accentFor, concentric, font, motion as mo, radiusXl, shortPath } from './theme'
 
 function Sheet({ open, onClose, width, children, initialFocus }: { open: boolean; onClose: () => void; width: number; children: ReactNode; initialFocus?: React.RefObject<PublicInstance | null> }) {
@@ -333,7 +333,7 @@ export function ThreadSwitcher({
         />
         <Kbd>⌃N ⌃P</Kbd>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 420, overflowY: 'scroll', scrollbarColor: m.scrollbar, scrollbarWidth: 6, padding: 6 }}>
+      <Scroll style={{ maxHeight: 420 }} padding={6}>
         {flat.length === 0 ? (
           <div style={{ padding: 14 }}>
             <text style={{ fontSize: 13, lineHeight: 18, color: m.textMuted }}>{threads.length ? 'No thread matches.' : 'No threads yet.'}</text>
@@ -358,7 +358,7 @@ export function ThreadSwitcher({
             })}
           </div>
         ))}
-      </div>
+      </Scroll>
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 10, paddingRight: 10, height: 38, borderTopWidth: 1, borderColor: m.border }}>
         <Quiet onPress={onNew} testId="switcher-new">
           <Icon name="plus" size={12} />
