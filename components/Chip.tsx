@@ -1,6 +1,6 @@
-// Inline context tokens. A tag in your text (`@skill`, `@folder`, `#file`, `#file:42`) renders as
-// a chip: radius 5, chip wash, hairline, mono 11.5. Skills are violet (Claude's `skill` colour);
-// a line-scoped file chip carries a violet left edge; files lead with their file-type glyph.
+// Inline context references. A tag in your text (`@skill`, `@folder`, `#file`, `#file:42`) reads
+// as a link in a document, not a form chip (UI-FIXES §7): its file-type glyph, then the path on a
+// 1px dashed blue rule, with `:42` in muted. Skills are violet text on a violet rule.
 
 import type { ReactNode } from 'react'
 import { font } from '../ui/theme'
@@ -28,6 +28,12 @@ export function Chip({
 }) {
   const m = useM()
   const skill = kind === 'skill'
+  const label = String(children)
+  // `:42` reads as a suffix of the path, not part of it.
+  const line = kind === 'line' ? /:(\d+)$/.exec(label) : null
+  const base = line ? label.slice(0, line.index) : label
+  const ink = skill ? m.accent : m.text
+  const rule = skill ? m.accent + '66' : m.blue + 'aa'
   return (
     <div
       testId={testId}
@@ -40,27 +46,20 @@ export function Chip({
         alignItems: 'center',
         gap: 4,
         height: 20,
-        paddingLeft: kind === 'line' ? 6 : 5,
-        paddingRight: 6,
-        borderRadius: 5,
-        backgroundColor: skill ? m.skillBg : m.chipBg,
-        borderWidth: 1,
-        borderColor: m.border,
-        position: 'relative',
-        overflow: 'hidden',
         flexShrink: 0,
         cursor: onPress || onHover ? 'pointer' : 'default',
-        hover: onHover ? { borderColor: m.borderFocused } : undefined,
       }}
     >
-      {/* GPUIX borders take one colour for all sides, so the violet edge is its own bar. */}
-      {kind === 'line' ? <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 2, backgroundColor: m.accent }} /> : null}
       {path && (kind === 'file' || kind === 'line') ? (
         <FileIcon path={path} size={11} />
       ) : (
-        <Icon name={skill ? 'sparkle' : kind === 'folder' ? 'folder' : 'file'} size={11} color={skill ? m.accent : m.textMuted} />
+        <Icon name={skill ? 'sparkle' : 'folder'} size={11} color={skill ? m.accent : m.textMuted} />
       )}
-      <text style={{ fontSize: 11.5, lineHeight: 15, color: skill ? m.accent : m.textUi, fontFamily: skill ? font.sans : font.mono, whiteSpace: 'nowrap' }}>{children}</text>
+      {/* A reference, not a form field: text on a 1px rule. GPUIX has no dotted border; dashed is closest. */}
+      <div style={{ display: 'flex', flexDirection: 'row', borderBottomWidth: 1, borderStyle: 'dashed', borderColor: rule, paddingBottom: 1, hover: onHover ? { borderColor: skill ? m.accent : m.blue } : undefined }}>
+        <text style={{ fontSize: 12.5, lineHeight: 16, color: ink, fontFamily: skill ? font.sans : font.mono, whiteSpace: 'nowrap' }}>{base}</text>
+        {line ? <text style={{ fontSize: 12.5, lineHeight: 16, color: m.textMuted, fontFamily: font.mono, whiteSpace: 'nowrap' }}>{`:${line[1]}`}</text> : null}
+      </div>
     </div>
   )
 }
