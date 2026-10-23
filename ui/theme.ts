@@ -9,6 +9,7 @@
 // smoke/frost oklch sources were converted with culori (scripts/oklch.ts).
 
 import type { GpuixTheme } from '@gpuix/react'
+import { nerdFamily, preferredTerminalFamily } from '../core/fonts'
 
 export type MaterialName = 'groknight' | 'smoke' | 'frost'
 export const materialNames: MaterialName[] = ['groknight', 'smoke', 'frost']
@@ -28,13 +29,18 @@ export const headerHeight = 36
 /** Space from the top of the pane to the first line of the note: the header band plus 16. Set once. */
 export const contentInset = headerHeight + 16
 
+const nerd = nerdFamily()
+const hasTermFont = nerd === preferredTerminalFamily
+
 export const font = {
   sans: 'Geist',
   mono: 'Geist Mono',
-  /** Terminal grid, as in the Ghostty theme. Installed system-wide; SF Mono metrics. */
-  term: 'Liga SFMono Nerd Font',
-  /** Cell advance of `term` in em: 1266/2048 from its hmtx table (spikes/mono-advance.py). */
-  termAdvance: 1266 / 2048,
+  /** Terminal grid, as in the Ghostty theme, when that Nerd Font is installed; else the bundled Geist Mono. */
+  term: hasTermFont ? preferredTerminalFamily : 'Geist Mono',
+  /** Cell advance of `term` in em, from its hmtx table (spikes/mono-advance.py): 1266/2048, Geist Mono 600/1000. */
+  termAdvance: hasTermFont ? 1266 / 2048 : 0.6,
+  /** File-type glyphs (components/FileIcon.tsx); undefined when no Nerd Font is installed. */
+  icons: nerd,
   /** If a family fails to register, GPUI falls back per glyph; these are the named fallbacks. */
   sansFallback: 'Inter',
   monoFallback: 'SF Mono',
@@ -334,8 +340,10 @@ export function accentFor(m: Material, profiles: Array<{ id: string }>, id: stri
 
 /** The last two segments of a path, for rows that show the rest in a tooltip. */
 export const shortPath = (p: string) => {
-  const parts = p.replace(/\/+$/, '').split('/').filter(Boolean)
-  return parts.length > 2 ? `…/${parts.slice(-2).join('/')}` : p
+  // Either separator, so Windows paths shorten too; shown with the one the path uses.
+  const sep = p.includes('\\') && !p.includes('/') ? '\\' : '/'
+  const parts = p.split(/[\\/]+/).filter(Boolean)
+  return parts.length > 2 ? `…${sep}${parts.slice(-2).join(sep)}` : p
 }
 
 export function nativeTheme(m: Material): GpuixTheme {

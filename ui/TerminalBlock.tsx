@@ -4,6 +4,7 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { useGpuixRequired, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import type { CellColor, Grid, Run } from '../core/ghostty'
+import { isTerminalLeave, keys, pasteText, terminalPrimary } from '../core/platform'
 import type { TermSession } from '../core/term'
 import { Meta, Quiet, useM } from './kit'
 import { concentric, font, radiusBase, type Material } from './theme'
@@ -175,17 +176,19 @@ export function TerminalBlock({
   const onKeyDown = (e: KeyEvent) => {
     if (!session || !running) return
     const mods = e.modifiers
-    if (mods?.cmd) {
-      if (e.key === 'escape') {
+    if (isTerminalLeave(e.key ?? '', mods)) {
+      e.preventDefault()
+      setFocused(false)
+      onReturnFocus?.()
+      return
+    }
+    if (terminalPrimary(mods)) {
+      if (e.key === 'v') {
         e.preventDefault()
-        setFocused(false)
-        onReturnFocus?.()
-      } else if (e.key === 'v') {
-        e.preventDefault()
-        const text = Bun.spawnSync(['pbpaste']).stdout.toString()
+        const text = pasteText()
         if (text) session.paste(text)
       }
-      return // other Cmd shortcuts stay with the app
+      return // the app's other shortcuts stay with the app (⌘ on macOS, Ctrl+Shift elsewhere)
     }
     e.preventDefault()
     e.stopPropagation()
@@ -228,7 +231,7 @@ export function TerminalBlock({
           {title}
         </text>
         {running ? (
-          <Meta>{focused ? 'running · ⌘Esc to leave' : 'running · click to type'}</Meta>
+          <Meta>{focused ? keys('running · ⌘Esc to leave') : 'running · click to type'}</Meta>
         ) : exitCode !== undefined ? (
           <Meta color={exitCode === 0 ? m.textFaint : m.danger}>{`exit ${exitCode}`}</Meta>
         ) : null}

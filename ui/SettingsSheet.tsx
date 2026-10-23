@@ -4,6 +4,7 @@
 import { Segmented, Sheet, SheetHeader, SheetRow, SheetSection, Switch } from '../components'
 import type { Settings } from '../core/store'
 import type { MaterialName } from './theme'
+import { keys } from '../core/platform'
 
 export type TabMode = NonNullable<Settings['tabs']>
 export type MotionPref = 'system' | 'reduce' | 'full'
@@ -52,7 +53,7 @@ export function SettingsSheet({
           <Switch testId="set-translucent" checked={translucent} onChange={onTranslucent} label="Translucent window" />
         </SheetRow>
       </SheetSection>
-      <SheetSection label="Tabs" hint="⌘⇧T shows or hides the tab strip in any mode.">
+      <SheetSection label="Tabs" hint={keys('⇧⌘T shows or hides the tab strip in any mode.')}>
         <SheetRow label="Tab strip" detail="Auto tucks it away while you write; hidden keeps it gone.">
           <Segmented
             testId="set-tabs"

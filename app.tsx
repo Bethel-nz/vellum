@@ -14,11 +14,13 @@ import { FloatingLayer } from '@gpuix/react/floating'
 import { ease, setReducedMotion, tween } from './components/motion'
 import { ClaudeRunner, killAllRunners } from './core/claude'
 import { nameNote } from './core/title'
+import { identityFor, machineAvatar, realName } from './core/avatar'
 import { defaultMode, type Ask, type PermissionMode, type Think } from './core/asks'
 import { createProfile, loadProfiles, profileEnv, profileForWorkspace, rememberWorkspace, updateProfile, type Profile } from './core/profiles'
 import { paths, readJson, readSettings, updateSettings, writeJson } from './core/store'
 import { promptFor, tagsIn } from './core/tags'
 import { killAllTerms, startTerm, type TermSession } from './core/term'
+import { claudeBin, hasPty, isMac, keys, openConsole, primary, revealFolder, revealLabel, shellArgv, tabStep } from './core/platform'
 import {
   appendLine,
   appendRecord,
@@ -65,6 +67,8 @@ const SOLID = process.env.VELLUM_SOLID === '1'
 // Window material is fixed when the window opens: translucency and blur apply on next launch.
 const TRANSLUCENT = !SOLID && readSettings().translucent === true
 const START_BLUR = !SOLID && (TRANSLUCENT || wantsBlur(materials[readSettings().material ?? 'groknight']))
+/** Your Mac account picture and name, read once at launch (core/avatar.ts). */
+const MACHINE_ME = { src: machineAvatar(), name: realName() }
 /** Most tabs open at once: one per ⌘1–⌘9. The rest live in History (⌘Y). */
 const MAX_TABS = 9
 /** ↵ / ⌘↵ in the composer don't answer a card younger than this. */
@@ -134,7 +138,7 @@ const Document = memo(function Document({
           <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Meta color={m.textMuted}>Working…</Meta>
             <Quiet onPress={onStop} testId="stop" title="Stop">
-              <Meta color={m.textFaint}>Stop ⌘.</Meta>
+              <Meta color={m.textFaint}>{keys('Stop ⌘.')}</Meta>
             </Quiet>
           </div>
         </Paragraph>
@@ -212,7 +216,7 @@ function NoteMenu({
       },
     },
     { label: 'Open in Claude Code', icon: 'terminal', testId: 'menu-open-claude', disabled: !canOpenClaude, onSelect: onOpenClaude },
-    { label: 'Show folder in Finder', icon: 'folder', onSelect: () => Bun.spawn(['open', thread.workspace]) },
+    { label: revealLabel, icon: 'folder', onSelect: () => revealFolder(thread.workspace) },
     { kind: 'separator' },
     { label: 'Close tab', icon: 'x', shortcut: '⇧⌘W', testId: 'menu-close', onSelect: onClose },
   ]
@@ -479,7 +483,7 @@ function App() {
       record(thread.id, { type: 'vellum/shell', termId, command, at: new Date().toISOString() })
       const session = startTerm({
         id: termId,
-        argv: [process.env.SHELL ?? '/bin/zsh', '-lc', command],
+        argv: shellArgv(command),
         cwd: thread.workspace,
         env: process.env,
         cols: terminalCols,
@@ -542,7 +546,7 @@ function App() {
       if (t.length < MAX_TABS) return [...t, id]
       const drop = t.find((x) => !threadsRef.current.find((th) => th.id === x)?.running) ?? t[0]!
       const title = threadsRef.current.find((th) => th.id === drop)?.title ?? 'a note'
-      setTimeout(() => showToast(`Closed “${title}” to keep nine tabs · ⌘Y has it`), 0)
+      setTimeout(() => showToast(keys(`Closed “${title}” to keep nine tabs · ⌘Y has it`)), 0)
       return [...t.filter((x) => x !== drop), id]
     })
     setActiveId(id)
@@ -594,7 +598,13 @@ function App() {
     const profile = profilesRef.current.find((p) => p.id === profileId)
     if (!profile) return
     setOverlay(null)
-    const session = startTerm({ argv: ['claude'], cwd: homedir(), env: profileEnv(profile), cols: 100, rows: 30 })
+    if (!hasPty) {
+      // No PTY on Windows: /login runs in a console window of its own, under this profile.
+      openConsole([claudeBin()], homedir(), profileEnv(profile))
+      showToastRef.current(`Type /login in the new window to sign ${profile.name} in`)
+      return
+    }
+    const session = startTerm({ argv: [claudeBin()], cwd: homedir(), env: profileEnv(profile), cols: 100, rows: 30 })
     setPane({ kind: 'login', profileId, session })
     session.exited.then(() => setPane((p) => (p?.session === session ? null : p)))
   }, [])
@@ -605,8 +615,13 @@ function App() {
     if (!profile) return
     // One writer per session: stop the headless process while the interactive one runs.
     runners.current.get(active.id)?.interrupt()
+    if (!hasPty) {
+      openConsole([claudeBin(), '--resume', active.claudeSessionId], active.workspace, profileEnv(profile))
+      showToastRef.current('Opened in a Claude Code window')
+      return
+    }
     const session = startTerm({
-      argv: ['claude', '--resume', active.claudeSessionId],
+      argv: [claudeBin(), '--resume', active.claudeSessionId],
       cwd: active.workspace,
       env: profileEnv(profile),
       cols: 100,
@@ -681,9 +696,11 @@ function App() {
     [active?.id, active?.workspace, active?.tagScopes, record],
   )
 
+  const me = useMemo(() => identityFor(activeProfile, MACHINE_ME), [activeProfile?.avatarImage])
   const actions: BlockActions = useMemo(
     () => ({
       tokens: tokenCtx,
+      me,
       onEdit: (blockId, text) => active && record(active.id, { type: 'vellum/edit', blockId, text }),
       onSend: () => sendRef.current(),
       onLogin: () => active && openLogin(active.profileId),
@@ -695,7 +712,7 @@ function App() {
       },
       onReturnFocus: focusComposer,
     }),
-    [active?.id, active?.profileId, focusComposer, openLogin, record, setDraft, tokenCtx],
+    [active?.id, active?.profileId, focusComposer, me, openLogin, record, setDraft, tokenCtx],
   )
 
   // ---- shortcuts
@@ -708,13 +725,17 @@ function App() {
   shortcuts.current = (e: KeyEvent) => {
     const mods = e.modifiers
     const key = (e.key ?? '').toLowerCase()
-    // ⌃← ⌃→ step through the tabs (macOS text fields give ⌃-arrows no meaning of their own).
-    if (mods?.ctrl && !mods.cmd && !mods.alt && (key === 'left' || key === 'right' || key === 'arrowleft' || key === 'arrowright')) {
+    // A list or field that handled the key already (⌃N in a picker is also Ctrl+N, new note, off macOS).
+    if (e.defaultPrevented) return
+    // ⌃← ⌃→ step through the tabs (macOS text fields give ⌃-arrows no meaning of their own);
+    // Ctrl+PgUp/PgDn elsewhere, where Ctrl+arrows move by word.
+    const step = tabStep(key, mods)
+    if (step) {
       e.preventDefault()
-      cycleTab(key.endsWith('left') ? -1 : 1)
+      cycleTab(step)
       return
     }
-    if (!mods?.cmd) return
+    if (!mods || !primary(mods)) return
     if ((key === 'n' || key === 't') && !mods.shift) {
       e.preventDefault()
       setOverlay('new')
@@ -785,9 +806,9 @@ function App() {
   const tabThreads = tabs.map((id) => threads.find((t) => t.id === id)).filter((t): t is Thread => Boolean(t))
   const editsWaiting = active ? pendingEdits(active).length > 0 : false
   const placeholder = !active?.blocks.length
-    ? 'Start writing.  ⌘↵ asks Claude · ! runs a command · @ tags a file'
+    ? keys('Start writing.  ⌘↵ asks Claude · ! runs a command · @ tags a file')
     : editsWaiting
-      ? '⌘↵ tells Claude about your edits'
+      ? keys('⌘↵ tells Claude about your edits')
       : 'Keep writing…'
 
   return (
@@ -1007,7 +1028,7 @@ function App() {
         <Sheet open={confirmClose !== null} onClose={() => setConfirmClose(null)} width={400} testId="confirm-close">
           <SheetHeader title="Claude is still working" onClose={() => setConfirmClose(null)} />
           <SheetSection>
-            <text style={{ fontSize: 13, lineHeight: 19, color: m.textUi }}>Stop it and close this tab? The note and its session stay; you can reopen it with ⌘K.</text>
+            <text style={{ fontSize: 13, lineHeight: 19, color: m.textUi }}>Stop it and close this tab? The note and its session stay; you can reopen it with {keys('⌘K')}.</text>
           </SheetSection>
           <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'flex-end', gap: 6, paddingLeft: 18, paddingRight: 14, paddingBottom: 14 }}>
             <Button onPress={() => setConfirmClose(null)} testId="confirm-cancel">
@@ -1079,12 +1100,11 @@ render(<App />, {
   appName: 'Vellum',
   width: 1080,
   height: 780,
-  titlebarTransparent: true,
+  // macOS: no titlebar and no traffic lights, since Vellum is driven from the keyboard (⌘Q, ⇧⌘W, ⌘M).
+  // GPUIX has no option to hide them, so they sit off the window (see NOTES). Windows and Linux keep
+  // the system title bar: GPUIX can't draw window controls or a drag area there.
+  ...(isMac ? { titlebarTransparent: true, trafficLightX: -200, trafficLightY: -200 } : {}),
   windowBackground: START_BLUR ? 'blurred' : 'opaque',
-  // No traffic lights: Vellum is driven from the keyboard (⌘Q, ⇧⌘W, ⌘M). GPUIX has no option to
-  // hide them, so they sit off the window (see NOTES).
-  trafficLightX: -200,
-  trafficLightY: -200,
   keyboardFocusDim: false,
   focus: process.env.GPUIX_BACKGROUND !== '1',
   onKeyDown(event) {

@@ -16,6 +16,7 @@ import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { createTwoFilesPatch } from 'diff'
 import { alwaysOffer, defaultMode, describe, type Ask, type PermissionMode, type Think } from './asks'
+import { claudeBin } from './platform'
 import type { Profile } from './profiles'
 import { profileEnv } from './profiles'
 import { patchFromInput, relPath, type VellumRecord } from './threads'
@@ -156,7 +157,7 @@ export class ClaudeRunner {
     if (this.#proc) return this.#proc
     const { workspace, profile, sessionId, mode, think } = this.#target
     const argv = [
-      'claude', '-p',
+      claudeBin(), '-p',
       '--input-format', 'stream-json',
       '--output-format', 'stream-json',
       '--verbose', '--include-partial-messages',

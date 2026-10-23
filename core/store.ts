@@ -61,12 +61,5 @@ export function updateSettings(patch: Partial<Settings>) {
   writeJson(paths.settings, { ...readSettings(), ...patch })
 }
 
-/** macOS appearance, read once at startup. `defaults` prints "Dark" in dark mode and errors in light mode. */
-export function systemAppearance(): 'dark' | 'light' {
-  try {
-    const out = Bun.spawnSync(['defaults', 'read', '-g', 'AppleInterfaceStyle'], { stderr: 'ignore' })
-    return out.stdout.toString().trim() === 'Dark' ? 'dark' : 'light'
-  } catch {
-    return 'dark'
-  }
-}
+/** Light or dark, read once at startup (core/platform.ts asks each OS its own way). */
+export { systemAppearance } from './platform'

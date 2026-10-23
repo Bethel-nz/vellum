@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { keys } from '../core/platform'
 import { font } from '../ui/theme'
 import { useM } from './theme'
 
@@ -7,7 +8,7 @@ export function Kbd({ children }: { children: ReactNode }) {
   const m = useM()
   return (
     <div style={{ paddingLeft: 5, paddingRight: 5, height: 18, borderRadius: 5, borderWidth: 1, borderColor: m.borderFocused, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-      <text style={{ fontSize: 10.5, lineHeight: 14, color: m.textMuted, fontFamily: font.mono }}>{children}</text>
+      <text style={{ fontSize: 10.5, lineHeight: 14, color: m.textMuted, fontFamily: font.mono }}>{typeof children === 'string' ? keys(children) : children}</text>
     </div>
   )
 }

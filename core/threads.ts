@@ -183,7 +183,8 @@ export function relPath(workspace: string, file: string) {
   if (!file) return file
   for (const base of [workspace, real(workspace)]) {
     const rel = path.relative(base, file)
-    if (!rel.startsWith('..') && !path.isAbsolute(rel)) return rel
+    // Forward slashes on every OS: the UI and the diffs split on '/'.
+    if (!rel.startsWith('..') && !path.isAbsolute(rel)) return rel.split(path.sep).join('/')
   }
   return file
 }

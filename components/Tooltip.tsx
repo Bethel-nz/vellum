@@ -4,6 +4,7 @@
 import type { ReactNode } from 'react'
 import { motion } from '@gpuix/react'
 import { Tooltip as Root, TooltipContent, TooltipProvider, TooltipTrigger } from '@gpuix/react/tooltip'
+import { keys } from '../core/platform'
 import { concentric, radiusBase } from '../ui/theme'
 import { Kbd } from './Kbd'
 import { enter, offset } from './motion'
@@ -33,7 +34,7 @@ export function Tooltip({ label, shortcut, children, side = 'bottom' }: { label:
           transition={enter('instant')}
           style={{ position: 'relative', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}
         >
-          <text style={{ fontSize: 12, lineHeight: 16, color: m.textUi, whiteSpace: 'nowrap' }}>{label}</text>
+          <text style={{ fontSize: 12, lineHeight: 16, color: m.textUi, whiteSpace: 'nowrap' }}>{keys(label)}</text>
           {shortcut ? <Kbd>{shortcut}</Kbd> : null}
         </motion.div>
       </TooltipContent>

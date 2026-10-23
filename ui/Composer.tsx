@@ -10,6 +10,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
 import { DismissableLayer, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { FloatingLayer } from '@gpuix/react/floating'
 import { cycleModes, modeLabel, modes, type PermissionMode, type Think } from '../core/asks'
+import { keys, primary } from '../core/platform'
 import type { Profile } from '../core/profiles'
 import { Menu } from '../components'
 import { suggest, tagsIn, tagText, type Suggestion } from '../core/tags'
@@ -86,7 +87,7 @@ function TagPopup({
           </div>
         ))}
         <div style={{ display: 'flex', flexDirection: 'row', gap: 10, paddingLeft: 8, paddingTop: 4, paddingBottom: 2 }}>
-          <Meta>⌃N ⌃P to move</Meta>
+          <Meta>{keys('⌃N ⌃P to move')}</Meta>
           <Meta>⇥ or ↩ to insert</Meta>
           <Meta>esc to close</Meta>
         </div>
@@ -170,7 +171,7 @@ export function Composer({
       return
     }
     if (asking && onAskKey && !value.trim() && !open) {
-      const k = e.key === 'enter' ? (mods?.cmd ? 'always' : !mods?.shift && !mods?.ctrl && !mods?.alt ? 'allow' : undefined) : e.key === 'escape' ? 'deny' : undefined
+      const k = e.key === 'enter' ? (primary(mods) ? 'always' : !mods?.shift && !mods?.ctrl && !mods?.alt && !mods?.cmd ? 'allow' : undefined) : e.key === 'escape' ? 'deny' : undefined
       if (k) {
         e.preventDefault()
         onAskKey(k)
@@ -178,7 +179,7 @@ export function Composer({
       }
     }
     if (open) {
-      if (e.key === 'tab' || (mods?.cmd && e.key === 'enter')) {
+      if (e.key === 'tab' || (primary(mods) && e.key === 'enter')) {
         e.preventDefault()
         pick(items[active]!)
         return
@@ -194,14 +195,14 @@ export function Composer({
         return
       }
     }
-    if (e.key === 'enter' && mods?.cmd) {
+    if (e.key === 'enter' && primary(mods)) {
       e.preventDefault()
       onSend()
     }
   }
 
   const shell = value.startsWith('!')
-  const folder = workspace ? workspace.split('/').filter(Boolean).pop() : undefined
+  const folder = workspace ? workspace.split(/[\\/]/).filter(Boolean).pop() : undefined
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, position: 'relative' }}>
       {open ? (
@@ -238,7 +239,7 @@ export function Composer({
         onFocus={onFocusChange ? () => onFocusChange(true) : undefined}
         onBlur={onFocusChange ? () => onFocusChange(false) : undefined}
       />
-      {shell ? <Meta>{`⌘↵ runs this in ${folder ?? 'the folder'}`}</Meta> : null}
+      {shell ? <Meta>{keys(`⌘↵ runs this in ${folder ?? 'the folder'}`)}</Meta> : null}
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: -6 }}>
         {asking && !value.trim() ? (
           <div style={{ paddingLeft: 6 }}>

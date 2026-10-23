@@ -11,7 +11,9 @@ import { TerminalBlock } from './TerminalBlock'
 import { TokenText, type TokenContext } from './Tokens'
 import { tokens } from '../core/tags'
 import { splitFences } from '../core/fences'
-import { concentric, diffHeaderClip, diffTheme, font, nativeTheme, radiusBase, type } from './theme'
+import type { Identity } from '../core/avatar'
+import { copyText, primary } from '../core/platform'
+import { concentric, diffHeaderClip, diffInk, diffTheme, font, nativeTheme, radiusBase, type } from './theme'
 
 const COMMIT_MS = 500
 
@@ -59,7 +61,7 @@ function EditableText({
   useEffect(() => flush, [])
 
   const onKeyDown = (e: KeyEvent) => {
-    if (e.key === 'enter' && e.modifiers?.cmd) {
+    if (e.key === 'enter' && primary(e.modifiers)) {
       e.preventDefault()
       flush()
       onSend()
@@ -92,7 +94,48 @@ function EditableText({
 }
 
 /** Your paragraph. With tokens in it, it reads with chips and turns into its source on click. */
+/**
+ * Who wrote a paragraph: your picture, 16px, in the left margin of your paragraphs only. Claude's
+ * writing stays unmarked: the note is its page, your lines are the annotations with your face on
+ * them. Hovering shows "You · 14:03". No picture on the Mac: a violet monogram.
+ */
+function Author({ me, at, hover }: { me: Identity; at: string; hover: boolean }) {
+  const m = useM()
+  const d = new Date(at)
+  const time = Number.isNaN(d.getTime()) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  const top = (type.user.lineHeight - AVATAR) / 2
+  return (
+    <>
+      <div testId="author" style={{ position: 'absolute', left: -(AVATAR + 10), top, width: AVATAR, height: AVATAR, borderRadius: AVATAR / 2, overflow: 'hidden', backgroundColor: m.skillBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {me.src ? (
+          // The wrapper's overflow does not clip an image: it takes its own radius.
+          <img src={me.src} objectFit="cover" style={{ width: AVATAR, height: AVATAR, borderRadius: AVATAR / 2 }} />
+        ) : (
+          <text style={{ fontSize: 9.5, lineHeight: 12, fontWeight: 600, color: m.accent }}>{me.initial}</text>
+        )}
+      </div>
+      {hover ? (
+        <div style={{ position: 'absolute', right: 0, top: top - 1 }}>
+          <Meta>{time ? `You · ${time}` : 'You'}</Meta>
+        </div>
+      ) : null}
+    </>
+  )
+}
+
+const AVATAR = 16
+
 function UserBlock({ block, actions }: { block: Extract<Block, { kind: 'user' }>; actions: BlockActions }) {
+  const [hover, setHover] = useState(false)
+  return (
+    <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} style={{ position: 'relative' }}>
+      <Author me={actions.me} at={block.at} hover={hover} />
+      <UserText block={block} actions={actions} />
+    </div>
+  )
+}
+
+function UserText({ block, actions }: { block: Extract<Block, { kind: 'user' }>; actions: BlockActions }) {
   const m = useM()
   const [editing, setEditing] = useState(false)
   const hasTokens = block.tags.length > 0 && tokens(block.text, block.tags).some((t) => t.kind === 'tag')
@@ -165,9 +208,7 @@ function CodeCard({ code, language, testId }: { code: string; language: string; 
     return () => clearTimeout(t)
   }, [copied])
   const copy = () => {
-    // GPUIX has no clipboard API yet; macOS first.
-    Bun.spawn(['pbcopy'], { stdin: new Blob([code]) })
-    setCopied(true)
+    if (copyText(code)) setCopied(true)
   }
   return (
     <div
@@ -255,8 +296,8 @@ function EditBlock({ block }: { block: Extract<Block, { kind: 'edit' }> }) {
         <text style={{ fontSize: 13, lineHeight: 18, color: m.textMuted }}>Edit</text>
         <FileIcon path={block.path} size={12} />
         <text style={{ fontSize: 12.5, lineHeight: 18, color: m.text, fontFamily: font.mono }}>{block.path}</text>
-        <text style={{ ...type.meta, color: m.success, fontFamily: font.mono }}>{`+${block.added}`}</text>
-        <text style={{ ...type.meta, color: m.danger, fontFamily: font.mono }}>{`−${block.removed}`}</text>
+        <text style={{ ...type.meta, color: diffInk(m).add, fontFamily: font.mono }}>{`+${block.added}`}</text>
+        <text style={{ ...type.meta, color: diffInk(m).del, fontFamily: font.mono }}>{`−${block.removed}`}</text>
         {block.status === 'error' ? <Meta color={m.danger}>failed</Meta> : null}
       </div>
       {block.error ? <text style={{ ...type.meta, color: m.danger, lineClamp: 3 }}>{block.error}</text> : null}
@@ -333,6 +374,8 @@ function ErrorBlock({ block, onLogin }: { block: Extract<Block, { kind: 'error' 
 export type BlockActions = {
   /** Workspace and tag scopes for chips and their slices. */
   tokens: TokenContext
+  /** Your picture and name, for the margin beside your paragraphs. */
+  me: Identity
   onEdit: (blockId: string, text: string) => void
   onSend: () => void
   onLogin: () => void

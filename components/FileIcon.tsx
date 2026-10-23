@@ -4,6 +4,7 @@
 // falls back to a plain file glyph.
 
 import { font, type Material } from '../ui/theme'
+import { Icon } from './Icon'
 import { useM } from './theme'
 
 type Tone = 'blue' | 'cyan' | 'yellow' | 'orange' | 'green' | 'red' | 'pink' | 'muted'
@@ -47,7 +48,7 @@ function tone(m: Material, t: Tone) {
 }
 
 export function fileGlyph(path: string): [number, Tone] {
-  const name = path.split('/').pop() ?? path
+  const name = path.split(/[\\/]/).pop() ?? path
   // Own keys only: a file called `constructor` must not resolve to Object.prototype's.
   if (Object.hasOwn(byName, name)) return byName[name]!
   const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : ''
@@ -58,8 +59,9 @@ export function fileGlyph(path: string): [number, Tone] {
 export function FileIcon({ path, size = 13, muted }: { path: string; size?: number; muted?: boolean }) {
   const m = useM()
   const [code, t] = fileGlyph(path)
+  if (!font.icons) return <Icon name="file" size={size} color={muted ? m.textMuted : m.textFaint} />
   return (
-    <text style={{ fontFamily: font.term, fontSize: size, lineHeight: size + 2, width: size + 1, textAlign: 'center', flexShrink: 0, color: muted ? m.textMuted : tone(m, t) }}>
+    <text style={{ fontFamily: font.icons, fontSize: size, lineHeight: size + 2, width: size + 1, textAlign: 'center', flexShrink: 0, color: muted ? m.textMuted : tone(m, t) }}>
       {String.fromCodePoint(code)}
     </text>
   )

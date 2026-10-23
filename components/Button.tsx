@@ -10,6 +10,7 @@
 import type { ReactNode } from 'react'
 import { Button as Base } from '@gpuix/react/button'
 import type { PublicInstance, StyleDesc } from '@gpuix/react'
+import { keys } from '../core/platform'
 import { concentric, radiusBase } from '../ui/theme'
 import { useM } from './theme'
 
@@ -45,7 +46,7 @@ export function Button({
     <Base
       ref={buttonRef}
       testId={testId}
-      aria-label={title}
+      aria-label={title === undefined ? undefined : keys(title)}
       disabled={disabled}
       onClick={onPress}
       style={{

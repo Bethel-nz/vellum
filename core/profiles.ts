@@ -4,7 +4,8 @@
 // symlinks to the shared config (settings, CLAUDE.md, skills, agents, commands)
 // and nothing else: the login and the session history (projects/) stay per profile.
 
-import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { linkShared } from './platform'
 import path from 'node:path'
 import { paths, readJson, writeJson } from './store'
 
@@ -17,6 +18,8 @@ export type Profile = {
   workspaces: string[]
   /** Set after a headless run succeeds or reports "Not logged in". */
   loggedIn?: boolean
+  /** An image to show beside your paragraphs on this account, instead of the Mac's picture. */
+  avatarImage?: string
 }
 
 const SHARED = ['settings.json', 'CLAUDE.md', 'skills', 'agents', 'commands'] as const
@@ -63,7 +66,7 @@ export function createProfile(name: string): Profile[] {
   ensureShared()
   for (const entry of SHARED) {
     const link = path.join(dir, entry)
-    if (!existsSync(link)) symlinkSync(path.join(paths.shared, entry), link)
+    if (!existsSync(link)) linkShared(path.join(paths.shared, entry), link)
   }
   const profile: Profile = {
     id,

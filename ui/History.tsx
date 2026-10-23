@@ -5,6 +5,7 @@
 import { useMemo, useRef, useState } from 'react'
 import type { KeyEvent, PublicInstance } from '@gpuix/react'
 import { Button, SidePanel } from '../components'
+import { keys, primary } from '../core/platform'
 import type { Profile } from '../core/profiles'
 import type { Thread } from '../core/threads'
 import { ago, Row } from './dialogs'
@@ -66,7 +67,7 @@ export function History({
       e.preventDefault()
       setActive((a) => (flat.length ? (a + d + flat.length) % flat.length : 0))
     }
-    if (e.key === 'escape' || (e.modifiers?.cmd && e.key === 'y')) {
+    if (e.key === 'escape' || (primary(e.modifiers) && e.key === 'y')) {
       e.preventDefault()
       onClose()
     } else if ((e.modifiers?.ctrl && e.key === 'n') || e.key === 'down') step(1)
@@ -124,7 +125,7 @@ export function History({
         ))}
       </div>
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', paddingLeft: 16, paddingRight: 12, height: 36, borderTopWidth: 1, borderColor: m.border, flexShrink: 0 }}>
-        <Meta>↩ open · ⌃N ⌃P move · esc close</Meta>
+        <Meta>{keys('↩ open · ⌃N ⌃P move · esc close')}</Meta>
       </div>
     </SidePanel>
   )

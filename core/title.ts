@@ -4,6 +4,7 @@
 // title (the first line, cut short) until this answers, and if it fails.
 
 import type { Profile } from './profiles'
+import { claudeBin } from './platform'
 import { profileEnv } from './profiles'
 
 const SYSTEM = 'You name notes. Reply with a title of 2 to 6 words, sentence case, no quotes, no trailing period.'
@@ -12,7 +13,7 @@ const MAX_INPUT = 4000
 export async function nameNote(text: string, profile: Profile, cwd: string): Promise<string | undefined> {
   const proc = Bun.spawn(
     [
-      'claude', '-p', '--model', 'haiku', '--output-format', 'json',
+      claudeBin(), '-p', '--model', 'haiku', '--output-format', 'json',
       '--setting-sources', '', '--strict-mcp-config', '--tools', '', '--disable-slash-commands', '--no-session-persistence',
       '--system-prompt', SYSTEM,
       text.slice(0, MAX_INPUT),

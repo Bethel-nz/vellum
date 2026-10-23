@@ -8,6 +8,7 @@
 // Every animation goes through `tween()`, which collapses to duration 0 under reduced motion.
 
 import type { MotionTransition } from '@gpuix/react'
+import { systemReduceMotion } from '../core/platform'
 
 type Bezier = [number, number, number, number]
 
@@ -36,18 +37,9 @@ export const stagger = { item: 0.035, maxItems: 4 }
 /** Popovers and menus start this far toward their trigger, dialogs and toasts a little further. */
 export const offset = { menu: 5, tooltip: 3, dialog: 8, toast: 16 }
 
-function systemReduceMotion(): boolean {
-  try {
-    const out = Bun.spawnSync(['defaults', 'read', 'com.apple.universalaccess', 'reduceMotion'], { stderr: 'ignore' })
-    return out.stdout.toString().trim() === '1'
-  } catch {
-    return false
-  }
-}
-
 let reduced = systemReduceMotion()
 
-/** macOS "Reduce motion", unless the settings sheet overrides it. */
+/** The system's "Reduce motion", unless the settings sheet overrides it. */
 export function reducedMotion() {
   return reduced
 }

@@ -342,7 +342,7 @@ export function ThreadSwitcher({
         {groups.map(([workspace, ts]) => (
           <div key={workspace} style={{ display: 'flex', flexDirection: 'column', gap: 1, paddingBottom: 6 }}>
             <div style={{ paddingLeft: 10, paddingTop: 6, paddingBottom: 4 }}>
-              <text style={{ fontSize: 11, lineHeight: 14, color: m.textFaint, fontFamily: font.mono, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{workspace.startsWith('/') ? shortPath(workspace) : workspace}</text>
+              <text style={{ fontSize: 11, lineHeight: 14, color: m.textFaint, fontFamily: font.mono, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{path.isAbsolute(workspace) ? shortPath(workspace) : workspace}</text>
             </div>
             {ts.map((t) => {
               const i = flat.indexOf(t)

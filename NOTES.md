@@ -261,3 +261,46 @@ channel, which does the same job:
 - **Cost**: each real headless turn in a spike costs about $0.40, because the user's hooks and
   plugins load into every session. Approval checks use scripts/fake-claude.ts instead; titles use
   the lean flags above (~$0.0003).
+
+## 2026-10-23 — your picture, and Windows and Linux
+
+- **Who wrote what.** Your paragraphs get a 16px picture in the left gutter and "You · 14:03" on
+  hover; Claude's get nothing, so the page still reads as one note. The picture is the system's
+  account picture, a profile's `avatarImage` overrides it, and with neither it's a monogram on
+  the violet wash. GPUIX doesn't clip an `<img>` to its parent's radius, so the image carries
+  its own `borderRadius`.
+- **One module per OS difference** (core/platform.ts). macOS stays the first target; elsewhere
+  it's the nearest native equivalent or a quiet fallback:
+
+  | | macOS | Windows | Linux |
+  |---|---|---|---|
+  | command key | ⌘ | Ctrl | Ctrl |
+  | tab cycling | ⌃← ⌃→ | Ctrl+PgUp/PgDn | Ctrl+PgUp/PgDn |
+  | leave a terminal | ⌘Esc | Ctrl+` | Ctrl+` |
+  | app keys inside a terminal | ⌘ | Ctrl+Shift | Ctrl+Shift |
+  | clipboard | pbcopy/pbpaste | PowerShell Set-/Get-Clipboard | wl-copy, xclip or xsel |
+  | show folder | open | explorer | xdg-open |
+  | `!` commands | `$SHELL -lc` | `%ComSpec% /d /s /c` | `$SHELL -lc` |
+  | login, Open in Claude Code | inline PTY | its own console window | inline PTY |
+  | light/dark | `defaults` | registry `AppsUseLightTheme` | gsettings |
+  | reduce motion | `defaults` | settings sheet only | gsettings `enable-animations` |
+  | account picture | `dscl` JPEGPhoto | monogram | ~/.face, AccountsService |
+  | window chrome | no titlebar, lights off-window | system title bar | system title bar |
+  | shared config into profiles | symlinks | junctions, hard-linked files | symlinks |
+
+  Shortcut labels are written the macOS way and translated by `keys()` in Kbd, tooltips and
+  button labels ("⇧⌘W" → "Ctrl+Shift+W"). Ctrl is the command key off macOS, so the window
+  handler now skips keys a field already handled (Ctrl+N in a picker is not "new note").
+- **Why a console on Windows**: Bun's PTY (`spawn({ terminal })`) is POSIX only and fails with
+  ENOTSUP there. `claude` is resolved with `Bun.which` so PATHEXT finds claude.exe or .cmd.
+- **Why the system title bar off macOS**: with a transparent titlebar, Windows and Wayland expect
+  the app to draw its own close/maximize buttons and drag area, and GPUIX exposes neither.
+- **Fonts**: nothing is bundled beyond Geist and Inter. File icons need a Nerd Font, found by
+  file name in the OS font folders and read from the `name` table (core/fonts.ts, 7ms); without
+  one they're a plain file icon. The terminal uses Liga SFMono Nerd Font when it's installed and
+  Geist Mono (600/1000 advance) otherwise.
+- **Paths**: `relPath` returns forward slashes on every OS, since the UI and the diffs split on
+  '/'. `shortPath` takes either separator.
+- **Unverified**: only macOS was run. The Windows and Linux branches were exercised by faking
+  `process.platform` (labels, keys, shell argv), not on a real machine. GPUIX ships
+  linux-x64-gnu and win32 x64/arm64 builds.
