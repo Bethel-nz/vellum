@@ -140,6 +140,8 @@ export function claudeBin(): string {
  * to host it inline. The console inherits `env`, so CLAUDE_CONFIG_DIR still picks the profile.
  */
 export function openConsole(argv: string[], cwd: string, env: Record<string, string>) {
+  // cmd.exe parses this line again, so only plain words (paths, flags, session ids) may pass.
+  if (argv.slice(1).some((a) => !/^[\w.:\\/-]+$/.test(a))) throw new Error('openConsole: refusing an argument cmd.exe would re-parse')
   // `start` takes the window title as its first quoted argument.
   return Bun.spawn([process.env.ComSpec ?? 'cmd.exe', '/d', '/c', 'start', 'Claude Code', '/wait', ...argv], { cwd, env, stdout: 'ignore', stderr: 'ignore' })
 }

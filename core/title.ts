@@ -16,9 +16,10 @@ export async function nameNote(text: string, profile: Profile, cwd: string): Pro
       claudeBin(), '-p', '--model', 'haiku', '--output-format', 'json',
       '--setting-sources', '', '--strict-mcp-config', '--tools', '', '--disable-slash-commands', '--no-session-persistence',
       '--system-prompt', SYSTEM,
-      text.slice(0, MAX_INPUT),
     ],
-    { cwd, env: profileEnv(profile), stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' },
+    // The note goes in on stdin, never as an argument: on Windows a claude.cmd shim would hand
+    // the arguments to cmd.exe to parse again.
+    { cwd, env: profileEnv(profile), stdin: new Blob([text.slice(0, MAX_INPUT)]), stdout: 'pipe', stderr: 'ignore' },
   )
   const timer = setTimeout(() => proc.kill(), 30_000)
   try {
