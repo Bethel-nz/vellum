@@ -12,6 +12,7 @@ import { motion, render, useGpuixRequired, useWindowSize, type KeyEvent, type Pu
 import { Button, Field, Label, Menu, Sheet, SheetHeader, SheetSection, stripHeight, TabStrip, useToast, type MenuItem as MenuEntry } from './components'
 import { ease, setReducedMotion, tween } from './components/motion'
 import { ClaudeRunner, killAllRunners } from './core/claude'
+import { nameNote } from './core/title'
 import { createProfile, loadProfiles, profileEnv, profileForWorkspace, rememberWorkspace, updateProfile, type Profile } from './core/profiles'
 import { paths, readJson, readSettings, updateSettings, writeJson } from './core/store'
 import { promptFor, tagsIn } from './core/tags'
@@ -503,7 +504,14 @@ function App() {
     record(thread.id, { type: 'vellum/user', text, tags, at: new Date().toISOString() })
     if (edits) record(thread.id, { type: 'vellum/synced' })
     if (text && !thread.blocks.some((b) => b.kind === 'user') && (thread.title === 'Untitled' || thread.title === 'New thread')) {
-      record(thread.id, { type: 'vellum/title', title: titleFrom(text) })
+      const provisional = titleFrom(text)
+      record(thread.id, { type: 'vellum/title', title: provisional })
+      const profile = profilesRef.current.find((p) => p.id === thread.profileId)
+      // The small model renames it shortly, unless you renamed it first.
+      if (profile?.loggedIn !== false && profile)
+        nameNote(text, profile, thread.workspace).then((title) => {
+          if (title && threadsRef.current.find((t) => t.id === thread.id)?.title === provisional) record(thread.id, { type: 'vellum/title', title })
+        })
     }
     const prompt = text ? promptFor(text, tags, { workspace: thread.workspace, scopes: thread.tagScopes }) : ''
     runnerFor(thread).send([edits, prompt].filter(Boolean).join('\n\n'))

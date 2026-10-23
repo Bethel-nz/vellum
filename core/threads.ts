@@ -534,9 +534,12 @@ export function writeMarkdown(t: Thread) {
   writeFileSync(mdPath(t.id), toMarkdown(t))
 }
 
+/** A provisional title: the first line, cut at a word near 48 characters. */
 export function titleFrom(text: string) {
   const line = text.trim().split('\n')[0] ?? ''
-  return line.length > 60 ? line.slice(0, 57) + '…' : line || 'Untitled'
+  if (line.length <= 48) return line || 'Untitled'
+  const cut = line.slice(0, 48)
+  return (cut.lastIndexOf(' ') > 24 ? cut.slice(0, cut.lastIndexOf(' ')) : cut).replace(/[\s,.;:–—-]+$/, '') + '…'
 }
 
 export function newThreadId() {
