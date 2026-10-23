@@ -10,7 +10,7 @@ import { concentric, font, radiusBase, type Material } from './theme'
 
 const FONT_SIZE = 12
 const LINE = 17
-const CELL_W = FONT_SIZE * 0.6 // SF Mono and Menlo advance is 0.6em
+export const CELL_W = FONT_SIZE * font.termAdvance
 const PAD = 10
 const INLINE_ROWS = 20
 
@@ -37,13 +37,16 @@ function RunText({ run, m, cursor }: { run: Run; m: Material; cursor?: boolean }
         fontWeight: run.bold ? 600 : 400,
         textDecoration: run.underline ? 'underline' : undefined,
         opacity: run.faint ? 0.6 : 1,
-        fontFamily: font.mono,
+        fontFamily: font.term,
         fontSize: FONT_SIZE,
         lineHeight: LINE,
         whiteSpace: 'nowrap',
         flexShrink: 0,
-        // Runs are cell-aligned; size each by its cell count so spaces never collapse.
+        // Runs are cell-aligned: pin each to its cell count so spaces never collapse and nothing
+        // can push later columns. CELL_W must be the font's real advance or long runs drift.
         width: [...run.text].length * CELL_W,
+        minWidth: [...run.text].length * CELL_W,
+        maxWidth: [...run.text].length * CELL_W,
       }}
     >
       {run.text}
@@ -102,7 +105,7 @@ export function GridView({ grid, focused, mode }: { grid: Grid; focused: boolean
         const parts: Array<{ run: Run; cursor?: boolean }> = showCursor ? withCursor(runs, grid.cursor.col) : runs.map((run) => ({ run }))
         return (
           <div key={y} style={{ display: 'flex', flexDirection: 'row', height: LINE, flexShrink: 0, overflow: 'hidden' }}>
-            {parts.length === 0 ? <text style={{ color: m.termFg, fontFamily: font.mono, fontSize: FONT_SIZE, lineHeight: LINE }}> </text> : null}
+            {parts.length === 0 ? <text style={{ color: m.termFg, fontFamily: font.term, fontSize: FONT_SIZE, lineHeight: LINE }}> </text> : null}
             {parts.map((p, j) => (
               <RunText key={j} run={p.run} m={m} cursor={p.cursor} />
             ))}
@@ -260,7 +263,7 @@ export function TerminalBlock({
         {showAll && allLines ? (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {allLines.map((line, i) => (
-              <text key={i} style={{ color: m.termFg, fontFamily: font.mono, fontSize: FONT_SIZE, lineHeight: LINE, whiteSpace: 'nowrap' }}>
+              <text key={i} style={{ color: m.termFg, fontFamily: font.term, fontSize: FONT_SIZE, lineHeight: LINE, whiteSpace: 'nowrap' }}>
                 {line || ' '}
               </text>
             ))}

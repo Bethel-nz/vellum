@@ -12,7 +12,7 @@ import { launch } from '@gpuix/react/automation'
 const out = process.argv[2] ?? 'screenshots'
 mkdirSync(out, { recursive: true })
 const home = process.env.VELLUM_HOME ?? mkdtempSync(path.join(tmpdir(), 'vellum-'))
-await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, MATERIAL: process.env.MATERIAL ?? 'smoke' }, stdout: 'inherit' }).exited
+await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, MATERIAL: process.env.MATERIAL ?? 'groknight' }, stdout: 'inherit' }).exited
 
 const app = await launch({
   command: 'bun',

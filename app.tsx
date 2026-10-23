@@ -12,7 +12,7 @@ import { DismissableLayer, render, useGpuixRequired, useWindowSize, type KeyEven
 import { FloatingLayer } from '@gpuix/react/floating'
 import { ClaudeRunner, killAllRunners } from './core/claude'
 import { createProfile, loadProfiles, profileEnv, profileForWorkspace, rememberWorkspace, updateProfile, type Profile } from './core/profiles'
-import { paths, readJson, readSettings, systemAppearance, updateSettings, writeJson } from './core/store'
+import { paths, readJson, readSettings, updateSettings, writeJson } from './core/store'
 import { promptFor, tagsIn } from './core/tags'
 import { killAllTerms, startTerm, type TermSession } from './core/term'
 import {
@@ -35,25 +35,35 @@ import { BlockView, type BlockActions } from './ui/blocks'
 import { Composer } from './ui/Composer'
 import { NewThreadDialog, ThreadSwitcher } from './ui/dialogs'
 import { Dot, Icon, Kbd, MaterialContext, Meta, Quiet, useM } from './ui/kit'
-import { TerminalBlock } from './ui/TerminalBlock'
+import { CELL_W, TerminalBlock } from './ui/TerminalBlock'
 import {
   concentric,
   font,
-  frost,
   headerHeight,
   radiusBase,
   readingWidth,
   shellInset,
-  smoke,
+  materialNames,
+  materials,
+  translucent,
+  wantsBlur,
   solid,
   windowRadius,
   type MaterialName,
 } from './ui/theme'
 
 const SOLID = process.env.VELLUM_SOLID === '1'
+// Window material is fixed when the window opens: translucency and blur apply on next launch.
+const TRANSLUCENT = !SOLID && readSettings().translucent === true
+const START_BLUR = !SOLID && (TRANSLUCENT || wantsBlur(materials[readSettings().material ?? 'groknight']))
 const tabHeight = 30
 const FONT_DIR = path.join(import.meta.dir, 'assets', 'fonts')
-const FONTS = ['Inter-Regular.ttf', 'Inter-Medium.ttf', 'Inter-SemiBold.ttf', 'Inter-Italic.ttf']
+// Geist for UI and prose, Geist Mono for code; Inter stays registered as the sans fallback.
+const FONTS = [
+  'Geist-Regular.ttf', 'Geist-Medium.ttf', 'Geist-SemiBold.ttf', 'Geist-Italic.ttf',
+  'GeistMono-Regular.ttf', 'GeistMono-Medium.ttf',
+  'Inter-Regular.ttf', 'Inter-Medium.ttf', 'Inter-SemiBold.ttf',
+]
 
 type Pane =
   | { kind: 'login'; profileId: string; session: TermSession }
@@ -370,7 +380,7 @@ function TerminalPane({ pane, title, hint, onClose }: { pane: Pane; title: strin
 // ---------------------------------------------------------------- app
 
 function initialMaterial(): MaterialName {
-  return readSettings().material ?? (systemAppearance() === 'dark' ? 'smoke' : 'frost')
+  return readSettings().material ?? 'groknight'
 }
 
 function App() {
@@ -378,8 +388,8 @@ function App() {
   const windowSize = useWindowSize()
   const [materialName, setMaterialName] = useState<MaterialName>(initialMaterial)
   const material = useMemo(() => {
-    const base = materialName === 'smoke' ? smoke : frost
-    return SOLID ? solid(base) : base
+    const base = materials[materialName]
+    return SOLID ? solid(base) : TRANSLUCENT ? translucent(base) : base
   }, [materialName])
 
   const [profiles, setProfiles] = useState<Profile[]>(loadProfiles)
@@ -518,7 +528,7 @@ function App() {
 
   // ---- actions
 
-  const terminalCols = Math.max(40, Math.floor((Math.min(readingWidth, windowSize.width - shellInset * 2) - 56 - 22) / 7.2))
+  const terminalCols = Math.max(40, Math.floor((Math.min(readingWidth, windowSize.width - shellInset * 2) - 56 - 22) / CELL_W))
 
   const runShell = useCallback(
     (thread: Thread, command: string) => {
@@ -640,7 +650,7 @@ function App() {
 
   const toggleMaterial = useCallback(() => {
     setMaterialName((n) => {
-      const next = n === 'smoke' ? 'frost' : 'smoke'
+      const next = materialNames[(materialNames.indexOf(n) + 1) % materialNames.length]!
       updateSettings({ material: next })
       return next
     })
@@ -744,7 +754,7 @@ function App() {
           backgroundColor: m.rootTint,
           fontFamily: font.sans,
           color: m.text,
-          selectionColor: m.appearance === 'dark' ? '#7aa2e855' : '#1447e633',
+          selectionColor: m.selection,
         }}
       >
         <TabBar
@@ -852,7 +862,7 @@ render(<App />, {
   width: 1080,
   height: 780,
   titlebarTransparent: true,
-  windowBackground: SOLID ? 'opaque' : 'blurred',
+  windowBackground: START_BLUR ? 'blurred' : 'opaque',
   trafficLightX: 16,
   trafficLightY: 17,
   keyboardFocusDim: false,

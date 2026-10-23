@@ -40,8 +40,14 @@ export function writeJson(file: string, value: unknown) {
 }
 
 export type Settings = {
-  /** Manual material override from Cmd+Shift+L. Unset follows macOS. */
-  material?: 'smoke' | 'frost'
+  /** groknight (default), or the older smoke / frost glass looks. */
+  material?: 'groknight' | 'smoke' | 'frost'
+  /** Groknight with alpha and the blurred window behind it. Applies on next launch. */
+  translucent?: boolean
+  /** Tab strip: always shown, collapsed while writing, or hidden (⌘⇧T reveals). */
+  tabs?: 'pinned' | 'auto' | 'hidden'
+  /** Push the traffic lights out of the way and start the header at the edge. Next launch. */
+  hideTrafficLights?: boolean
   lastThreadId?: string
   /** Thread ids open as tabs, in order. */
   openTabs?: string[]
