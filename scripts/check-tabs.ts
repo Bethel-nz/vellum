@@ -64,6 +64,12 @@ try {
   await app.getByTestId('history-input').press('escape')
   await wait(400)
   expect('esc closes History', (await app.getByTestId('history-input').count()) === 0)
+  await app.getByTestId('open-history').click()
+  await app.getByTestId('history-input').waitFor({ timeoutMs: 3000 })
+  await wait(500)
+  await app.mouse.click({ x: 900, y: 400 })
+  await wait(400)
+  expect('a click beside it closes History', (await app.getByTestId('history-input').count()) === 0)
 
   // the current pill opens the note menu
   await app.getByTestId('title-menu').click()

@@ -4,7 +4,7 @@
 
 import { useMemo, useRef, useState } from 'react'
 import type { KeyEvent, PublicInstance } from '@gpuix/react'
-import { SidePanel } from '../components'
+import { Button, SidePanel } from '../components'
 import type { Profile } from '../core/profiles'
 import type { Thread } from '../core/threads'
 import { ago, Row } from './dialogs'
@@ -91,6 +91,9 @@ export function History({
           style={{ flexGrow: 1, minWidth: 0, fontSize: 13.5, color: m.text }}
         />
         <Kbd>⌘Y</Kbd>
+        <Button onPress={onClose} testId="history-close" title="Close (esc)" style={{ width: 24, paddingLeft: 0, paddingRight: 0 }}>
+          <Icon name="x" size={13} />
+        </Button>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, overflowY: 'scroll', scrollbarColor: m.scrollbar, scrollbarWidth: 6, padding: 6 }}>
         {flat.length === 0 ? (

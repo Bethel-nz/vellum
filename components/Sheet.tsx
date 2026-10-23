@@ -7,7 +7,7 @@
 //
 // GPUIX's Dialog unmounts on close, so both have enter motion only; the close is instant.
 
-import type { ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
 import { Dialog, DialogBackdrop, DialogPopup, DialogPortal, motion, type PublicInstance } from '@gpuix/react'
 import { radiusXl } from '../ui/theme'
 import { Button } from './Button'
@@ -23,7 +23,8 @@ function Scrim() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={tween({ duration: duration.fast, ease: ease.standard })}
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: m.scrim }}
+        // A motion.div keeps presses to itself: let the click reach the backdrop, which closes.
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: m.scrim, pointerEvents: 'none' }}
       />
     </DialogBackdrop>
   )
@@ -137,13 +138,15 @@ export function SidePanel({
 }) {
   const m = useM()
   const from = side === 'right' ? 24 : -24
+  // A panel with nothing focusable still takes esc: its own body holds focus.
+  const body = useRef<PublicInstance>(null)
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogPortal>
         <Scrim />
         <DialogPopup
           testId={testId}
-          initialFocus={initialFocus}
+          initialFocus={initialFocus ?? body}
           style={{
             position: 'absolute',
             top: 8,
@@ -165,7 +168,19 @@ export function SidePanel({
             transition={tween({ duration: duration.considered / 2 + 0.06, ease: ease.standard })}
             style={{ position: 'relative', display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, height: '100%' }}
           >
-            {children}
+            <div
+              ref={body}
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'escape') {
+                  e.preventDefault()
+                  onClose()
+                }
+              }}
+              style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, keyboardFocusDim: false }}
+            >
+              {children}
+            </div>
           </motion.div>
         </DialogPopup>
       </DialogPortal>

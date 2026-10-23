@@ -25,6 +25,20 @@ try {
   await wait(1000)
   expect('the strip counts changed files', (await app.getByTestId('open-changes').count()) === 1)
 
+  // it can always be dismissed: esc, and a click on the dimmed note beside it
+  await c.press('cmd-shift-d')
+  await app.getByTestId('changes').waitFor({ timeoutMs: 3000 })
+  await wait(500)
+  await app.getByTestId('changes').press('escape')
+  await wait(400)
+  expect('esc closes Changes', (await app.getByTestId('changes').count()) === 0)
+  await c.press('cmd-shift-d')
+  await app.getByTestId('changes').waitFor({ timeoutMs: 3000 })
+  await wait(500)
+  await app.mouse.click({ x: 120, y: 400 })
+  await wait(400)
+  expect('a click beside it closes Changes', (await app.getByTestId('changes').count()) === 0)
+
   await c.press('cmd-shift-d')
   await app.getByTestId('changes').waitFor({ timeoutMs: 3000 })
   await wait(600)
