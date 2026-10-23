@@ -1,11 +1,18 @@
-// Self-check for the note: two tabs, editing your own text, editing a reply, the title menu.
+// Self-check for the note: two tabs, editing your own text, editing a reply, the title menu,
+// rename, ⇧⌘W / ⌘1, and the trust warning for a folder with project config.
 //   bun scripts/check-note.ts
-import { mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
 const home = mkdtempSync(path.join(tmpdir(), 'vellum-note-'))
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home } }).exited
+// A third note in a folder that ships an MCP config, so it shows up under recent folders.
+const risky = path.join(home, 'risky-project')
+mkdirSync(risky, { recursive: true })
+writeFileSync(path.join(risky, '.mcp.json'), '{"mcpServers":{}}\n')
+const meta = { id: '20261001-risky', title: 'Risky folder', profileId: 'main', workspace: risky, createdAt: '2026-10-01T09:00:00.000Z' }
+writeFileSync(path.join(home, 'threads', `${meta.id}.jsonl`), JSON.stringify({ type: 'vellum/meta', meta }) + '\n')
 const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home } })
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const shot = (n: string) => app.screenshot({ path: 'screenshots/note-' + n + '.png' })
@@ -40,6 +47,29 @@ try {
   await app.getByTestId('title-menu').click()
   await wait(1500)
   await shot('5-menu')
+  // rename from the menu
+  await app.getByTestId('menu-rename').click()
+  await wait(600)
+  const title = app.getByTestId('title-input')
+  await title.fill('Concentric radius')
+  await title.press('enter')
+  await wait(800)
+  console.log('renamed tab:', await app.getByText('Concentric radius').count())
+  await shot('6-renamed')
+  // ⇧⌘W closes the active tab, ⌘1 goes to the first
+  await c.click()
+  await c.press('cmd-shift-w')
+  await wait(800)
+  console.log('tabs after ⇧⌘W:', await app.getByTestId('tab-20261023-demo01').count(), await app.getByTestId('tab-20261022-demo02').count())
+  await c.press('cmd-1')
+  await wait(600)
+  // trust warning in the New note dialog
+  await app.getByTestId('new-thread').click()
+  await wait(1500)
+  await app.getByText(risky).click()
+  await wait(800)
+  console.log('trust warning shown:', await app.getByTestId('trust-warning').count())
+  await shot('7-trust-warning')
 } finally {
   await app.close()
 }

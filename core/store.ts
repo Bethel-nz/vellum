@@ -20,6 +20,8 @@ export const paths = {
   shared: path.join(home, 'shared'),
   profileDir: (id: string) => path.join(home, 'profiles', id, 'claude'),
   threads: path.join(home, 'threads'),
+  /** Unsent writing at the end of each note, so a quit (⌘Q, ⌘W) loses nothing. */
+  drafts: path.join(home, 'drafts.json'),
 }
 
 for (const dir of [home, paths.shared, paths.threads]) mkdirSync(dir, { recursive: true })

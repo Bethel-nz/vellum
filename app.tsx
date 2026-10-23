@@ -12,7 +12,7 @@ import { DismissableLayer, render, useGpuixRequired, useWindowSize, type KeyEven
 import { FloatingLayer } from '@gpuix/react/floating'
 import { ClaudeRunner, killAllRunners } from './core/claude'
 import { createProfile, loadProfiles, profileEnv, profileForWorkspace, rememberWorkspace, updateProfile, type Profile } from './core/profiles'
-import { readSettings, systemAppearance, updateSettings } from './core/store'
+import { paths, readJson, readSettings, systemAppearance, updateSettings, writeJson } from './core/store'
 import { promptFor, tagsIn } from './core/tags'
 import { killAllTerms, startTerm, type TermSession } from './core/term'
 import {
@@ -317,7 +317,7 @@ function PageTitle({
                 />
                 <MenuItem label="Open in Claude Code" testId="menu-open-claude" disabled={!canOpenClaude} onPress={pick(onOpenClaude)} />
                 <MenuItem label="Show folder in Finder" onPress={pick(() => Bun.spawn(['open', thread.workspace]))} />
-                <MenuItem label="Close tab" hint="⌘W" testId="menu-close" onPress={pick(onClose)} />
+                <MenuItem label="Close tab" hint="⇧⌘W" testId="menu-close" onPress={pick(onClose)} />
               </div>
             </FloatingLayer>
           </DismissableLayer>
@@ -395,7 +395,7 @@ function App() {
   })
   // Replies that finished while their tab was in the background.
   const [unread, setUnread] = useState<Record<string, number>>({})
-  const [drafts, setDrafts] = useState<Record<string, Draft>>({})
+  const [drafts, setDrafts] = useState<Record<string, Draft>>(() => readJson(paths.drafts, {}))
   const [overlay, setOverlay] = useState<null | 'new' | 'switcher'>(null)
   const [pane, setPane] = useState<Pane | null>(null)
   const composerRef = useRef<PublicInstance>(null)
@@ -459,6 +459,14 @@ function App() {
     },
     [dispatch],
   )
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const kept = Object.fromEntries(Object.entries(drafts).filter(([, d]) => d.text))
+      writeJson(paths.drafts, kept)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [drafts])
 
   // The .md copy is rewritten shortly after a thread changes.
   const saved = useRef(new Map<string, Thread>())
@@ -663,7 +671,8 @@ function App() {
     if ((key === 'n' || key === 't') && !mods.shift) {
       e.preventDefault()
       setOverlay('new')
-    } else if (key === 'w' && !mods.shift) {
+    } else if (key === 'w' && mods.shift) {
+      // Plain ⌘W is GPUIX's native Close Window (it quits a one-window app) and never reaches us.
       e.preventDefault()
       if (activeId) closeTab(activeId)
     } else if (/^[1-9]$/.test(key)) {

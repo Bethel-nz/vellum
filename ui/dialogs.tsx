@@ -209,8 +209,8 @@ export function NewThreadDialog({
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <SectionLabel>Which folder?</SectionLabel>
-          {recentFolders.slice(0, 5).map((f) => (
-            <Row key={f} selected={f === folder} onPress={() => chooseFolder(f)}>
+          {recentFolders.slice(0, 5).map((f, i) => (
+            <Row key={f} selected={f === folder} onPress={() => chooseFolder(f)} testId={`recent-${i}`}>
               <Icon name="folder" size={13} />
               <text style={{ flexGrow: 1, minWidth: 0, fontSize: 12.5, lineHeight: 17, color: m.text, fontFamily: font.mono, whiteSpace: 'nowrap', textOverflow: 'ellipsis-start' }}>{f}</text>
             </Row>
@@ -222,7 +222,7 @@ export function NewThreadDialog({
             </Row>
           ) : null}
           {folder && projectConfig(folder).length ? (
-            <div style={{ padding: 10, borderRadius: concentric(radiusXl, 8), backgroundColor: m.dangerBg }}>
+            <div testId="trust-warning" style={{ padding: 10, borderRadius: concentric(radiusXl, 8), backgroundColor: m.dangerBg }}>
               <text style={{ fontSize: 12, lineHeight: 17, color: m.danger }}>
                 {`This folder has ${projectConfig(folder).join(', ')}. Headless runs skip Claude Code's trust prompt, so its hooks and MCP servers run without asking. Only continue if you trust this folder.`}
               </text>

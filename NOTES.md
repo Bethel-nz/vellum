@@ -29,7 +29,7 @@ Findings, choices and deviations from the build prompt. Newest decisions win.
   title, unread-reply badge, last-change time). The active tab shares the page colour. Then +,
   ⌘K and the material toggle. Under it sits the page title with a ⌄ menu: folder and account,
   Rename, Open in Claude Code, Show folder in Finder, Close tab. The account shows on the right.
-  Shortcuts: ⌘N/⌘T new, ⌘W close, ⌘1–⌘9, ⌘⇧[ / ⌘⇧]. Open tabs persist in `settings.json`.
+  Shortcuts: ⌘N/⌘T new, ⇧⌘W close tab, ⌘1–⌘9, ⌘⇧[ / ⌘⇧]. Open tabs persist in `settings.json`.
 - **Default profile uses Claude Code's own default config** (`configDir: null` → `CLAUDE_CONFIG_DIR`
   unset), so the account already logged in on this Mac works on first run. Profiles added in the
   app get `~/.vellum/profiles/<id>/claude/` with symlinks from `shared/`.
@@ -107,6 +107,11 @@ through the package's own loader (`VtModule`: memory, ABI manifest, opaque slots
 Not used: `ghostty-web`, `restty` (no need once option 1 worked).
 
 ## GPUIX findings
+
+- **⌘W can't be taken.** GPUIX binds ⌘W natively to `gpuix_app::CloseWindow` (with ⌘Q, ⌘H, ⌥⌘H, ⌘M).
+  Key actions run before JS handlers, and there's no option to unbind them, so ⌘W closes the only
+  window and the app quits with exit 0 (`spikes/launch-exit.ts cmd-w`). Close tab is ⇧⌘W instead.
+  An automation script that presses ⌘W then waits forever on the dead app.
 
 - **One host root.** A fragment with two top-level host nodes made the second one the window root,
   and the whole document stopped painting. Dialogs now live inside the root `div`.
