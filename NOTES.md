@@ -232,3 +232,32 @@ channel, which does the same job:
 - A background note with an ask gets the blue tab box and a toast.
 - `scripts/check-approval.ts` runs against `scripts/fake-claude.ts` (a `claude` shim on PATH that
   speaks the same protocol), so the whole flow is checked without a paid turn.
+
+## 2026-10-23 — GPUIX findings and spikes from the components pass
+
+- **`motion.div` keeps presses to itself**, so a parent button behind it never gets the click.
+  Give the motion.div `pointerEvents: 'none'` and any button inside it `'auto'`. This was why
+  the centred tab boxes didn't respond. It also takes only children, style, mouse handlers and
+  motion props: no testId, tabIndex or onKeyDown, so put those on a plain div around or inside it.
+- **Animating `top` overrides `bottom`** on the same element. Anchor to a corner with a plain
+  absolute box and animate a relative child (the approval card).
+- **No rotation, no dotted borders.** Open states change colour instead of turning a chevron,
+  and references use a dashed rule.
+- **Inline text spans don't exist**: a nested `<text>` breaks onto its own line
+  (spikes/inline-chips.tsx). A read paragraph is a wrapping row of words and reference boxes.
+- **Code fences**: the markdown header band stays even with `mdCodeHeaderTextSize: 0`, and a
+  bare fence loses highlighting (spikes/code-header.tsx). Replies split on fences
+  (core/fences.ts) and draw code with `<code>` in their own card, with copy on hover via `pbcopy`.
+- **Diff headers**: at height 0 the native file and hunk header text still paints over the first
+  row. `DiffCard` keeps real heights and clips them off the top.
+- **Nerd Font glyphs** draw only when the `<text>` names `Liga SFMono Nerd Font`
+  (spikes/nerd-icons.tsx). Geist Mono shows tofu.
+- **Textarea keys**: plain ↵ goes to `onSubmit`, not `onKeyDown`. ⌘↵ and esc reach `onKeyDown`.
+  An autofocused textarea never fires `onFocus`.
+- **Automation**: a positive `mouse.wheel` deltaY scrolls toward the top, and the composer
+  swallows the wheel, so scroll over the document. Headless (`GPUIX_BACKGROUND=1`) windows tick
+  animations slowly, so screenshots right after an open catch a panel mid-fade; that's not a
+  bug.
+- **Cost**: each real headless turn in a spike costs about $0.40, because the user's hooks and
+  plugins load into every session. Approval checks use scripts/fake-claude.ts instead; titles use
+  the lean flags above (~$0.0003).
