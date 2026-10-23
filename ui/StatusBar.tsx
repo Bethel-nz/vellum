@@ -1,4 +1,4 @@
-// The bottom-left corner of the note: how Claude will work on the next turn, as four small
+// The bottom-right corner of the note: how Claude will work on the next turn, as four small
 // controls that stay out of the writing. Permission mode and thinking are icons (their names are
 // in the tooltip and the menu), the model is its short name, and context is a ring that fills as
 // the conversation grows, with the token count beside it. Everything opens upward, from here.
@@ -33,6 +33,8 @@ const modeIcon: Record<PermissionMode, IconName> = {
 
 const thinkNext: Record<Think, Think> = { off: 'on', on: 'max', max: 'off' }
 const thinkTitle: Record<Think, string> = { off: 'Thinking off', on: 'Thinking on', max: 'Thinking at max effort' }
+/** What a click on the bulb does next, for its tooltip. */
+const thinkHint: Record<Think, string> = { off: 'click to turn on', on: 'click for max effort', max: 'click to turn off' }
 
 export function StatusBar({
   mode,
@@ -74,8 +76,8 @@ export function StatusBar({
   return (
     <div testId="status-bar" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 2, height: statusBarHeight }}>
       <div style={{ position: 'relative' }}>
-        <Tooltip label={`${modeLabel(mode)} · permission mode`} shortcut="⇧⇥" side="top">
-          <Button onPress={() => toggle('mode')} selected={menu === 'mode'} testId="mode-pill" title={`${modeLabel(mode)} (⇧⇥)`} style={iconButton}>
+        <Tooltip label={`Permissions: ${modeLabel(mode)}`} shortcut="⇧⇥" side="top">
+          <Button onPress={() => toggle('mode')} selected={menu === 'mode'} testId="mode-pill" title={`Change permissions (now ${modeLabel(mode)})`} style={iconButton}>
             <Icon name={modeIcon[mode]} size={14} color={modeColor} />
           </Button>
         </Tooltip>
@@ -83,33 +85,35 @@ export function StatusBar({
           open={menu === 'mode'}
           onClose={close}
           side="top"
-          align="start"
+          align="end"
           width={360}
           testId="mode-menu"
           items={modes.map((x) => ({ label: x.label, hint: x.hint, icon: modeIcon[x.id], checked: x.id === mode, destructive: x.id === 'bypassPermissions', testId: `mode-${x.id}`, onSelect: () => onMode(x.id) }))}
         />
       </div>
 
-      <Tooltip label={`${thinkTitle[think]} · click to change`} side="top">
-        <Button onPress={() => onThink(thinkNext[think])} testId="think-pill" title={thinkTitle[think]} style={iconButton}>
+      <Tooltip label={`${thinkTitle[think]} · ${thinkHint[think]}`} side="top">
+        <Button onPress={() => onThink(thinkNext[think])} testId="think-pill" title={`${thinkTitle[think]}. Change thinking`} style={iconButton}>
           <Icon name="bulb" size={14} color={think === 'off' ? m.textFaint : think === 'max' ? m.accent : m.textMuted} />
           {think === 'max' ? <div style={{ position: 'absolute', top: 4, right: 5, width: 4, height: 4, borderRadius: 2, backgroundColor: m.accent }} /> : null}
         </Button>
       </Tooltip>
 
       <div style={{ position: 'relative' }}>
-        <Button onPress={() => toggle('model')} selected={menu === 'model'} testId="model-pill" title="Model" style={{ paddingLeft: 7, paddingRight: 7, height: 24, minHeight: 24 }}>
-          <text style={{ fontSize: 12, lineHeight: 16, fontWeight: 500, color: m.textMuted, whiteSpace: 'nowrap' }}>{shortModel(picked, model ? undefined : resolvedModel)}</text>
-        </Button>
+        <Tooltip label="Model for this note" side="top">
+          <Button onPress={() => toggle('model')} selected={menu === 'model'} testId="model-pill" title="Change model" style={{ paddingLeft: 7, paddingRight: 7, height: 24, minHeight: 24 }}>
+            <text style={{ fontSize: 12, lineHeight: 16, fontWeight: 500, color: m.textMuted, whiteSpace: 'nowrap' }}>{shortModel(picked, model ? undefined : resolvedModel)}</text>
+          </Button>
+        </Tooltip>
         <Menu
           open={menu === 'model'}
           onClose={close}
           side="top"
-          align="start"
+          align="end"
           width={320}
           testId="model-menu"
           items={[
-            { kind: 'label' as const, label: models ? 'Model for this note' : 'Model for this note · full list after the first reply' },
+            { kind: 'label' as const, label: models ? 'Model for this note' : 'Model for this note · more after the first reply' },
             ...list.map((x) => ({
               label: x.displayName,
               hint: x.description?.split(' · ')[0],
@@ -122,14 +126,21 @@ export function StatusBar({
       </div>
 
       <div style={{ position: 'relative' }}>
-        <Button onPress={() => toggle('context')} selected={menu === 'context'} testId="context-pill" title="Context" style={{ gap: 6, paddingLeft: 6, paddingRight: 7, height: 24, minHeight: 24 }}>
-          <Ring fraction={context?.window ? context.used / context.window : 0} />
-          {context?.used ? <text style={{ fontSize: 11.5, lineHeight: 15, color: m.textFaint, fontFamily: font.mono }}>{formatTokens(context.used)}</text> : null}
-        </Button>
+        <Tooltip label={contextLabel(context)} side="top">
+          <Button onPress={() => toggle('context')} selected={menu === 'context'} testId="context-pill" title="Show context" style={{ gap: 6, paddingLeft: 6, paddingRight: 7, height: 24, minHeight: 24 }}>
+            <Ring fraction={context?.window ? context.used / context.window : 0} />
+            {context?.used ? <text style={{ fontSize: 11.5, lineHeight: 15, color: m.textFaint, fontFamily: font.mono }}>{formatTokens(context.used)}</text> : null}
+          </Button>
+        </Tooltip>
         {menu === 'context' ? <ContextCard context={context} running={running} onClose={close} onCompact={onCompact} /> : null}
       </div>
     </div>
   )
+}
+
+function contextLabel(c?: ContextUse) {
+  if (!c?.used) return 'Context: empty'
+  return c.window ? `Context: ${formatTokens(c.used)} of ${formatTokens(c.window)} tokens` : `Context: ${formatTokens(c.used)} tokens`
 }
 
 const iconButton = { width: 26, height: 24, minHeight: 24, paddingLeft: 0, paddingRight: 0, position: 'relative' as const }
@@ -176,7 +187,7 @@ function ContextCard({ context, running, onClose, onCompact }: { context?: Conte
   const pad = 12
   return (
     <DismissableLayer onEscapeKeyDown={onClose} initialFocus={() => panel.current?.id ?? null}>
-      <FloatingLayer side="top" align="start" sideOffset={6} style={{ width: 280 }}>
+      <FloatingLayer side="top" align="end" sideOffset={6} style={{ width: 280 }}>
         <div ref={panel} testId="context-card" tabIndex={0} onMouseDownOutside={() => {
             markOutsideClose()
             onClose()
@@ -216,7 +227,7 @@ function ContextCard({ context, running, onClose, onCompact }: { context?: Conte
               <Button
                 testId="compact"
                 disabled={!used || running}
-                title={running ? 'Wait for the reply to finish' : 'Summarize the conversation so far'}
+                title={running ? 'Available when Claude finishes replying' : 'Summarize the conversation so far'}
                 onPress={() => {
                   onClose()
                   onCompact()

@@ -19,6 +19,7 @@ import type { Profile } from '../core/profiles'
 import type { Thread } from '../core/threads'
 import { Dot, Icon, Kbd, Meta, Quiet, useM } from './kit'
 import { Scroll, Tooltip } from '../components'
+import { keys } from '../core/platform'
 import { accentFor, concentric, font, motion as mo, radiusXl, shortPath } from './theme'
 
 function Sheet({ open, onClose, width, children, initialFocus }: { open: boolean; onClose: () => void; width: number; children: ReactNode; initialFocus?: React.RefObject<PublicInstance | null> }) {
@@ -326,7 +327,7 @@ export function ThreadSwitcher({
           ref={inputRef}
           testId="switcher-input"
           value={query}
-          placeholder="Jump to a thread…"
+          placeholder="Find a note…"
           onChange={(e) => {
             setQuery(e.value ?? '')
             setActive(0)
@@ -340,7 +341,7 @@ export function ThreadSwitcher({
       <Scroll style={{ maxHeight: 420 }} padding={6}>
         {flat.length === 0 ? (
           <div style={{ padding: 14 }}>
-            <text style={{ fontSize: 13, lineHeight: 18, color: m.textMuted }}>{threads.length ? 'No thread matches.' : 'No threads yet.'}</text>
+            <text style={{ fontSize: 13, lineHeight: 18, color: m.textMuted }}>{threads.length ? `No notes match “${query.trim()}”.` : keys('No notes yet. ⌘N starts one.')}</text>
           </div>
         ) : null}
         {groups.map(([workspace, ts]) => (

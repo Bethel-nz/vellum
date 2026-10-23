@@ -1100,7 +1100,7 @@ function App() {
                   background: { type: 'linear-gradient', angle: 180, stops: [{ color: m.pane, position: 0 }, { color: `${m.pane.slice(0, 7)}00`, position: 1 }] },
                 }}
               />
-              <div style={{ position: 'absolute', left: 10, bottom: 10 }}>
+              <div style={{ position: 'absolute', right: 14, bottom: 10 }}>
                 <StatusBar
                   mode={active.mode ?? defaultMode}
                   onMode={setMode}
@@ -1165,7 +1165,7 @@ function App() {
           onTranslucent={(next) => {
             setTranslucentSetting(next)
             updateSettings({ translucent: next })
-            showToast('Translucency changes on next launch')
+            showToast('Translucency applies after you restart Vellum')
           }}
           tabs={tabMode}
           onTabs={(next) => {

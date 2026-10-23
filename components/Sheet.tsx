@@ -85,7 +85,7 @@ export function SheetHeader({ title, onClose, children }: { title: string; onClo
     <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, height: 48, paddingLeft: 18, paddingRight: 10, flexShrink: 0 }}>
       <text style={{ flexGrow: 1, minWidth: 0, fontSize: 14, lineHeight: 18, fontWeight: 600, color: m.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{title}</text>
       {children}
-      <Button onPress={onClose} testId="sheet-close" title="Close (Esc)" style={{ width: 24, paddingLeft: 0, paddingRight: 0 }}>
+      <Button onPress={onClose} testId="sheet-close" title="Close (esc)" style={{ width: 24, paddingLeft: 0, paddingRight: 0 }}>
         <Icon name="x" size={13} />
       </Button>
     </div>

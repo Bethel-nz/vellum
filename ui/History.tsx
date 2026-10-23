@@ -99,7 +99,7 @@ export function History({
       <Scroll style={{ flexGrow: 1 }} padding={6}>
         {flat.length === 0 ? (
           <div style={{ padding: 14 }}>
-            <text style={{ fontSize: 13, lineHeight: 18, color: m.textMuted }}>{threads.length ? 'No note matches.' : 'No notes yet.'}</text>
+            <text style={{ fontSize: 13, lineHeight: 18, color: m.textMuted }}>{threads.length ? `No notes match “${query.trim()}”.` : keys('No notes yet. ⌘N starts one.')}</text>
           </div>
         ) : null}
         {groups.map(([label, ts]) => (

@@ -1,5 +1,5 @@
 // The approval card: Claude is waiting for your OK on a tool. It rises out of the status bar in
-// the bottom-left corner of the pane, next to the mode it answers to (after the "Pending" card in a money app): a blue Waiting pill and the
+// the bottom-right corner of the pane, next to the mode it answers to (after the "Pending" card in a money app): a blue Waiting pill and the
 // time it has waited, the verb and scope (`Run in vellum/`), the command in mono, then the
 // answers with their keys. ↵ allows, ⌘↵ always allows (only when the CLI offers a rule), esc
 // opens a one-line "what to do instead" field whose ↵ denies with that message.
@@ -74,7 +74,7 @@ function Card({ ask, preview, more, denying, onDenying, onAllow, onAlways, onDen
   const pad = 14
   return (
     // The corner is held by a plain box: the rise animates `top`, which would override `bottom`.
-    <div style={{ position: 'absolute', left: 12, bottom: CARD_BOTTOM, width: 384 }}>
+    <div style={{ position: 'absolute', right: 14, bottom: CARD_BOTTOM, width: 384 }}>
     <motion.div
       initial={{ opacity: 0, top: offset.toast }}
       animate={{ opacity: 1, top: 0 }}
@@ -135,7 +135,7 @@ function Card({ ask, preview, more, denying, onDenying, onAllow, onAlways, onDen
                 testId="approval-deny-field"
                 value={message}
                 autoFocus
-                placeholder="Tell Claude what to do instead (optional)"
+                placeholder="Optional: what to do instead, e.g. use vitest"
                 onChange={setMessage}
                 onSubmit={() => onDeny(message)}
                 onKeyDown={(e) => {

@@ -181,7 +181,7 @@ function HunkView({ hunk, picked, onPick, comments }: { hunk: Hunk; picked: bool
                 testId="hunk-comment"
                 value={text}
                 autoFocus
-                placeholder="What should change here?"
+                placeholder="e.g. Clamp this at zero"
                 onChange={setText}
                 onSubmit={() => {
                   comments.save(text)

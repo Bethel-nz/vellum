@@ -1,4 +1,4 @@
-// A passing confirmation, after arc's toast: bottom-right, rises 16px on the enter curve, stays
+// A passing confirmation, after arc's toast: bottom-left, rises 16px on the enter curve, stays
 // 1.5s, fades out. One at a time; a new toast replaces the current one.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -40,8 +40,8 @@ function Toast({ shown }: { shown: Shown | null }) {
           transition={tween({ duration: duration.standard, ease: ease.enter })}
           style={{
             position: 'absolute',
-            // Bottom-right: the bottom-left corner belongs to the status bar and the approval card.
-            right: 16,
+            // Bottom-left: the bottom-right corner belongs to the status bar and the approval card.
+            left: 16,
             display: 'flex',
             alignItems: 'center',
             height: 32,

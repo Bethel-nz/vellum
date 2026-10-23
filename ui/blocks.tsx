@@ -254,7 +254,7 @@ function ActivityBlock({ block }: { block: Extract<Block, { kind: 'activity' }> 
   const running = block.items.some((i) => i.status === 'running')
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <Quiet onPress={() => setOpen((v) => !v)} style={{ alignSelf: 'start', marginLeft: -8 }} title="Show tool activity">
+      <Quiet onPress={() => setOpen((v) => !v)} style={{ alignSelf: 'start', marginLeft: -8 }} title={open ? 'Hide tool activity' : 'Show tool activity'}>
         <Icon name={open ? 'chevronDown' : 'chevronRight'} size={12} color={m.textFaint} />
         <text style={{ fontSize: 13, lineHeight: 18, color: failed ? m.danger : m.textMuted }}>
           {block.summary}
