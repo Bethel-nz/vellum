@@ -178,10 +178,14 @@ export function NewThreadDialog({
                   </text>
                 </Tooltip>
               </div>
-              {p.loggedIn === false ? <Meta color={m.danger}>not logged in</Meta> : null}
-              <Quiet onPress={() => onLogin(p.id)} title={`Log in to ${p.name}`}>
-                <Meta color={m.textMuted}>Log in</Meta>
-              </Quiet>
+              {/* Logging in lives in Settings; here it's offered only to an account that needs it. */}
+              {p.loggedIn === false ? (
+                <Quiet onPress={() => onLogin(p.id)} title={`Log in to ${p.name}`} testId={`profile-login-${p.id}`}>
+                  <Meta color={m.danger}>Not logged in · Log in</Meta>
+                </Quiet>
+              ) : p.email ? (
+                <Meta color={m.textFaint}>{p.email}</Meta>
+              ) : null}
               {p.id === profileId ? <Icon name="chevronRight" size={12} color={m.textMuted} /> : null}
             </Row>
           ))}
