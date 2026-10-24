@@ -428,8 +428,27 @@ export const BlockView = memo(function BlockView({ block, actions }: { block: Bl
       return <ApprovalLine block={block} />
     case 'compact':
       return <CompactLine block={block} />
+    case 'git':
+      return block.also.length ? <AlsoChanged block={block} /> : null
   }
 })
+
+/** Files the turn changed on disk that no edit of it shows (a shell command's work): one quiet line. */
+function AlsoChanged({ block }: { block: Extract<Block, { kind: 'git' }> }) {
+  const m = useM()
+  const files = block.files.filter((f) => block.also.includes(f.path))
+  const added = files.reduce((n, f) => n + f.added, 0)
+  const removed = files.reduce((n, f) => n + f.removed, 0)
+  return (
+    <div testId="also-changed" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0 }}>
+      <Icon name="diff" size={12} color={m.textFaint} />
+      <text style={{ ...type.meta, color: m.textMuted, flexShrink: 0 }}>Also changed</text>
+      <text style={{ ...type.meta, color: m.text, fontFamily: font.mono, whiteSpace: 'nowrap', textOverflow: 'ellipsis', minWidth: 0, flexShrink: 1 }}>{block.also.join(', ')}</text>
+      <text style={{ ...type.meta, color: diffInk(m).add, fontFamily: font.mono, flexShrink: 0 }}>{`+${added}`}</text>
+      <text style={{ ...type.meta, color: diffInk(m).del, fontFamily: font.mono, flexShrink: 0 }}>{`−${removed}`}</text>
+    </div>
+  )
+}
 
 /** Where the CLI summarized everything above: a hairline across the page, like a fold. */
 function CompactLine({ block }: { block: Extract<Block, { kind: 'compact' }> }) {

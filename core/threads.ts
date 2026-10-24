@@ -13,6 +13,7 @@ import { appendFileSync, existsSync, readdirSync, readFileSync, realpathSync, wr
 import path from 'node:path'
 import { createTwoFilesPatch } from 'diff'
 import type { Grid } from './ghostty'
+import type { GitFile } from './gitsnap'
 import { paths } from './store'
 import type { Decision, PermissionMode, Think } from './asks'
 import { contextFromUsage, windowFromResult, type ContextUse } from './models'
@@ -68,6 +69,11 @@ export type Block =
   | { kind: 'compact'; id: string; trigger: 'manual' | 'auto'; preTokens?: number; at: string }
   /** An ask you answered: kept in the note as one quiet line. */
   | { kind: 'approval'; id: string; tool: string; title: string; detail: string; decision: Decision; message?: string; at: string }
+  /**
+   * What the turn changed on disk, from git (core/gitsnap.ts). Changes reads it in place of the
+   * turn's edit blocks; the note shows only `also`: files no edit of the turn covers.
+   */
+  | { kind: 'git'; id: string; files: GitFile[]; also: string[] }
 
 export type ThreadMeta = {
   id: string
@@ -134,6 +140,8 @@ export type VellumRecord =
   | { type: 'vellum/model'; model?: string }
   /** You asked Claude to compact; the line itself comes with the CLI's compact_boundary. */
   | { type: 'vellum/compact'; at: string }
+  /** The turn's files as git saw them, between snapshots taken as it started and ended. */
+  | { type: 'vellum/git-changes'; files: GitFile[] }
 
 /** What an ACP agent said, as logged in the thread (core/agent.ts). */
 export type AcpRecord =
@@ -405,6 +413,18 @@ export function reduce(thread: Thread, ev: any): Thread {
       push({ kind: 'error', id: bid('err'), text: ev.text, login: ev.login })
       t.running = false
       break
+    case 'vellum/git-changes': {
+      if (!ev.files?.length) break
+      const turn = blocks.slice(blocks.map((b) => b.kind).lastIndexOf('user') + 1)
+      const edited = new Set(turn.flatMap((b) => (b.kind === 'edit' ? [b.path] : [])))
+      const files: GitFile[] = ev.files
+      const also = files.map((f) => f.path).filter((p) => !edited.has(p))
+      // Each turn end in the same turn (a note sent with a "no") is the whole diff since your message.
+      const prev = turn.find((b) => b.kind === 'git')
+      if (prev) patchBlock(prev.id, (b) => ({ ...b, files, also }))
+      else push({ kind: 'git', id: bid('git'), files, also })
+      break
+    }
     case 'vellum/stopped':
       t.running = false
       for (const b of blocks) if (b.kind === 'assistant' && b.streaming) patchBlock(b.id, (x) => ({ ...x, streaming: false }))
@@ -754,6 +774,9 @@ export function toMarkdown(t: Thread): string {
         break
       case 'compact':
         out.push('---', '', `*${b.trigger === 'auto' ? 'Context was full; Claude summarized everything above.' : 'Claude summarized everything above.'}*`, '')
+        break
+      case 'git':
+        if (b.also.length) out.push(`*Also changed: ${b.also.map((p) => `\`${p}\``).join(', ')}*`, '')
         break
       case 'approval':
         out.push(`*${b.decision === 'denied' ? 'Denied' : b.decision === 'always' ? 'Always allowed' : 'Allowed'}: ${b.title}* \`${b.detail}\`${b.message ? ` — ${b.message}` : ''}`, '')

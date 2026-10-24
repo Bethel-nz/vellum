@@ -496,3 +496,17 @@ Agent SDK (`CLAUDE_CODE_EXECUTABLE`), with your login, per account through `CLAU
   The note keeps the paths, so the picture shows under your paragraph. Text paste is untouched:
   with no image on the clipboard nothing happens. `VELLUM_PASTE_IMAGE` stands in for the
   clipboard in scripts/check-images.ts, so checks never touch yours.
+- **Changes from git.** Changes used to know only what the edit tools reported, so a file a
+  shell command wrote (codegen, `sed`, a formatter, `bun install`'s lockfile) never showed. Now,
+  in a git repo, each message snapshots the working tree as it goes out and each turn end
+  records the diff since (`vellum/git-changes`); that turn's Changes come from git, and the note
+  gets one quiet "Also changed …" line for files no edit of the turn covered. Outside a repo,
+  and for a turn still running, the tool calls' diffs stand as before.
+  A snapshot is a tree written through a shadow index into Vellum's own object store
+  (~/.vellum/git/<repo>, the repo's objects as an alternate): the repo's index, stash, branches
+  and .git/objects are never written (core/gitsnap.test.ts counts them). The store keeps git's
+  stat cache, so a snapshot of this repo takes ~100ms. A turn waits at most 1.5s past the
+  agent's start for its snapshot; a slower one (a huge untracked folder, first time) lets that
+  turn fall back to tool diffs while it finishes warming the cache.
+  Not done: the store under ~/.vellum/git only grows (by the blobs of changed files); nothing
+  prunes it yet.

@@ -3,6 +3,7 @@
 import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
+import { changeCount, collectChanges } from './changes'
 import { newThread, reduce, type Block, type Thread } from './threads'
 
 const records = readFileSync(path.join(import.meta.dir, 'fixtures/acp-turn.jsonl'), 'utf8')
@@ -88,4 +89,23 @@ test('a cancelled turn marks unfinished tools as stopped', () => {
   const act = t.blocks[t.blocks.length - 1]!
   expect(act.kind === 'activity' && act.items[0]?.status).toBe('error')
   expect(t.running).toBe(false)
+})
+
+test("git's view of a turn stands in for its edits in Changes, and names what the edits missed", () => {
+  const lock = { path: 'bun.lock', patch: 'diff --git a/bun.lock b/bun.lock\n--- a/bun.lock\n+++ b/bun.lock\n@@ -1 +1,2 @@\n x\n+y', added: 1, removed: 0 }
+  const hello = { path: 'hello.txt', patch: 'diff --git a/hello.txt b/hello.txt\nnew file mode 100644\n--- /dev/null\n+++ b/hello.txt\n@@ -0,0 +1 @@\n+hi', added: 1, removed: 0 }
+  let t = replay([{ type: 'vellum/git-changes', files: [hello] }])
+  // a second turn end in the same turn (a note sent with a "no") replaces it: the diff is cumulative
+  t = reduce(t, { type: 'vellum/git-changes', files: [hello, lock] })
+  const git = t.blocks.filter((b) => b.kind === 'git')
+  expect(git).toHaveLength(1)
+  if (git[0]!.kind !== 'git') throw new Error()
+  expect(git[0]!.also).toEqual(['bun.lock'])
+  const [turn] = collectChanges(t)
+  expect(turn!.label).toBe('This turn')
+  expect(turn!.files.map((f) => f.path)).toEqual(['hello.txt', 'bun.lock'])
+  expect(changeCount(t)).toBe(2)
+  // the next message starts a turn of its own; the git'd one moves to Earlier as it was
+  t = reduce(t, { type: 'vellum/user', text: 'Now edit it', tags: [], at: '2026-10-23T00:00:09.000Z' })
+  expect(collectChanges(t).map((g) => [g.label, g.files.map((f) => f.path)])).toEqual([['Earlier', ['hello.txt', 'bun.lock']]])
 })

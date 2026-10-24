@@ -9,6 +9,9 @@
 // `acp/update` record; the reducer turns them into blocks.
 //
 // Before a session is resumed, nothing else may have it open (core/locks.ts).
+//
+// In a git repo, each of your messages snapshots the working tree as it goes out, and every turn
+// end records what changed since (core/gitsnap.ts): a `vellum/git-changes` record.
 
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
@@ -18,6 +21,7 @@ import { AcpConnection, RpcFailure } from './acp'
 import { defaultClaudeJson, linkAccount, mergeMcpServers } from './accounts'
 import { defaultMode, describe, type Ask, type PermissionMode, type Think } from './asks'
 import { filePatch } from './files'
+import { changedFiles, snapshot, type Snapshot } from './gitsnap'
 import { acquire, liveHolder, release } from './locks'
 import type { ModelOption } from './models'
 import { claudeBin, imageMime } from './platform'
@@ -78,6 +82,9 @@ const live = new Set<AgentRunner>()
 
 type Pending = { ask: Ask; resolve: (outcome: unknown) => void }
 
+/** How long a turn waits, past the agent's own start, for the snapshot of your working tree. */
+const SNAPSHOT_WAIT_MS = 1500
+
 export class AgentRunner {
   #target: RunnerTarget
   #listener: Listener
@@ -88,6 +95,8 @@ export class AgentRunner {
   #asks = new Map<string, Pending>()
   #turn = false
   #stopping = false
+  /** The working tree as your latest message went out; undefined outside a repo. */
+  #base?: Promise<Snapshot | undefined>
   #locked: string | undefined
 
   constructor(target: RunnerTarget, listener: Listener) {
@@ -132,18 +141,34 @@ export class AgentRunner {
     const optionId = decision.allow ? ((decision.always && ids.always) || ids.allow) : ids.reject
     p.resolve(optionId ? { outcome: { outcome: 'selected', optionId } } : { outcome: { outcome: 'cancelled' } })
     // ACP's reject carries no reason; the note goes in as your next message (the adapter queues it).
-    if (!decision.allow && decision.message?.trim()) this.send(decision.message.trim())
+    if (!decision.allow && decision.message?.trim()) this.send(decision.message.trim(), [], true)
   }
 
-  /** A turn: your text, and any pasted images as ACP image blocks ahead of it. */
-  send(text: string, images: string[] = []) {
+  /**
+   * A turn: your text, and any pasted images as ACP image blocks ahead of it. `follow` is a note
+   * sent with a "no": it belongs to the same turn, so the snapshot taken for your message stands.
+   */
+  send(text: string, images: string[] = [], follow = false) {
     this.#turn = true
+    const workspace = this.#target.workspace
+    // Taken while the agent starts, so it usually costs the turn nothing; before the prompt, so nothing has changed yet.
+    if (!follow || !this.#base) this.#base = snapshot(workspace).catch(() => undefined)
+    const base = this.#base
     this.#start()
       .then(async (sessionId) => {
         if (!sessionId) return
+        // A slow first snapshot (a huge untracked folder) isn't waited on: this turn goes without,
+        // and the snapshot carries on warming git's cache for the next one.
+        const before = await Promise.race([base, Bun.sleep(SNAPSHOT_WAIT_MS).then(() => 'late' as const)])
+        if (before === 'late' && this.#base === base) this.#base = Promise.resolve(undefined)
         const pictures = images.filter((f) => existsSync(f)).map((f) => ({ type: 'image', mimeType: imageMime(f), data: readFileSync(f).toString('base64') }))
         const prompt = [...pictures, ...(text ? [{ type: 'text', text }] : [])]
         const res: any = await this.#conn!.request('session/prompt', { sessionId, prompt })
+        if (before && before !== 'late') {
+          const after = await snapshot(workspace).catch(() => undefined)
+          const files = after ? await changedFiles(before, after, workspace).catch(() => []) : []
+          if (files.length) this.#listener.record({ type: 'vellum/git-changes', files })
+        }
         this.#end({ type: 'acp/end', stopReason: res?.stopReason ?? 'end_turn' })
       })
       .catch((e) => this.#fail(e))

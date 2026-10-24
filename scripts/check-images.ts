@@ -31,7 +31,8 @@ const expect = (label: string, ok: boolean, detail = '') => {
 try {
   const c = app.getByTestId('composer')
   await c.waitFor({ timeoutMs: 60_000 })
-  await wait(800)
+  // The note scrolls to its end after it loads; a click before that misses the composer.
+  await wait(2500)
   await c.click()
   await c.press('cmd-v')
   await wait(800)

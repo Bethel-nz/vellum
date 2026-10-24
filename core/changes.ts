@@ -1,6 +1,7 @@
 // The note's edits, by file and hunk, for the Changes sheet. "This turn" is every edit since your
 // last paragraph; "Earlier" is the rest. A file edited several times is one row whose hunks run
-// in edit order. Selected hunks go into your draft as ± pills (hunk tags) carrying the hunk and
+// in edit order. A finished turn in a git repo has a `git` block, the turn's diff as git saw it;
+// it stands in for that turn's edit blocks, so files a shell command changed are there too. Selected hunks go into your draft as ± pills (hunk tags) carrying the hunk and
 // your comments on its lines; `promptFor` spells them out for Claude.
 
 import { hunksOnly, type Block, type HunkNote, type Tag, type Thread } from './threads'
@@ -53,7 +54,9 @@ export function splitHunks(blockId: string, path: string, patch: string): Hunk[]
   return out
 }
 
-function byFile(edits: Extract<Block, { kind: 'edit' }>[]): FileChange[] {
+type Edit = { id: string; path: string; patch: string; added: number; removed: number; status: FileChange['status'] }
+
+function byFile(edits: Edit[]): FileChange[] {
   const files = new Map<string, FileChange>()
   for (const e of edits) {
     const f = files.get(e.path) ?? { path: e.path, added: 0, removed: 0, status: 'ok' as const, hunks: [] }
@@ -67,17 +70,30 @@ function byFile(edits: Extract<Block, { kind: 'edit' }>[]): FileChange[] {
   return [...files.values()]
 }
 
+/** Each turn's edits: its git diff when it has one, else its edit blocks. */
+function turns(blocks: Block[]): Edit[][] {
+  const out: Block[][] = [[]]
+  for (const b of blocks) {
+    if (b.kind === 'user') out.push([])
+    out.at(-1)!.push(b)
+  }
+  return out.map((turn) => {
+    const git = turn.filter((b): b is Extract<Block, { kind: 'git' }> => b.kind === 'git')
+    if (git.length) return git.flatMap((g) => g.files.map((f, i) => ({ ...f, id: `${g.id}/${i}`, status: 'ok' as const })))
+    return turn.filter((b): b is Extract<Block, { kind: 'edit' }> => b.kind === 'edit' && Boolean(b.patch))
+  })
+}
+
 export function collectChanges(t: Thread): ChangeGroup[] {
-  const lastUser = t.blocks.map((b) => b.kind).lastIndexOf('user')
-  const edits = t.blocks.map((b, i) => [b, i] as const).filter((x): x is [Extract<Block, { kind: 'edit' }>, number] => x[0].kind === 'edit' && Boolean(x[0].patch))
+  const all = turns(t.blocks)
   const groups: ChangeGroup[] = [
-    { label: 'This turn', files: byFile(edits.filter(([, i]) => i > lastUser).map(([b]) => b)) },
-    { label: 'Earlier', files: byFile(edits.filter(([, i]) => i <= lastUser).map(([b]) => b)) },
+    { label: 'This turn', files: byFile(all.at(-1)!) },
+    { label: 'Earlier', files: byFile(all.slice(0, -1).flat()) },
   ]
   return groups.filter((g) => g.files.length)
 }
 
-export const changeCount = (t: Thread) => new Set(t.blocks.flatMap((b) => (b.kind === 'edit' && b.patch ? [b.path] : []))).size
+export const changeCount = (t: Thread) => new Set(turns(t.blocks).flat().map((e) => e.path)).size
 
 /** Where a hunk starts in the new file, from `@@ -a,b +c,d @@`. */
 export function hunkStart(header: string): number {

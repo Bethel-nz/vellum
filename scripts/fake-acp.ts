@@ -2,7 +2,8 @@
 // without a paid turn. It speaks the same JSON-RPC the Claude ACP adapter does (spikes/acp-turn.ts):
 // initialize, session/new and session/resume, config options for mode, model and effort, and on
 // each prompt a session/request_permission for a Bash command (or an Edit, when the prompt says
-// "edit"), then a tool call, a reply, usage and end_turn. A prompt within a second of a "no" is the
+// "edit"), then a tool call, a reply, usage and end_turn. A prompt that says "codegen" runs a
+// pretend `bun run codegen` that really writes src/generated.ts, a change no edit tool shows. A prompt within a second of a "no" is the
 // note that came with it, and gets a plain answer. `/compact` answers with a compaction. Every message it
 // receives is appended to $FAKE_ACP_LOG as {in: msg}.
 //
@@ -98,10 +99,13 @@ async function prompt(sessionId: string, text: string) {
     return { stopReason: 'end_turn' }
   }
   const edit = /\bedit\b/i.test(text)
+  const codegen = /\bcodegen\b/i.test(text)
   const callId = `toolu_${turn}`
   const toolCall = edit
     ? { toolCallId: callId, name: 'Edit', _meta: { claudeCode: { toolName: 'Edit' } }, kind: 'edit', title: 'Edit ui/theme.ts', rawInput: { file_path: `${process.cwd()}/ui/theme.ts`, old_string: 'export const radiusXl = 14', new_string: 'export const radiusXl = 16' }, status: 'pending' }
-    : { toolCallId: callId, name: 'Bash', _meta: { claudeCode: { toolName: 'Bash' } }, kind: 'execute', title: 'bun test ui/theme.test.ts', rawInput: { command: 'bun test ui/theme.test.ts', description: 'Run the theme tests' }, status: 'pending' }
+    : codegen
+      ? { toolCallId: callId, name: 'Bash', _meta: { claudeCode: { toolName: 'Bash' } }, kind: 'execute', title: 'bun run codegen', rawInput: { command: 'bun run codegen', description: 'Generate the types' }, status: 'pending' }
+      : { toolCallId: callId, name: 'Bash', _meta: { claudeCode: { toolName: 'Bash' } }, kind: 'execute', title: 'bun test ui/theme.test.ts', rawInput: { command: 'bun test ui/theme.test.ts', description: 'Run the theme tests' }, status: 'pending' }
   update(sessionId, { sessionUpdate: 'tool_call', ...toolCall })
   const answer = await ask({
     sessionId,
@@ -118,7 +122,11 @@ async function prompt(sessionId: string, text: string) {
     update(sessionId, { sessionUpdate: 'tool_call_update', toolCallId: callId, status: 'failed', rawOutput: 'The user rejected this.' })
     return { stopReason: answer?.outcome?.outcome === 'cancelled' ? 'cancelled' : 'end_turn' }
   }
-  update(sessionId, { sessionUpdate: 'tool_call_update', toolCallId: callId, status: 'completed', rawOutput: edit ? 'The file has been updated.' : '2 pass' })
+  if (codegen) {
+    mkdirSync(path.join(process.cwd(), 'src'), { recursive: true })
+    writeFileSync(path.join(process.cwd(), 'src/generated.ts'), 'export type Id = string\nexport type Name = string\n')
+  }
+  update(sessionId, { sessionUpdate: 'tool_call_update', toolCallId: callId, status: 'completed', rawOutput: edit ? 'The file has been updated.' : codegen ? 'Wrote src/generated.ts' : '2 pass' })
   update(sessionId, { sessionUpdate: 'agent_message_chunk', messageId: `m${turn}`, content: { type: 'text', text: edit ? 'Changed it.' : 'Ran it: 2 pass.' } })
   update(sessionId, { sessionUpdate: 'usage_update', used: 24_350, size: 200_000, _meta: { '_claude/model': resolved() } })
   return { stopReason: 'end_turn' }
