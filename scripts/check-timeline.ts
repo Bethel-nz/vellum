@@ -58,6 +58,8 @@ try {
   const ticks = (await ids('timeline-')).filter((t) => t !== 'timeline-preview')
   expect('a tick for each of your paragraphs', ticks.length === asks.length, `${ticks.length}`)
   const blockIds = ticks.map((t) => t.slice('timeline-'.length))
+  // At rest the rail is faded; hovering brings it up.
+  await shot('0-rest')
 
   await app.getByTestId(ticks[1]!).hover()
   await app.getByTestId('timeline-preview').waitFor({ timeoutMs: 3000 }).catch(() => {})

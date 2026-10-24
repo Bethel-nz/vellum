@@ -2,7 +2,8 @@
 // note has a few. Ticks near the pointer widen like a dock, and the one under it previews the
 // paragraph with its time; the preview stays while you move onto it, with Go there and Edit. A
 // click on a tick scrolls the note there, a double-click also puts the caret in the paragraph.
-// The tick for the paragraph you're reading stays bright as the note scrolls.
+// The tick for the paragraph you're reading stays bright as the note scrolls. The whole rail
+// rests faded and comes up while the pointer is on it or its preview.
 //
 // The rail scrolls on its own once it's taller than the page (a long note), with no scrollbar;
 // the preview follows it.
@@ -24,6 +25,8 @@ const WIDE = 34
 /** How fast the widening falls off with distance from the pointer, per tick. */
 const FALLOFF = 0.3
 const PREVIEW_W = 280
+/** The rail at rest, so it doesn't compete with the note; it comes up while the pointer is on it. */
+const REST = 0.4
 /** The list's own first row is the spacer above the title; blocks follow it one row each. */
 const HEAD_ROWS = 1
 
@@ -111,9 +114,9 @@ export function Timeline({ thread, list, rows }: { thread: Thread; list: RefObje
             <div key={it.id} testId={`timeline-${it.id}`} style={{ position: 'relative', height: ROW, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
               <motion.div
                 initial={false}
-                animate={{ width: NARROW + (WIDE - NARROW) * near + (on && !near ? 6 : 0) }}
+                animate={{ width: NARROW + (WIDE - NARROW) * near + (on && !near ? 6 : 0), opacity: (on || hover === i ? 1 : 0.55) * (hover === undefined ? REST : 1) }}
                 transition={tween({ duration: 0.16, ease: ease.enter })}
-                style={{ height: BAR, borderRadius: BAR / 2, backgroundColor: on || hover === i ? m.text : m.textFaint, opacity: on || hover === i ? 1 : 0.55 }}
+                style={{ height: BAR, borderRadius: BAR / 2, backgroundColor: on || hover === i ? m.text : m.textFaint }}
               />
               {/* The hit area lies over the bar: a motion.div takes presses from the element around it. */}
               <div
