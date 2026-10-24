@@ -24,6 +24,11 @@ const closed = async (id: string) => {
 
 const shot = (n: string) => app.screenshot({ path: 'screenshots/tabs-' + n + '.png' })
 const titleY = async () => Math.round((await app.getByTestId('page').bounds()).y)
+/** Polls until `ok`, for the strip's slide: under load it can still be moving after a fixed wait. */
+const until = async (ok: () => Promise<boolean>, ms = 4000) => {
+  for (const end = Date.now() + ms; Date.now() < end; await wait(100)) if (await ok()) return true
+  return false
+}
 const tabIds = async () => (await app.getByType('div').all()).map((n) => n.testId ?? '').filter((id) => id.startsWith('tab-'))
 const tabCount = async () => (await tabIds()).length
 let failed = 0
@@ -94,13 +99,12 @@ try {
 
   // ⌘⇧T hides the pinned strip and brings it back
   await c.press('cmd-shift-t')
-  await wait(500)
+  await until(async () => (await titleY()) < shown - 20)
   const hidden = await titleY()
   expect('⌘⇧T hides the strip', hidden < shown - 20, `title y ${shown} → ${hidden}`)
   await shot('2-hidden')
   await c.press('cmd-shift-t')
-  await wait(500)
-  expect('⌘⇧T shows it again', (await titleY()) === shown)
+  expect('⌘⇧T shows it again', await until(async () => (await titleY()) === shown))
 
   // auto: writing tucks the strip away, the top edge brings it back
   await c.press('cmd-,')
@@ -112,12 +116,10 @@ try {
   await wait(32)
   await c.click()
   await c.fill('A few words')
-  await wait(600)
-  expect('auto mode tucks away while writing', (await titleY()) < shown - 20)
+  expect('auto mode tucks away while writing', await until(async () => (await titleY()) < shown - 20))
   await shot('3-auto-writing')
   await app.mouse.move({ x: 400, y: 6 })
-  await wait(600)
-  expect('top edge reveals it', (await titleY()) === shown)
+  expect('top edge reveals it', await until(async () => (await titleY()) === shown))
   await shot('4-auto-reveal')
 } finally {
   await app.close()
