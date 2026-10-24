@@ -1289,8 +1289,7 @@ function App() {
     const key = (e.key ?? '').toLowerCase()
     // A list or field that handled the key already (⌃N in a picker is also Ctrl+N, new note, off macOS).
     if (e.defaultPrevented) return
-    // ⌃← ⌃→ step through the tabs (macOS text fields give ⌃-arrows no meaning of their own);
-    // Ctrl+PgUp/PgDn elsewhere, where Ctrl+arrows move by word.
+    // ⌃⇥ ⌃⇧⇥ step through the tabs, as in a browser (and Ctrl+PgUp/PgDn off macOS).
     const step = tabStep(key, mods)
     if (step) {
       e.preventDefault()

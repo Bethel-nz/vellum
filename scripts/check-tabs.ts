@@ -1,9 +1,9 @@
-// Self-check for the tab strip: + opens a note in the same folder, ⌃← ⌃→ cycle, ⌘⇧T hides and shows the
+// Self-check for the tab strip: + opens a note in the same folder, ⌃⇥ ⌃⇧⇥ cycle, ⌘⇧T hides and shows the
 // strip, auto mode tucks it away while you write and the top edge brings it back, ⌃click closes.
 // The strip's state is read from where the page starts (it moves up by the strip's height).
 // ⌘Y opens History from the left; picking a note there opens it in a tab.
 //   bun scripts/check-tabs.ts
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
@@ -53,18 +53,24 @@ try {
   expect('Create adds a tab', (await tabCount()) === before + 1, `${before} → ${await tabCount()}`)
   await shot('1-plus')
 
-  // ⌃← ⌃→ step through the tabs, even from the composer. The current tab is the wide one.
+  // ⌃⇧⇥ ⌃⇥ step through the tabs, even from the composer, and leave its mode alone. The current tab is the wide one.
   const current = async () => {
     for (const id of await tabIds()) if ((await app.getByTestId(id).bounds()).width > 40) return id
   }
   const [first, second] = await tabIds()
   await c.click()
+  await c.press('ctrl-shift-tab')
+  await wait(500)
+  expect('⌃⇧⇥ goes to the previous tab', (await current()) === first, `${await current()}`)
+  await c.press('ctrl-tab')
+  await wait(500)
+  expect('⌃⇥ goes to the next tab', (await current()) === second)
+  const threads = path.join(home, 'threads')
+  const modes = readdirSync(threads).filter((f) => f.endsWith('.jsonl')).flatMap((f) => readFileSync(path.join(threads, f), 'utf8').split('\n')).filter((l) => l.includes('"vellum/mode"'))
+  expect('…and the composer’s mode stays (⇧⇥ alone cycles it)', modes.length === 0, `${modes.length} mode records`)
   await c.press('ctrl-left')
   await wait(500)
-  expect('⌃← goes to the previous tab', (await current()) === first, `${await current()}`)
-  await c.press('ctrl-right')
-  await wait(500)
-  expect('⌃→ goes to the next tab', (await current()) === second)
+  expect('⌃← is left to macOS (Spaces)', (await current()) === second)
 
   // ⌃click closes that tab again
   const fresh = (await tabIds()).at(-1)!

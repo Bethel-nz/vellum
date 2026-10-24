@@ -228,7 +228,7 @@ export function Composer({
   const onKeyDown = (e: KeyEvent) => {
     const mods = e.modifiers
     if (primary(mods) && e.key === 'v') onPaste?.()
-    if (e.key === 'tab' && mods?.shift && !open) {
+    if (e.key === 'tab' && mods?.shift && !mods.ctrl && !open) {
       e.preventDefault()
       const i = cycleModes.indexOf(mode)
       onMode(cycleModes[(i + 1) % cycleModes.length]!)
@@ -243,7 +243,7 @@ export function Composer({
       }
     }
     if (open) {
-      if (e.key === 'tab' || (primary(mods) && e.key === 'enter')) {
+      if ((e.key === 'tab' && !mods?.ctrl) || (primary(mods) && e.key === 'enter')) {
         e.preventDefault()
         pickActive()
         return

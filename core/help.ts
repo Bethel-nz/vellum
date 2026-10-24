@@ -51,7 +51,7 @@ A queued message has Steer now and Remove under it until it goes.
 | ⌘N | New note |
 | ⇧⌘W | Close the tab |
 | ⌘1–⌘8 | Go to that tab; ⌘9 the last |
-| ⌃← ⌃→ | Previous or next tab (also ⇧⌘[ ⇧⌘]) |
+| ⌃⇥ ⌃⇧⇥ | Next or previous tab (also ⇧⌘] ⇧⌘[) |
 | ⌘K | Jump to any note |
 | ⌘Y | Past notes |
 | ⇧⌘Y | Recipes |

@@ -31,7 +31,7 @@ Findings, choices and deviations from the build prompt. Newest decisions win.
   title, unread-reply badge, last-change time). The active tab shares the page colour. Then +,
   ⌘K and the material toggle. Under it sits the page title with a ⌄ menu: folder and account,
   Rename, Open in Claude Code, Show folder in Finder, Close tab. The account shows on the right.
-  Shortcuts: ⌘N/⌘T new, ⇧⌘W close tab, ⌘1–⌘9, ⌘⇧[ / ⌘⇧], ⌃← / ⌃→ (macOS gives ⌃-arrows to Spaces by default; turn that off in Keyboard Shortcuts › Mission Control to use them here). Open tabs persist in `settings.json`.
+  Shortcuts: ⌘N/⌘T new, ⇧⌘W close tab, ⌘1–⌘9, ⌘⇧[ / ⌘⇧], ⌃⇥ / ⌃⇧⇥ (not ⌃← / ⌃→: macOS gives those to Spaces). Open tabs persist in `settings.json`.
 - **Default profile uses Claude Code's own default config** (`configDir: null` → `CLAUDE_CONFIG_DIR`
   unset), so the account already logged in on this Mac works on first run. Profiles added in the
   app get `~/.vellum/profiles/<id>/claude/` with symlinks from `shared/`.
@@ -197,7 +197,7 @@ arrives too early. Re-run it before reading anything into that.
   GPUIX can't hide them, so `trafficLightX/Y` put them at -200. Still not verified by eye on a
   real window (headless screenshots never show them).
 - Send is **⌘↵** everywhere (composer, edited paragraphs, `!` commands). ⌃↵ no longer sends.
-- ⌃← / ⌃→ cycle tabs.
+- ⌃⇥ / ⌃⇧⇥ cycle tabs.
 - Titles: the first paragraph gets a word-cut provisional title, then `claude -p --model haiku`
   with nothing loaded (`--setting-sources '' --strict-mcp-config --tools '' --disable-slash-commands
   --no-session-persistence` and a one-line system prompt) names it in 2–6 words: about $0.0003 and
@@ -279,7 +279,7 @@ channel, which does the same job:
   | | macOS | Windows | Linux |
   |---|---|---|---|
   | command key | ⌘ | Ctrl | Ctrl |
-  | tab cycling | ⌃← ⌃→ | Ctrl+PgUp/PgDn | Ctrl+PgUp/PgDn |
+  | tab cycling | ⌃⇥ ⌃⇧⇥ | Ctrl+Tab, Ctrl+PgUp/PgDn | Ctrl+Tab, Ctrl+PgUp/PgDn |
   | leave a terminal | ⌘Esc | Ctrl+` | Ctrl+` |
   | app keys inside a terminal | ⌘ | Ctrl+Shift | Ctrl+Shift |
   | clipboard | pbcopy/pbpaste | PowerShell Set-/Get-Clipboard | wl-copy, xclip or xsel |

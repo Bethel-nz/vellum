@@ -33,10 +33,14 @@ export function terminalPrimary(mods: Mods): boolean {
   return Boolean(isMac ? mods?.cmd : mods?.ctrl && mods.shift)
 }
 
-/** -1 / 1 when the key steps through tabs: ⌃← ⌃→ on macOS, Ctrl+PgUp/PgDn elsewhere (Ctrl+arrows move by word there). */
+/**
+ * -1 / 1 when the key steps through tabs: ⌃⇥ / ⌃⇧⇥ everywhere, as browsers do, and Ctrl+PgUp/PgDn
+ * off macOS too. Not ⌃← ⌃→: macOS gives those to Spaces, and Ctrl+arrows move by word elsewhere.
+ */
 export function tabStep(key: string, mods: Mods): -1 | 0 | 1 {
   if (!mods?.ctrl || mods.cmd || mods.alt) return 0
-  if (isMac) return key === 'left' || key === 'arrowleft' ? -1 : key === 'right' || key === 'arrowright' ? 1 : 0
+  if (key === 'tab') return mods.shift ? -1 : 1
+  if (isMac) return 0
   return key === 'pageup' ? -1 : key === 'pagedown' ? 1 : 0
 }
 
