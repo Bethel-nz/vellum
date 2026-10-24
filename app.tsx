@@ -49,7 +49,7 @@ import { revealEnd } from './ui/glide'
 import { Timeline, watchRows } from './ui/Timeline'
 import { changeCount, hunkTags } from './core/changes'
 import { Dot, Icon, Kbd, MaterialContext, Meta, Quiet, useM } from './ui/kit'
-import { SettingsSheet, type MotionPref, type TabMode } from './ui/SettingsSheet'
+import { SettingsPage, type MotionPref, type TabMode } from './ui/Settings'
 import { CELL_W, TerminalBlock } from './ui/TerminalBlock'
 import {
   accentFor,
@@ -1054,6 +1054,8 @@ function App() {
                 ) : null
               }
               onPick={(id) => {
+                // A tab is a way out of Settings, back to that note.
+                if (overlay === 'settings') setOverlay(null)
                 // The current pill is the note's title: pressing it opens its menu.
                 if (id === activeId) return setNoteMenu((v) => !v && !closedByOutsidePress())
                 setActiveId(id)
@@ -1165,6 +1167,41 @@ function App() {
           ) : (
             <EmptyState onNew={() => setOverlay('new')} />
           )}
+          {/* Settings is a page over the note, under the strip (ui/Settings.tsx). */}
+          {overlay === 'settings' ? (
+            <SettingsPage
+              top={stripVisible ? stripHeight : 0}
+              onClose={() => setOverlay(null)}
+              material={materialName}
+              onMaterial={(next) => {
+                setMaterialName(next)
+                updateSettings({ material: next })
+              }}
+              translucent={translucentSetting}
+              onTranslucent={(next) => {
+                setTranslucentSetting(next)
+                updateSettings({ translucent: next })
+                showToast('Translucency applies after you restart Vellum')
+              }}
+              tabs={tabMode}
+              onTabs={(next) => {
+                setTabMode(next)
+                setStripToggled(false)
+                updateSettings({ tabs: next })
+              }}
+              motion={motionSetting}
+              onMotion={(next) => {
+                motionPref(next)
+                setMotionSetting(next)
+                updateSettings({ motion: next })
+              }}
+              profiles={profiles}
+              busy={authBusy}
+              onLogin={openLogin}
+              onLogout={logOut}
+              onAddProfile={addAccount}
+            />
+          ) : null}
           {/* Auto mode: touching the top edge brings the strip back, no click needed. */}
           {!stripVisible && tabMode === 'auto' ? (
             <div testId="strip-hot-zone" onMouseEnter={() => setStripHover(true)} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 12 }} />
@@ -1198,38 +1235,6 @@ function App() {
             onLogin={openLogin}
           />
         ) : null}
-        <SettingsSheet
-          open={overlay === 'settings'}
-          onClose={() => setOverlay(null)}
-          material={materialName}
-          onMaterial={(next) => {
-            setMaterialName(next)
-            updateSettings({ material: next })
-          }}
-          translucent={translucentSetting}
-          onTranslucent={(next) => {
-            setTranslucentSetting(next)
-            updateSettings({ translucent: next })
-            showToast('Translucency applies after you restart Vellum')
-          }}
-          tabs={tabMode}
-          onTabs={(next) => {
-            setTabMode(next)
-            setStripToggled(false)
-            updateSettings({ tabs: next })
-          }}
-          motion={motionSetting}
-          onMotion={(next) => {
-            motionPref(next)
-            setMotionSetting(next)
-            updateSettings({ motion: next })
-          }}
-          profiles={profiles}
-          busy={authBusy}
-          onLogin={openLogin}
-          onLogout={logOut}
-          onAddProfile={addAccount}
-        />
         <Sheet open={confirmClose !== null} onClose={() => setConfirmClose(null)} width={400} testId="confirm-close">
           <SheetHeader title="Claude is still working" onClose={() => setConfirmClose(null)} />
           <SheetSection>

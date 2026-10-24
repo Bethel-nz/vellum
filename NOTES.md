@@ -618,3 +618,20 @@ frames 0–260ms on a paused clock (`app.clock.pause()` / `fastForward()`) into
   - ⌘Enter from far up lands at the end and keeps following.
   - Verified in a clean worktree of HEAD plus this change, which also passed check-motion,
     check-changes and check-timeline.
+
+## 2026-10-24 — Settings is a page
+
+- **What.** ⌘, and the account marker open Settings as a page of its own:
+  - It sits in the pane under the tab strip and covers the note. The note stays mounted
+    underneath, so its scroll and draft are as you left them.
+  - The sections (Accounts, Appearance, Tabs, Motion) are listed on the left and scroll on the
+    right. A name in the list scrolls to its section.
+  - The section you're in lights. A jump holds its light through its own scroll, because a page
+    too short for the last section to reach the top would otherwise light the one above.
+  - esc, Done, or a tab in the strip goes back to the note.
+  - The content fades in on `standard`. It has no shadow, so nothing ghosts.
+- **Why not a third view beside notes and terminals:** the terminal view's switching was
+  uncommitted work in another session when this went in. The page is an absolute layer in the
+  pane, so the two can't collide, and it can become a view later without changing what you see.
+- **Checks.** `scripts/check-settings.ts` covers: opens under the strip, a section jump, scrolling
+  back, esc, Done, and a tab. check-tabs (settings → tab mode) and check-login also pass.
