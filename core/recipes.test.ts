@@ -1,6 +1,6 @@
 // Recipes on disk and how one expands. VELLUM_HOME is a scratch folder (core/test-setup.ts).
 import { expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { deleteRecipe, expandRecipe, formatRecipe, loadRecipes, parseRecipe, recipeCall, recipeDir, recipeName, saveRecipe } from './recipes'
@@ -69,4 +69,25 @@ test('$name at the start of a message calls the recipe with the rest', () => {
   expect(recipeCall('$review', recipes)?.input).toBe('')
   expect(recipeCall('$nope x', recipes)).toBeUndefined()
   expect(recipeCall('costs $5', recipes)).toBeUndefined()
+})
+
+test('a repo can’t point its recipes at your files: links, and a recipes folder outside it, are ignored', () => {
+  const secret = path.join(mkdtempSync(path.join(tmpdir(), 'vellum-secret-')), 'id_rsa')
+  writeFileSync(secret, 'PRIVATE KEY')
+  // A link as a recipe file.
+  const folder = mkdtempSync(path.join(tmpdir(), 'vellum-recipes-'))
+  mkdirSync(recipeDir('project', folder), { recursive: true })
+  symlinkSync(secret, path.join(recipeDir('project', folder), 'leak.md'))
+  expect(loadRecipes(folder).some((r) => r.body.includes('PRIVATE KEY'))).toBe(false)
+  // Saving over that link is refused, and the file behind it is untouched.
+  expect(() => saveRecipe({ name: 'leak', scope: 'project', body: 'x' }, folder)).toThrow('link')
+  expect(readFileSync(secret, 'utf8')).toBe('PRIVATE KEY')
+  // The whole .vellum folder as a link out of the repo.
+  const elsewhere = mkdtempSync(path.join(tmpdir(), 'vellum-elsewhere-'))
+  mkdirSync(path.join(elsewhere, 'recipes'))
+  writeFileSync(path.join(elsewhere, 'recipes', 'outside.md'), 'from outside')
+  const sneaky = mkdtempSync(path.join(tmpdir(), 'vellum-recipes-'))
+  symlinkSync(elsewhere, path.join(sneaky, '.vellum'))
+  expect(loadRecipes(sneaky).some((r) => r.name === 'outside')).toBe(false)
+  expect(() => saveRecipe({ name: 'x', scope: 'project', body: 'x' }, sneaky)).toThrow('outside the project')
 })

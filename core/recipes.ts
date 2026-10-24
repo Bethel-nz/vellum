@@ -17,7 +17,7 @@
 // `{{input}}` is what you type after `$name`; without it, that text goes after the recipe.
 // {{folder}}, {{branch}} and {{date}} fill themselves in.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import type { PermissionMode } from './asks'
 import { paths } from './store'
@@ -72,14 +72,35 @@ export function formatRecipe(r: Pick<Recipe, 'description' | 'mode' | 'model' | 
   return (head.length ? `---\n${head.join('\n')}\n---\n` : '') + r.body.trim() + '\n'
 }
 
-function readDir(scope: Recipe['scope'], dir: string): Recipe[] {
+/** Larger than any prompt; a file this big isn't a recipe. */
+const MAX_BYTES = 64 * 1024
+
+/**
+ * Is `dir` really inside `folder`? A repo can make .vellum or recipes a link to anywhere (your
+ * home, ~/.ssh), and whatever is read becomes a prompt, so a project's recipes must be its own.
+ */
+function insideFolder(dir: string, folder: string): boolean {
+  try {
+    const root = realpathSync(folder)
+    const real = realpathSync(dir)
+    return real === root || real.startsWith(root + path.sep)
+  } catch {
+    return false
+  }
+}
+
+function readDir(scope: Recipe['scope'], dir: string, folder?: string): Recipe[] {
   if (!existsSync(dir)) return []
+  if (scope === 'project' && (!folder || !insideFolder(dir, folder))) return []
   const out: Recipe[] = []
   for (const f of readdirSync(dir).sort()) {
     if (!f.endsWith('.md')) continue
     const name = recipeName(f.slice(0, -3))
     if (!name) continue
     const file = path.join(dir, f)
+    // Plain files only: not a link (it could point at any file of yours), a FIFO or a folder.
+    const st = lstatSync(file, { throwIfNoEntry: false })
+    if (!st?.isFile() || st.size > MAX_BYTES) continue
     try {
       const r = parseRecipe(readFileSync(file, 'utf8'))
       if (scope === 'project' && r.mode && !PROJECT_MODES.includes(r.mode)) r.mode = undefined
@@ -92,7 +113,7 @@ function readDir(scope: Recipe['scope'], dir: string): Recipe[] {
 /** Your recipes and the project's, by name; yours wins a clash. */
 export function loadRecipes(folder?: string): Recipe[] {
   const byName = new Map<string, Recipe>()
-  if (folder) for (const r of readDir('project', recipeDir('project', folder))) byName.set(r.name, r)
+  if (folder) for (const r of readDir('project', recipeDir('project', folder), folder)) byName.set(r.name, r)
   for (const r of readDir('yours', recipeDir('yours'))) byName.set(r.name, r)
   return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
@@ -105,7 +126,10 @@ export function saveRecipe(r: Pick<Recipe, 'name' | 'description' | 'mode' | 'mo
   if (r.scope === 'project' && !folder) throw new Error('A project recipe needs the project folder')
   const dir = recipeDir(r.scope, folder)
   mkdirSync(dir, { recursive: true })
+  if (r.scope === 'project' && !insideFolder(dir, folder!)) throw new Error('The project’s recipes folder leads outside the project')
   const file = path.join(dir, `${name}.md`)
+  // Never write through a link: it could lead to any file of yours.
+  if (lstatSync(file, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error(`${name}.md is a link, not a recipe file`)
   writeFileSync(file, formatRecipe(r))
   if (r.file && r.file !== file && existsSync(r.file)) rmSync(r.file)
   return file
