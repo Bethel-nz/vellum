@@ -144,7 +144,9 @@ export const groknight: Material = {
   textUi: '#d4d4d4',
   textMuted: '#9d9d9d',
   textFaint: '#4d4d4d',
-  border: '#1c1c1e',
+  // A white hairline, not an opaque grey: #1c1c1c on the pane as before, and still a line on the
+  // popup, where the old #1c1c1e matched the fill and menu separators vanished.
+  border: '#ffffff09',
   borderFaint: '#141414',
   borderFocused: '#2e2e32',
   hover: '#2c2c2c',

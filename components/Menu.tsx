@@ -182,7 +182,7 @@ function MenuPanel({ onClose, items, header, width, side, align, testId, closeKe
             </div>
           ) : null}
           {items.map((it, i) => {
-            if (it.kind === 'separator') return <div key={`sep-${i}`} style={{ height: SEPARATOR, display: 'flex', justifyContent: 'center' }}><div style={{ height: 1, marginLeft: -PAD, marginRight: -PAD, backgroundColor: m.border }} /></div>
+            if (it.kind === 'separator') return <div key={`sep-${i}`} style={{ height: SEPARATOR, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}><div style={{ height: 1, marginLeft: -PAD, marginRight: -PAD, backgroundColor: m.border }} /></div>
             if (it.kind === 'label')
               return (
                 <div key={`label-${i}`} style={{ height: LABEL, display: 'flex', alignItems: 'center', paddingLeft: 9 }}>

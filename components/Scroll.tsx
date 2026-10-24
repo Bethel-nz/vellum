@@ -17,6 +17,7 @@ export function Scroll({
   style,
   padding = 0,
   gap,
+  gutter = THUMB + AIR * 2,
   testId,
 }: {
   children: ReactNode
@@ -24,6 +25,8 @@ export function Scroll({
   style?: StyleDesc
   padding?: number | { top?: number; right?: number; bottom?: number; left?: number }
   gap?: number
+  /** Room on the right for the thumb. Narrower only where the rows' own padding can take it. */
+  gutter?: number
   testId?: string
 }) {
   const m = useM()
@@ -39,7 +42,7 @@ export function Scroll({
           paddingTop: p.top ?? 0,
           paddingBottom: p.bottom ?? 0,
           paddingLeft: p.left ?? 0,
-          paddingRight: Math.max(p.right ?? 0, THUMB + AIR * 2),
+          paddingRight: Math.max(p.right ?? 0, gutter),
         }}
       >
         {children}

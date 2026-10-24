@@ -2,7 +2,7 @@
 // hairline, and a blue focus ring that comes up over 100ms.
 
 import { useState } from 'react'
-import type { KeyEvent, PublicInstance } from '@gpuix/react'
+import type { KeyEvent, PublicInstance, StyleDesc } from '@gpuix/react'
 import { concentric, radiusBase } from '../ui/theme'
 import { useM } from './theme'
 
@@ -16,6 +16,8 @@ export function Field({
   testId,
   fieldRef,
   mono,
+  quiet,
+  style,
 }: {
   value: string
   onChange: (next: string) => void
@@ -26,6 +28,10 @@ export function Field({
   testId?: string
   fieldRef?: React.Ref<PublicInstance>
   mono?: boolean
+  /** A chip fill and no hairline until focused: a field among rows of a list, not in a form. */
+  quiet?: boolean
+  /** Size and shape overrides. */
+  style?: StyleDesc
 }) {
   const m = useM()
   const [focused, setFocused] = useState(Boolean(autoFocus))
@@ -50,12 +56,13 @@ export function Field({
         lineHeight: 18,
         fontFamily: mono ? 'Geist Mono' : undefined,
         color: m.text,
-        backgroundColor: m.rootTint,
+        backgroundColor: quiet ? m.chipBg : m.rootTint,
         borderRadius: concentric(radiusBase, 1),
         borderWidth: 1,
-        borderColor: focused ? m.focusRing : m.borderFocused,
+        borderColor: focused ? m.focusRing : quiet ? '#00000000' : m.borderFocused,
         flexGrow: 1,
         minWidth: 0,
+        ...style,
       }}
     />
   )

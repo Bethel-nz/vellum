@@ -703,3 +703,23 @@ frames 0–260ms on a paused clock (`app.clock.pause()` / `fastForward()`) into
   - Drop a Full-access note to asking for its first turn after a move.
 - Raised by the automated security review of c3dd2a7. Revisit it if notes start pulling in text
   you don't control, such as fetched pages or other people's repos.
+
+## 2026-10-24 — UI pass: one edge per panel, hairlines that show on popups
+
+- **The questions panel sits on one edge.** The panel insets its rows by 6 and the rows pad their
+  text by 10, so every left edge in it (the count, the title, each option, the field's text and
+  Cancel's label) sits at 16. Rows take `concentric(radiusXl, 6)`. Number badges are centred on
+  their row. "Something else" is a quiet field in the same shape as the rows, with no label above
+  it: `Field quiet` is a chip fill with no hairline until it is focused. `Scroll gutter` lets the
+  list reach the panel's right edge; a thumb, when there is one, sits over the rows' padding.
+- **No blur behind it.** GPUIX blurs only the whole window, so while a question is open the pane
+  washes toward its own colour (`pane` at 72%) instead. The wash comes and goes with the panel.
+- **groknight's `border` is a white hairline, `#ffffff09`.** On the pane it comes out #1c1c1c,
+  as before. The old opaque `#1c1c1e` matched `popup` (#1c1c1c), so every line drawn on a popup
+  vanished: the model picker's separator and the questions panel's spare progress dots. smoke and
+  frost already used alpha hairlines.
+- **The menu separator had no width.** It was a child with no width in a row-direction box, so
+  it collapsed to zero on every material. Its box is a column now.
+- **An `<input>` reports focus only in a window that can take it.** A spike opened with
+  `focus: false` never sees `onFocus`, so a field's focus ring never shows in its shots
+  (spikes/input-focus.tsx). Open shots of fields with a focusable window.
