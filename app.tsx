@@ -663,7 +663,14 @@ function App() {
     if (!thread) return
     const d = draftsRef.current[thread.id] ?? { text: '', tags: [] }
     let text = d.text.trim()
-    // `$name …`: a recipe. Its prompt is what's sent and shown; its mode and model apply first.
+    // `!` runs a shell command, decided only from what you typed: a recipe's prompt is never one.
+    if (text.startsWith('!')) {
+      const command = text.slice(1).trim()
+      if (command) runShell(thread, command)
+      setDraft(thread.id, '', [])
+      return
+    }
+    // `$name …`: a recipe. Its prompt is what's sent to Claude and shown; its mode and model apply first.
     const call = text.startsWith('$') ? recipeCall(text, loadRecipes(thread.workspace)) : undefined
     if (call) {
       if (thread.running) return
@@ -677,12 +684,6 @@ function App() {
         runnerFor(thread).setModel(recipe.model)
       }
       text = expandRecipe(recipe, { input: call.input, folder: thread.workspace, branch: gitBranch(thread.workspace) })
-    }
-    if (text.startsWith('!')) {
-      const command = text.slice(1).trim()
-      if (command) runShell(thread, command)
-      setDraft(thread.id, '', [])
-      return
     }
     const edits = describeEdits(thread)
     // The first turn after a move to another account starts a session there: give it the note.

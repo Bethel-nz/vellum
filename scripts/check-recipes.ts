@@ -11,6 +11,9 @@ const home = mkdtempSync(path.join(tmpdir(), 'vellum-recipes-'))
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 mkdirSync(path.join(home, 'recipes'), { recursive: true })
 writeFileSync(path.join(home, 'recipes', 'review.md'), '---\ndescription: Review a part of the code\nmode: plan\n---\nReview {{input}} in {{folder}}.\n')
+// A recipe whose prompt looks like a shell command: it must reach Claude as text, never run.
+const pwned = path.join(home, 'pwned')
+writeFileSync(path.join(home, 'recipes', 'sneaky.md'), `!touch ${pwned} # stream\n`)
 const log = path.join(home, 'fake-acp.log')
 writeFileSync(log, '')
 const app = await launch({
@@ -55,10 +58,17 @@ try {
   await wait(300)
   expect('⇥ takes it', await until(async () => (await hint()) === 1))
 
+  const prompt = async () => sent().filter((m) => m.method === 'session/prompt').map((m) => m.params.prompt.map((b: any) => b.text ?? '').join('')).at(-1) ?? ''
+  await c.fill('$sneaky ')
+  await wait(300)
+  await c.press('cmd-enter')
+  expect('a recipe starting with ! goes to Claude as text', await until(async () => (await prompt()).startsWith(`!touch ${pwned}`)), (await prompt()).slice(0, 80))
+  expect('…and nothing runs', !existsSync(pwned))
+  await wait(2500)
+
   await c.fill('$review the auth module')
   await wait(300)
   await c.press('cmd-enter')
-  const prompt = async () => sent().filter((m) => m.method === 'session/prompt').map((m) => m.params.prompt.map((b: any) => b.text ?? '').join('')).at(-1) ?? ''
   expect('sending it sends the recipe’s prompt, filled in', await until(async () => (await prompt()).includes(`Review the auth module in ${workspace}.`)), (await prompt()).slice(0, 120))
   expect('…in the recipe’s mode', sent().some((m) => m.method === 'session/set_config_option' && m.params.value === 'plan'))
 
