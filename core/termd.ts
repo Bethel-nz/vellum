@@ -17,7 +17,7 @@
 //   → write {id, data} / resize {id, cols, rows} / kill {id} / detach {id}
 //                                        ← data {id, data} / exit {id, code}
 
-import { existsSync, unlinkSync, writeFileSync, chmodSync } from 'node:fs'
+import { chmodSync, existsSync, lstatSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 export const TERMD_VERSION = 1
@@ -74,6 +74,12 @@ if (import.meta.main) await serve(process.argv[2]!)
 
 async function serve(sock: string) {
   if (!sock || !path.isAbsolute(sock)) throw new Error('usage: bun core/termd.ts <absolute socket path>')
+  // Whoever can connect can run commands as you, so the socket lives in a folder only you can open.
+  const dir = path.dirname(sock)
+  mkdirSync(dir, { recursive: true, mode: 0o700 })
+  chmodSync(dir, 0o700)
+  const st = lstatSync(dir)
+  if (!st.isDirectory() || st.uid !== process.getuid!() || (st.mode & 0o077) !== 0) throw new Error(`termd: ${dir} must be a folder of yours that only you can open`)
   // Another holder already answering here wins; a stale socket file is cleared.
   if (existsSync(sock)) {
     const alive = await Bun.connect({ unix: sock, socket: { data() {} } }).then(
@@ -170,6 +176,8 @@ async function serve(sock: string) {
     clients.delete(c)
     checkIdle()
   }
+  // Private from the moment it exists; the shells it starts get your usual umask back.
+  const umask = process.umask(0o077)
   const server = Bun.listen<Conn>({
     unix: sock,
     socket: {
@@ -192,7 +200,7 @@ async function serve(sock: string) {
       error: (s) => gone(s.data),
     },
   })
-  // Only you can reach your shells.
+  process.umask(umask)
   chmodSync(sock, 0o600)
   writeFileSync(sock + '.pid', String(process.pid))
   process.on('exit', () => {

@@ -181,7 +181,7 @@ export function killAllTerms() {
 
 type Link = { wire: Wire; socket: { end(): void }; terms: Map<string, ReturnType<typeof makeSession>>; waiting: ((m: any) => boolean)[] }
 
-const socketPath = () => path.join(paths.home, 'termd.sock')
+const socketPath = () => path.join(paths.home, 'run', 'termd.sock')
 // One connection per Vellum process; a hot reload drops the previous one (its shells stay held).
 const g = globalThis as { __vellumTermd?: Promise<Link | undefined> }
 void g.__vellumTermd?.then((l) => l?.socket.end())
@@ -245,7 +245,7 @@ async function open(): Promise<Link> {
 }
 
 function startHolder() {
-  const log = openSync(path.join(paths.home, 'termd.log'), 'a')
+  const log = openSync(path.join(paths.home, 'termd.log'), 'a', 0o600)
   spawn(process.execPath, [path.join(import.meta.dir, 'termd.ts'), socketPath()], { detached: true, stdio: ['ignore', log, log], cwd: paths.home }).unref()
 }
 

@@ -2,7 +2,7 @@
 // the next one gets it back with its output and can type into it, and once nothing is held and
 // nobody is connected the holder leaves by itself.
 //   bun scripts/check-termd.ts
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -47,6 +47,9 @@ if (step === 'return') {
   s.resize(100, 30)
   s.write('stty size\n')
   expect('it follows a resize', await until(() => s.text().includes('30 100')))
+  const mask = '0' + process.umask().toString(8).padStart(3, '0')
+  s.write('umask\n')
+  expect('the shell has your usual umask, not the socket’s', await until(() => s.text().includes(`\n${mask}`)), mask)
   if (process.argv[3] === 'exit') {
     s.write('exit\n')
     expect('exiting the shell ends it', (await Promise.race([s.exited, Bun.sleep(5000).then(() => 'timeout')])) === 0)
@@ -56,7 +59,7 @@ if (step === 'return') {
 }
 
 const home = mkdtempSync(path.join(tmpdir(), 'vellum-termd-'))
-const sock = path.join(home, 'termd.sock')
+const sock = path.join(home, 'run', 'termd.sock')
 const run = async (...args: string[]) => {
   const p = Bun.spawn(['bun', import.meta.path, ...args], { env: { ...process.env, VELLUM_HOME: home }, stdout: 'inherit', stderr: 'inherit' })
   return (await p.exited) === 0
@@ -66,6 +69,8 @@ try {
   expect('…and quits', await run('start'))
   pid = existsSync(sock + '.pid') ? Number(readFileSync(sock + '.pid', 'utf8')) : undefined
   expect('the holder is still running', pid !== undefined && alive(pid))
+  const mode = (p: string) => (statSync(p).mode & 0o777).toString(8)
+  expect('only you can reach its socket', mode(path.dirname(sock)) === '700' && mode(sock) === '600', `${mode(path.dirname(sock))} ${mode(sock)}`)
   expect('a quit and another return keep it', (await run('return')) && (await run('return', 'exit')))
   expect('with nothing held and nobody connected, the holder leaves', await until(() => !alive(pid!), 15_000))
   expect('…and takes its socket with it', !existsSync(sock))
