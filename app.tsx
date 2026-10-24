@@ -52,7 +52,7 @@ import {
   type VellumRecord,
 } from './core/threads'
 import { BlockView, DiffCard, type BlockActions } from './ui/blocks'
-import { Composer } from './ui/Composer'
+import { Composer, type QueuedMessage } from './ui/Composer'
 import { NewThreadDialog, ThreadSwitcher } from './ui/dialogs'
 import { History } from './ui/History'
 import { expandRecipe, gitBranch, loadRecipes, recipeCall } from './core/recipes'
@@ -400,6 +400,10 @@ function App() {
   const [overlay, setOverlay] = useState<null | 'new' | 'switcher' | 'settings' | 'history' | 'changes'>(() => (readSettings().atLaunch === 'new' ? 'new' : null))
   /** Each note's file open beside it (ui/FilePreview.tsx); pressing the same chip again closes it. */
   const [previews, setPreviews] = useState<Record<string, Previewing>>({})
+  /** Messages sent while Claude was thinking, by note; drained in order after the turn. */
+  const [queues, setQueues] = useState<Record<string, QueuedMessage[]>>({})
+  const queuesRef = useRef(queues)
+  queuesRef.current = queues
   const togglePreview = useCallback((noteId: string, file: Previewing) => {
     setPreviews((all) => {
       const { [noteId]: open, ...rest } = all
@@ -763,23 +767,16 @@ function App() {
     [record, showToast],
   )
 
-  /** ⌘↵: send what was written at the end, plus any edits made to earlier text. */
-  const send = useCallback(() => {
-    const thread = threadsRef.current.find((t) => t.id === activeRef.current)
-    if (!thread) return
-    const d = draftsRef.current[thread.id] ?? { text: '', tags: [] }
-    let text = d.text.trim()
-    // `!` runs a shell command, decided only from what you typed: a recipe's prompt is never one.
-    if (text.startsWith('!')) {
-      const command = text.slice(1).trim()
-      if (command) runShell(thread, command)
-      setDraft(thread.id, '', [])
-      return
-    }
+  /**
+   * The send path the composer and the queue drain land on: a recipe expands first — its
+   * mode and model apply — then edits sync, the note gets its provisional title, and the
+   * prompt goes to the runner.
+   */
+  const deliver = useCallback((thread: Thread, text: string, tags: Tag[], images: string[]) => {
     // `$name …`: a recipe. Its prompt is what's sent to Claude and shown; its mode and model apply first.
-    const call = text.startsWith('$') ? recipeCall(text, loadRecipes(thread.workspace)) : undefined
+    let body = text
+    const call = body.startsWith('$') ? recipeCall(body, loadRecipes(thread.workspace)) : undefined
     if (call) {
-      if (thread.running) return
       const { recipe } = call
       if (recipe.mode && recipe.mode !== thread.mode) {
         record(thread.id, { type: 'vellum/mode', mode: recipe.mode })
@@ -789,29 +786,98 @@ function App() {
         record(thread.id, { type: 'vellum/model', model: recipe.model })
         runnerFor(thread).setModel(recipe.model)
       }
-      text = expandRecipe(recipe, { input: call.input, folder: thread.workspace, branch: gitBranch(thread.workspace) })
+      body = expandRecipe(recipe, { input: call.input, folder: thread.workspace, branch: gitBranch(thread.workspace) })
     }
     const edits = describeEdits(thread)
     // The first turn after a move to another account starts a session there: give it the note.
     const handoff = thread.handoff ? handoffContext(thread) : ''
-    const images = d.images ?? []
-    if (!text && !edits && !images.length) return
-    if (thread.running) return
+    if (!body && !edits && !images.length) return
     if (termsRef.current.some((t) => t.kind === 'claude' && t.threadId === thread.id)) return
-    const tags = tagsIn(text, d.tags)
-    record(thread.id, { type: 'vellum/user', text, tags, at: new Date().toISOString(), ...(images.length ? { images } : {}) })
+    const used = tagsIn(body, tags)
+    record(thread.id, { type: 'vellum/user', text: body, tags: used, at: new Date().toISOString(), ...(images.length ? { images } : {}) })
     if (edits) record(thread.id, { type: 'vellum/synced' })
-    if (text && !thread.blocks.some((b) => b.kind === 'user') && (thread.title === 'Untitled' || thread.title === 'New thread')) {
-      const cut = titleFrom(text)
+    if (body && !thread.blocks.some((b) => b.kind === 'user') && (thread.title === 'Untitled' || thread.title === 'New thread')) {
+      const cut = titleFrom(body)
       record(thread.id, { type: 'vellum/title', title: cut })
       provisional.current.set(thread.id, cut)
     }
-    const prompt = text ? promptFor(text, tags, { workspace: thread.workspace, scopes: thread.tagScopes }) : ''
+    const prompt = body ? promptFor(body, used, { workspace: thread.workspace, scopes: thread.tagScopes }) : ''
     runnerFor(thread).send([handoff, edits, prompt].filter(Boolean).join('\n\n'), images)
+  }, [record, runnerFor])
+
+  /**
+   * A message into the turn Claude is running (core/agent.ts `steer`): it reads it as soon as it
+   * can and answers it before the turn ends. It shows in the note where Claude took it in.
+   * Otherwise (the turn not yet with the agent, or just over; an agent that can't steer; a
+   * recipe, which sets the mode and model as its turn starts) it goes to the front of the queue,
+   * so it's the next turn, or now if the turn has already ended here.
+   */
+  const steerIn = useCallback(async (thread: Thread, item: QueuedMessage) => {
+    const tags = item.tags ?? []
+    const images = item.images ?? []
+    const runner = runners.current.get(thread.id)
+    const prompt = item.text ? promptFor(item.text, tags, { workspace: thread.workspace, scopes: thread.tagScopes }) : ''
+    const outcome = runner && !item.text.startsWith('$') ? await runner.steer(prompt, images) : 'unavailable'
+    if (outcome === 'injected') {
+      record(thread.id, { type: 'vellum/user', text: item.text, tags, at: new Date().toISOString(), ...(images.length ? { images } : {}) })
+      return
+    }
+    const now = threadsRef.current.find((t) => t.id === thread.id) ?? thread
+    if (!now.running) deliver(now, item.text, tags, images)
+    else setQueues((all) => ({ ...all, [thread.id]: [item, ...(all[thread.id] ?? [])] }))
+  }, [deliver, record])
+
+  /**
+   * ⌘↵: send what was written at the end, plus any edits made to earlier text. While Claude
+   * is thinking, the message parks in the note's queue instead, and it goes out, in order,
+   * after the turn ends.
+   */
+  const send = useCallback((steer = false) => {
+    const thread = threadsRef.current.find((t) => t.id === activeRef.current)
+    if (!thread) return
+    const d = draftsRef.current[thread.id] ?? { text: '', tags: [] }
+    const text = d.text.trim()
+    // `!` runs a shell command, decided only from what you typed: a recipe's prompt is never one.
+    if (text.startsWith('!')) {
+      const command = text.slice(1).trim()
+      if (command) runShell(thread, command)
+      setDraft(thread.id, '', [])
+      return
+    }
+    if (!text && !describeEdits(thread) && !(d.images ?? []).length) return
+    if (termsRef.current.some((t) => t.kind === 'claude' && t.threadId === thread.id)) return
+    if (thread.running) {
+      const item: QueuedMessage = { text, tags: tagsIn(text, d.tags), ...(d.images?.length ? { images: d.images } : {}) }
+      setDraft(thread.id, '', [], [])
+      // ⌥⌘↵ tells Claude now; ⌘↵ waits for the turn to end.
+      if (steer) void steerIn(thread, item)
+      else setQueues((all) => ({ ...all, [thread.id]: [...(all[thread.id] ?? []), item] }))
+      return
+    }
+    deliver(thread, text, tagsIn(text, d.tags), d.images ?? [])
     setDraft(thread.id, '', [], [])
-  }, [record, runShell, runnerFor, setDraft])
+  }, [deliver, runShell, setDraft, steerIn])
   const sendRef = useRef(send)
   sendRef.current = send
+
+  // The queues drain one message per turn: running going false schedules the next, a beat
+  // later, so the turn's git record has landed before the next prompt starts.
+  const lastRunning = useRef(new Map<string, boolean>())
+  useEffect(() => {
+    for (const thread of threads) {
+      if (lastRunning.current.get(thread.id) && !thread.running) {
+        setTimeout(() => {
+          const item = queuesRef.current[thread.id]?.[0]
+          if (!item) return
+          const next = threadsRef.current.find((t) => t.id === thread.id)
+          if (!next || next.running) return
+          setQueues((all) => ({ ...all, [thread.id]: (all[thread.id] ?? []).slice(1) }))
+          deliver(next, item.text, item.tags ?? [], item.images ?? [])
+        }, 300)
+      }
+      lastRunning.current.set(thread.id, thread.running)
+    }
+  }, [threads, deliver])
 
   /** Opens a note in a tab. Past nine, the oldest tab Claude isn't working in makes room. */
   const openNote = useCallback((id: string) => {
@@ -1466,10 +1532,20 @@ function App() {
                       setWriting(true)
                       revealComposer()
                     }}
-                    onSend={() => {
+                    onSend={(steer) => {
                       revealComposer()
-                      send()
+                      send(steer)
                     }}
+                    running={active.running}
+                    canSteer={runners.current.get(active.id)?.canSteer}
+                    queue={queues[active.id] ?? []}
+                    onSteerQueued={(i) => {
+                      const item = queues[active.id]?.[i]
+                      if (!item) return
+                      setQueues((all) => ({ ...all, [active.id]: (all[active.id] ?? []).filter((_, j) => j !== i) }))
+                      void steerIn(active, item)
+                    }}
+                    onUnqueue={(i) => setQueues((all) => ({ ...all, [active.id]: (all[active.id] ?? []).filter((_, j) => j !== i) }))}
                     profile={activeProfile}
                     workspace={active.workspace}
                     recipes={recipes}

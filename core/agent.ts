@@ -110,6 +110,8 @@ export class AgentRunner {
   #stopping = false
   /** The agent takes a message into the turn it's running (`_session/steering`). */
   #steering = false
+  /** The turn's prompt is with the agent: before that (the agent still starting) there's nothing to steer. */
+  #prompting = false
   /** The working tree as your latest message went out; undefined outside a repo. */
   #base?: Promise<Snapshot | undefined>
   #locked: string | undefined
@@ -188,7 +190,10 @@ export class AgentRunner {
         // and the snapshot carries on warming git's cache for the next one.
         const before = await Promise.race([base, Bun.sleep(SNAPSHOT_WAIT_MS).then(() => 'late' as const)])
         if (before === 'late' && this.#base === base) this.#base = Promise.resolve(undefined)
-        const res: any = await this.#conn!.request('session/prompt', { sessionId, prompt: promptBlocks(text, images) })
+        this.#prompting = true
+        const res: any = await this.#conn!.request('session/prompt', { sessionId, prompt: promptBlocks(text, images) }).finally(() => {
+          this.#prompting = false
+        })
         if (before && before !== 'late') {
           const after = await snapshot(workspace).catch(() => undefined)
           const files = after ? await changedFiles(before, after, workspace).catch(() => []) : []
@@ -201,7 +206,7 @@ export class AgentRunner {
 
   /** Whether a message now could go into the running turn rather than wait for the next one. */
   get canSteer() {
-    return this.#steering && this.#turn && !this.#stopping && this.#session !== undefined && this.#conn !== undefined && !this.#conn.closed
+    return this.#steering && this.#turn && this.#prompting && !this.#stopping && this.#session !== undefined && this.#conn !== undefined && !this.#conn.closed
   }
 
   /**
