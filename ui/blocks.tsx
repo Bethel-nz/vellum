@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useGpuixRequired, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { forDiff, type Block, type Tag, type ToolCall } from '../core/threads'
+import { printedFile } from '../core/printed'
 import { getTerm } from '../core/term'
 import { FileIcon, Icon, Meta, Quiet, useM } from './kit'
 import { TerminalBlock } from './TerminalBlock'
@@ -364,6 +365,9 @@ function AgentShell({ block }: { block: Extract<Block, { kind: 'shell' }> }) {
   const lines = output ? output.split('\n') : []
   const shown = open ? lines : lines.slice(0, 12)
   const failed = block.exitCode !== undefined && block.exitCode !== 0
+  // `cat ui/theme.ts` and the like print a file: show it in that file's language (the code
+  // element knows it from the path). Anything else, and a failure's message, reads as shell.
+  const file = failed ? undefined : printedFile(block.command)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', borderRadius: concentric(radiusBase, 0), borderWidth: 1, borderColor: m.border, backgroundColor: m.codeBg, overflow: 'hidden' }}>
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 10, paddingRight: 10, paddingTop: 7, paddingBottom: 7 }}>
@@ -373,7 +377,7 @@ function AgentShell({ block }: { block: Extract<Block, { kind: 'shell' }> }) {
       {shown.length ? (
         <code
           code={shown.join('\n')}
-          language="bash"
+          {...(file ? { path: file } : { language: 'bash' })}
           theme={nativeTheme(m)}
           style={{ paddingLeft: 10, paddingRight: 10, paddingBottom: 8, minWidth: 0, color: failed ? m.danger : m.termFg }}
         />

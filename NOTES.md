@@ -672,3 +672,18 @@ frames 0–260ms on a paused clock (`app.clock.pause()` / `fastForward()`) into
   short of each side.
 - **Checks.** Verified by eye in dark and frost, with the strip shown and hidden. check-tabs,
   check-settings, check-motion and check-glide pass on HEAD plus this change.
+
+## 2026-10-24 — printed files read in their own language
+
+- **What.** When Claude runs a command that only prints one file, its output in the note is
+  highlighted as that file's language instead of as shell. That covers `cat ui/theme.ts`,
+  `head -n 40 app.tsx`, `sed -n '10,80p' core/agent.ts` and `bat`, with or without a leading
+  `cd … &&`. GPUIX's `<code>` picks the language from a `path`.
+- **What doesn't count.** `core/printed.ts` names no file when the output isn't that file's text:
+  a pipe, a redirect, a glob, a variable, a second command, several files, `sed` without `-n` or
+  with `-i`, or a failed run, whose output is its error. Those stay shell.
+- **Your own `!` commands** run in a real terminal, so their colours come from the program:
+  `bat -pp <file>` prints a file highlighted.
+- **Checks.** `core/printed.test.ts` covers what counts and what doesn't. `scripts/check-printed.ts`
+  shows `cat`, `sed -n` and `cat | grep` in one note: the first two read as TypeScript, checked by
+  eye.
