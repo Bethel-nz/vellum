@@ -659,3 +659,16 @@ frames 0–260ms on a paused clock (`app.clock.pause()` / `fastForward()`) into
     carrying only itself, and Accounts… opening Settings.
   - check-login now reaches Settings through the menu.
   - check-approval's two failures ("keeps an Allowed/Denied line") are HEAD's own, as before.
+
+## 2026-10-24 — the page is a card on the frame
+
+- **What.** The tab strip sits on the window frame, with no bar or bottom border of its own. The
+  note, terminals and Settings sit on a card under it, rounded on all four corners
+  (`concentric(windowRadius, shellInset)`). When the strip hides, the card keeps its rounded top,
+  inset from the frame. Before, the strip and page were one pane, so the page had a
+  flat top under the strip.
+- **GPUI quirk, again:** a child isn't clipped to its parent's radius. The fade at the top of the
+  note ran edge to edge and painted square corners over the card's curve. It now stops a radius
+  short of each side.
+- **Checks.** Verified by eye in dark and frost, with the strip shown and hidden. check-tabs,
+  check-settings, check-motion and check-glide pass on HEAD plus this change.

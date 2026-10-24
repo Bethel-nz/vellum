@@ -75,9 +75,7 @@ export function TabStrip({
         flexShrink: 0,
         paddingLeft: 6,
         paddingRight: 6,
-        backgroundColor: m.titleBar,
-        borderBottomWidth: 1,
-        borderColor: m.border,
+        // On the window frame, over the page's own rounded card (app.tsx): no bar of its own.
         userSelect: 'none',
       }}
     >

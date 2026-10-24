@@ -1057,22 +1057,9 @@ function App() {
           selectionColor: m.selection,
         }}
       >
-        <div
-          style={{
-            flexGrow: 1,
-            minHeight: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            backgroundColor: m.pane,
-            borderRadius: paneRadius,
-            borderWidth: 1,
-            borderColor: m.border,
-            boxShadow: { offsetX: 0, offsetY: 1, blurRadius: 0, spreadRadius: 0, color: m.paneHighlight, inset: true },
-            overflow: 'hidden',
-            position: 'relative',
-          }}
-        >
-          {/* The tab strip lives inside the pane, under the traffic lights. It folds to 0 when away. */}
+        <div style={{ flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+          {/* The tab strip sits on the window frame, above the page. It folds to 0 when away, and the
+              page keeps its rounded top, inset from the frame, as in Arc. */}
           <motion.div
             initial={false}
             animate={{ height: stripVisible ? stripHeight : 0 }}
@@ -1144,6 +1131,22 @@ function App() {
               }
             />
           </motion.div>
+          {/* The page: the note (or a terminal, or Settings) on a card of its own, rounded all round. */}
+          <div
+            style={{
+              flexGrow: 1,
+              minHeight: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              backgroundColor: m.pane,
+              borderRadius: paneRadius,
+              borderWidth: 1,
+              borderColor: m.border,
+              boxShadow: { offsetX: 0, offsetY: 1, blurRadius: 0, spreadRadius: 0, color: m.paneHighlight, inset: true },
+              overflow: 'hidden',
+              position: 'relative',
+            }}
+          >
           {pane ? (
             <TerminalPane
               pane={pane}
@@ -1203,8 +1206,10 @@ function App() {
                 style={{
                   position: 'absolute',
                   top: 0,
-                  left: 0,
-                  right: 12,
+                  // Clear of the card's rounded corners: GPUI doesn't clip a child to its parent's
+                  // radius, so a fade reaching the edges paints square corners over the curve.
+                  left: paneRadius,
+                  right: Math.max(12, paneRadius),
                   height: 24,
                   pointerEvents: 'none',
                   background: { type: 'linear-gradient', angle: 180, stops: [{ color: m.pane, position: 0 }, { color: `${m.pane.slice(0, 7)}00`, position: 1 }] },
@@ -1234,7 +1239,7 @@ function App() {
           {/* Settings is a page over the note, under the strip (ui/Settings.tsx). */}
           {overlay === 'settings' ? (
             <SettingsPage
-              top={stripVisible ? stripHeight : 0}
+              top={0}
               onClose={() => setOverlay(null)}
               material={materialName}
               onMaterial={(next) => {
@@ -1284,6 +1289,7 @@ function App() {
             onDeny={(message) => answer('deny', message)}
             preview={pendingAsks[0]?.patch ? <DiffCard patch={pendingAsks[0].patch} /> : undefined}
           />
+          </div>
         </div>
         {overlay === 'new' ? (
           <NewThreadDialog
