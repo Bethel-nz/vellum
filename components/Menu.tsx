@@ -214,8 +214,11 @@ function MenuPanel({ onClose, items, header, width, side, align, testId }: { onC
                 ) : it.icon ? (
                   <Icon name={it.icon} size={14} color={it.destructive ? m.danger : m.textMuted} />
                 ) : null}
-                <text style={{ flexGrow: 1, minWidth: 0, fontSize: 13, lineHeight: 16, color, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{it.label}</text>
-                {it.hint ? <text style={{ fontSize: 11.5, lineHeight: 14, color: m.textFaint, whiteSpace: 'nowrap' }}>{it.hint}</text> : null}
+                {/* The label keeps its width; a hint too long for the row is the one that's cut short. */}
+                <text style={{ flexShrink: 0, fontSize: 13, lineHeight: 16, color, whiteSpace: 'nowrap' }}>{it.label}</text>
+                <div style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'row', justifyContent: 'flex-end' }}>
+                  {it.hint ? <text style={{ minWidth: 0, fontSize: 11.5, lineHeight: 14, color: m.textFaint, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{it.hint}</text> : null}
+                </div>
                 {it.shortcut ? <Kbd>{it.shortcut}</Kbd> : null}
                 {it.checked ? <Icon name="check" size={13} color={m.text} /> : null}
                 </div>

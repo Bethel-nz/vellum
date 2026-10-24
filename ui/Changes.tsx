@@ -94,9 +94,9 @@ export function Changes({ open, onClose, thread, onAdd }: { open: boolean; onClo
             <Icon name="chevronDown" size={10} color={m.textMuted} />
             {!loading && !loadError ? <ChangeTotals {...totals} /> : null}
           </Button>
-          <Menu open={scopeOpen} onClose={() => setScopeOpen(false)} side="bottom" align="start" width={220} testId="changes-scope-menu" items={[
-            { label: 'This note', hint: 'Recorded changes in this conversation', checked: scope === 'note', testId: 'changes-scope-note', onSelect: () => setScope('note') },
-            { label: 'Uncommitted', hint: 'Current working tree against HEAD', checked: scope === 'uncommitted', testId: 'changes-scope-uncommitted', onSelect: () => setScope('uncommitted') },
+          <Menu open={scopeOpen} onClose={() => setScopeOpen(false)} side="bottom" align="start" width={290} testId="changes-scope-menu" items={[
+            { label: 'This note', hint: 'Edits Claude made here', checked: scope === 'note', testId: 'changes-scope-note', onSelect: () => setScope('note') },
+            { label: 'Uncommitted', hint: 'Working tree vs HEAD', checked: scope === 'uncommitted', testId: 'changes-scope-uncommitted', onSelect: () => setScope('uncommitted') },
           ]} />
         </div>
         <div style={{ flexGrow: 1 }} />
