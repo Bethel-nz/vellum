@@ -687,3 +687,19 @@ frames 0–260ms on a paused clock (`app.clock.pause()` / `fastForward()`) into
 - **Checks.** `core/printed.test.ts` covers what counts and what doesn't. `scripts/check-printed.ts`
   shows `cat`, `sed -n` and `cat | grep` in one note: the first two read as TypeScript, checked by
   eye.
+
+## 2026-10-24 — known trade-off: a moved note's context
+
+- **Accepted as is, by the user's choice.** After a note moves to another account,
+  `handoffContext` (core/threads.ts) sends the whole note in your first message there. That
+  includes command output and the contents of files Claude read. In the old session those came
+  back to Claude as tool results; in the handoff they arrive inside your message. Text in a file
+  or a page written to read like an instruction would then come with your authority, and it can
+  contain the plain `</note>` marker the record is wrapped in. The risk is highest in a note set
+  to Full access, where nothing asks before it runs.
+- **Weighed and not taken:**
+  - Carry only your paragraphs and Claude's replies.
+  - Keep tool output but mark it as quoted data under a boundary nothing inside could guess.
+  - Drop a Full-access note to asking for its first turn after a move.
+- Raised by the automated security review of c3dd2a7. Revisit it if notes start pulling in text
+  you don't control, such as fetched pages or other people's repos.
