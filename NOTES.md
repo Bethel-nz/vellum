@@ -1007,3 +1007,20 @@ the glide lands. One glide runs at a time; a new one stops the last.
 check-timeline (full ×3, reduced), check-glide (full, reduced), check-motion and check-changes
 pass. check-tabs passes on HEAD plus this change in a clean worktree; in the shared checkout it
 fails at History's outside click, from another session's History.tsx work in progress.
+
+## 2026-10-24 — pasted images open full size
+
+A click on an image under one of your paragraphs opens it over the whole window
+(ui/ImageViewer.tsx). The scrim is near-black in both themes, the way photos are looked at. A
+small image shows at its own size and a large one fits the window (core/imagesize.ts reads the
+size from the PNG/JPEG/GIF/WebP header, since GPUIX's <img> doesn't report one). ← → step through
+the paragraph's other images and wrap around. Esc, the ✕ or a press on the dark closes it, and
+the composer takes the caret back.
+
+A press handler on a parent of a `motion.div` never fires for a press over it: the motion layer
+takes the hit. So the scrim's handler sits on the motion layer itself.
+
+scripts/check-viewer.ts writes a note with two images straight to disk, because ⌘V never reaches
+a window running in the background (GPUIX_BACKGROUND=1). For the same reason
+scripts/check-images.ts fails at its first paste on this machine, back to the commit that added
+it. That's the environment, not the code.

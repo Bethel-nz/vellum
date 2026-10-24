@@ -31,6 +31,7 @@ import { setDockIcon } from './core/dock'
 import { notify } from './core/notify'
 import { FONTS } from './assets/fonts'
 import { OpenIn } from './ui/OpenIn'
+import { ImageViewer, type Viewing } from './ui/ImageViewer'
 import { claudeBin, compiled, hasPty, isMac, keys, openConsole, pasteImage, primary, revealFolder, revealLabel, shellArgv, tabStep } from './core/platform'
 import {
   appendLine,
@@ -379,6 +380,8 @@ function App() {
   const [drafts, setDrafts] = useState<Record<string, Draft>>(() => readJson(paths.drafts, {}))
   // Settings › New notes › At launch: "New note" opens its dialog over the last note.
   const [overlay, setOverlay] = useState<null | 'new' | 'switcher' | 'settings' | 'history' | 'changes'>(() => (readSettings().atLaunch === 'new' ? 'new' : null))
+  /** A pasted image open full size over everything (ui/ImageViewer.tsx). */
+  const [viewing, setViewing] = useState<Viewing>()
   // The History panel's two sides: past notes, or recipes.
   const [shelf, setShelf] = useState<'history' | 'recipes'>('history')
   const [recipesSaved, setRecipesSaved] = useState(0)
@@ -1078,6 +1081,7 @@ function App() {
         setTimeout(focusComposer, 30)
       },
       onReturnFocus: focusComposer,
+      onViewImage: (images, index) => setViewing({ images, index }),
     }),
     [active?.id, active?.profileId, focusComposer, me, openLogin, record, setDraft, tokenCtx],
   )
@@ -1520,6 +1524,16 @@ function App() {
               setTimeout(focusComposer, 50)
             }}
             onNew={() => setOverlay('new')}
+          />
+        ) : null}
+        {viewing ? (
+          <ImageViewer
+            viewing={viewing}
+            onIndex={(index) => setViewing({ ...viewing, index })}
+            onClose={() => {
+              setViewing(undefined)
+              setTimeout(focusComposer, 30)
+            }}
           />
         ) : null}
       </div>

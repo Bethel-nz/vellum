@@ -146,19 +146,25 @@ function UserBlock({ block, actions }: { block: Extract<Block, { kind: 'user' }>
     <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} style={{ position: 'relative' }}>
       <Author me={actions.me} at={block.at} hover={hover} />
       {block.text ? <UserText block={block} actions={actions} /> : null}
-      {block.images?.length ? <PastedImages images={block.images} /> : null}
+      {block.images?.length ? <PastedImages images={block.images} onView={actions.onViewImage} /> : null}
     </div>
   )
 }
 
-/** Images you pasted with a paragraph, under it like photos clipped to a page. */
-function PastedImages({ images }: { images: string[] }) {
+/** Images you pasted with a paragraph, under it like photos clipped to a page. A click opens one full size. */
+function PastedImages({ images, onView }: { images: string[]; onView: (images: string[], index: number) => void }) {
   const m = useM()
+  const shown = images.filter((src) => existsSync(src))
   return (
     <div testId="user-images" style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 8 }}>
       {images.map((src) =>
         existsSync(src) ? (
-          <div key={src} style={{ width: 160, height: 120, borderRadius: 10, borderWidth: 1, borderColor: m.border }}>
+          <div
+            key={src}
+            testId={`user-image-${shown.indexOf(src)}`}
+            onClick={() => onView(shown, shown.indexOf(src))}
+            style={{ width: 160, height: 120, borderRadius: 10, borderWidth: 1, borderColor: m.border, cursor: 'pointer', hover: { borderColor: m.textFaint } }}
+          >
             <img src={src} objectFit="cover" style={{ width: 158, height: 118, borderRadius: 9 }} />
           </div>
         ) : (
@@ -406,6 +412,8 @@ export type BlockActions = {
   onLogin: () => void
   onSendOutput: (command: string, output: string) => void
   onReturnFocus: () => void
+  /** Opens a pasted image full size, among the paragraph's others (ui/ImageViewer.tsx). */
+  onViewImage: (images: string[], index: number) => void
 }
 
 export const BlockView = memo(function BlockView({ block, actions }: { block: Block; actions: BlockActions }) {
