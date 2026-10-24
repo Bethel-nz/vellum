@@ -9,6 +9,8 @@ import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
 
 const home = mkdtempSync(path.join(tmpdir(), 'vellum-approval-'))
+// The fixture's note works in this checkout, so a Bash ask reads `Run in <its folder>/` (not always vellum/).
+const folder = `${path.basename(path.resolve(import.meta.dir, '..'))}/`
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 const log = path.join(home, 'fake-acp.log')
 writeFileSync(log, '')
@@ -60,7 +62,7 @@ try {
   await wait(1200)
   expect('↵ allows once', answers()[0]?.optionId === 'allow-once', JSON.stringify(answers()[0]))
   expect('the card goes', (await app.getByTestId('approval').count()) === 0)
-  expect('the note keeps an Allowed line', (await app.getByText('Allowed · Run in vellum/').count()) === 1)
+  expect('the note keeps an Allowed line', (await app.getByText(`Allowed · Run in ${folder}`).count()) === 1)
   await shot('2-allowed')
 
   // esc opens the deny field; ↵ denies with the message
@@ -80,7 +82,7 @@ try {
   const deny = answers()[1]
   expect('↵ denies', deny?.optionId === 'reject', JSON.stringify(deny))
   expect('…and the note goes in as the next message', prompts().at(-1) === 'use vitest instead', prompts().at(-1))
-  expect('the note keeps a Denied line', (await app.getByText('Denied · Run in vellum/').count()) === 1)
+  expect('the note keeps a Denied line', (await app.getByText(`Denied · Run in ${folder}`).count()) === 1)
   await shot('4-denied')
 
   // an edit ask shows the change itself
