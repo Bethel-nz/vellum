@@ -3,11 +3,12 @@
 // drawn here so they count on across blocks. A block highlights on its own, so a comment or string
 // that crosses into the next one can lose its colour there.
 //
-// Code doesn't scroll in a <virtual-list>: the list takes the sideways wheel, so nothing inside it
-// scrolls sideways. A plain scroller holds two columns, the line numbers and the code. Rows are a
-// fixed height, so what isn't mounted is a spacer of exact height in each, and the window follows
-// `onScrollChange`. The code column is the one sideways scroller, every block as wide as the
+// Each <code> is its own sideways scroller, and <code> reports no scroll to sync the others by, so
+// blocks of their own would each scroll apart. Instead a plain scroller holds two columns, the line
+// numbers and the code. The code column is the one sideways scroller, every block as wide as the
 // longest line so no <code> scrolls on its own and the lines move together; the numbers stay put.
+// Rows are a fixed height, so what isn't mounted is a spacer of exact height in each column, and
+// the window follows `onScrollChange`.
 // The outer scroller scrolls both ways though only its height overflows: one that scrolls only
 // down turns a sideways swipe into a vertical one. Markdown keeps the list (ui/windowed.ts): its
 // pages have no exact height to stand in for them.
@@ -69,6 +70,36 @@ export function CodeLines({ preview, line, wash, picked, dragging, onPress, onDr
     return { blocks: out.length ? out : [''], widest: lines.reduce((w, l) => Math.max(w, columns(l)), 0) }
   }, [preview.text, preview.shown])
   const scroller = useRef<PublicInstance>(null)
+  const sideways = useRef<PublicInstance>(null)
+  // A swipe keeps to the axis it started on, as a Mac view does. GPUI moves both axes by each
+  // event's parts, so a sideways swipe's few points of vertical drift walked the file up and down.
+  // The two scrollers report their moves; those of one frame are weighed together, the larger
+  // picks the swipe's axis for as long as it keeps moving, and the other is put back.
+  const at = useRef({ x: 0, y: 0 })
+  const lock = useRef<{ axis: 'x' | 'y'; until: number }>({ axis: 'y', until: 0 })
+  const pending = useRef<{ x?: number; y?: number }>({})
+  const settle = () => {
+    const p = pending.current
+    pending.current = {}
+    const now = Date.now()
+    const dx = p.x === undefined ? 0 : p.x - at.current.x
+    const dy = p.y === undefined ? 0 : p.y - at.current.y
+    const axis = now < lock.current.until ? lock.current.axis : Math.abs(dx) > Math.abs(dy) ? 'x' : 'y'
+    lock.current = { axis, until: now + 150 }
+    if (axis === 'x') {
+      if (p.x !== undefined) at.current.x = p.x
+      if (p.y !== undefined && scroller.current) renderer.scrollTo?.(scroller.current.id, 0, -at.current.y)
+    } else {
+      if (p.y !== undefined) at.current.y = p.y
+      if (p.x !== undefined && sideways.current) renderer.scrollTo?.(sideways.current.id, -at.current.x, 0)
+      setStart(around(at.current.y))
+    }
+  }
+  const moved = (axis: 'x' | 'y', value: number) => {
+    if (Math.abs(value - at.current[axis]) < 0.5) return
+    if (pending.current.x === undefined && pending.current.y === undefined) setTimeout(settle, 0)
+    pending.current[axis] = value
+  }
   const [wanted, setStart] = useState(0)
   const total = blocks.length
   const start = Math.max(0, Math.min(wanted, total - SPAN))
@@ -79,7 +110,10 @@ export function CodeLines({ preview, line, wash, picked, dragging, onPress, onDr
   const height = TOP + preview.shown * ROW + BOTTOM + (truncated ? NOTE : 0)
   /** The window for a scroll at `y` down: a block above it, the rest below. */
   const around = (y: number) => Math.max(0, Math.min(Math.floor((y - TOP) / (BLOCK * ROW)) - 1, total - SPAN))
-  useEffect(() => setStart(0), [preview.abs, preview.text])
+  useEffect(() => {
+    setStart(0)
+    at.current = { x: 0, y: 0 }
+  }, [preview.abs, preview.text])
   useEffect(() => {
     if (!line) return
     const y = TOP + Math.max(0, line - 1 - 4) * ROW
@@ -140,10 +174,7 @@ export function CodeLines({ preview, line, wash, picked, dragging, onPress, onDr
     <div
       ref={scroller}
       testId="file-preview-scroll"
-      onScrollChange={(e) => {
-        const next = around(-(e.scrollY ?? 0))
-        if (next !== start) setStart(next)
-      }}
+      onScrollChange={(e) => moved('y', -(e.scrollY ?? 0))}
       style={{ flexGrow: 1, minHeight: 0, width: '100%', overflow: 'scroll', scrollbarColor: m.scrollbar, scrollbarWidth: 6 }}
     >
       <div style={{ position: 'relative', flexShrink: 0, width: '100%', display: 'flex', flexDirection: 'row' }}>
@@ -158,7 +189,7 @@ export function CodeLines({ preview, line, wash, picked, dragging, onPress, onDr
             </div>
           ))}
         </div>
-        <div style={{ flexGrow: 1, minWidth: 0, overflowX: 'scroll' }}>
+        <div ref={sideways} onScrollChange={(e) => moved('x', -(e.scrollX ?? 0))} style={{ flexGrow: 1, minWidth: 0, overflowX: 'scroll' }}>
           <div style={{ width: widest * DIGIT + 16 + 2 * DIGIT, minWidth: '100%', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
             {column((i, first, count, a, b) => (
               <>

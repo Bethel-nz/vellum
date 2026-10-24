@@ -1182,10 +1182,11 @@ look at them pause the clock and fast-forward it (`app.clock`).
 ## 2026-10-24 — code scrolls sideways, all of it at once
 
 Code in the file pane didn't scroll sideways at all. Each <code> is its own sideways scroller, but
-inside a <virtual-list> it never gets the wheel: the list takes it. Checked one by one: on its own,
-in a flex row and in a plain scroller, a <code> scrolls sideways; in the list it doesn't. And a
-block that did scroll would have moved alone, its hundred lines apart from the rest, since <code>
-reports no scroll of its own to sync the others by.
+only when something holds it to a width: a row in a <virtual-list> with no width of its own grows
+to its content, so the <code> was as wide as its longest line and clipped, with nothing to scroll.
+Given `width: '100%'` it scrolls (checked one by one, after first blaming the list for taking the
+wheel; it doesn't). And a block that did scroll would have moved alone, its hundred lines apart
+from the rest, since <code> reports no scroll of its own to sync the others by.
 
 So the pane's code (ui/CodeLines.tsx) left the list for a plain scroller with two columns: the
 line numbers, which stay put, and the code, the one sideways scroller. Every block is as wide as
@@ -1195,3 +1196,18 @@ aren't mounted are a spacer of exact height in each column, and the window follo
 `onScrollChange`. The outer scroller is set to scroll both ways though only its height overflows,
 because a scroller that only scrolls down turns a sideways swipe into a vertical one. Mid-drag one
 cover lies over both columns for the pick. Markdown keeps the list; its pages have no exact height.
+
+## 2026-10-24 — a sideways swipe stays sideways; fenced code in a reply scrolls too
+
+A sideways swipe over the pane's code walked the file up and down. GPUI moves a scroller by both
+parts of every wheel event, and a trackpad's sideways swipe carries a few points of vertical in
+most of them: 24 events moved the file ten lines. Mac views lock a swipe to the axis it starts
+on; GPUI doesn't, and GPUIX has no wheel event to do it with. So ui/CodeLines.tsx does it from
+the scrollers' own reports: the moves of one frame are weighed together, the larger picks the
+swipe's axis for as long as it keeps moving (150 ms between moves), and the other scroller is
+put back with `scrollTo`. The stray move shows for a frame at most.
+
+The clipping above also held fenced code in Claude's replies (ui/blocks.tsx `CodeCard`): the card
+set no display, so its <code> grew to its longest line and the card cut it off. As a flex column
+the card holds the code to its width and it scrolls. Shell output in the note and fenced code in
+a markdown preview already scrolled; both sit in flex columns.

@@ -258,6 +258,8 @@ function AssistantBlock({ block, actions }: { block: Extract<Block, { kind: 'ass
 /**
  * A fenced block in a reply: highlighted code in a quiet card with no language header.
  * Copy appears on hover, top right, and turns into a tick for a moment after it copies.
+ * The card is a flex column so the code is held to its width and scrolls sideways; otherwise the
+ * code grows to its longest line and the card clips it, with nothing left to scroll.
  */
 function CodeCard({ code, language, testId }: { code: string; language: string; testId?: string }) {
   const m = useM()
@@ -276,7 +278,7 @@ function CodeCard({ code, language, testId }: { code: string; language: string; 
       testId={testId}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      style={{ position: 'relative', borderRadius: concentric(radiusBase, 2), borderWidth: 1, borderColor: m.border, backgroundColor: m.codeBg, overflow: 'hidden' }}
+      style={{ position: 'relative', display: 'flex', flexDirection: 'column', borderRadius: concentric(radiusBase, 2), borderWidth: 1, borderColor: m.border, backgroundColor: m.codeBg, overflow: 'hidden' }}
     >
       <code code={code || ' '} language={language || undefined} theme={nativeTheme(m)} style={{ paddingLeft: 14, paddingRight: 14, paddingTop: 11, paddingBottom: 11, minWidth: 0, color: m.text }} />
       {hover || copied ? (
