@@ -18,7 +18,7 @@ import path from 'node:path'
 import { readWorkspaceFile } from './files'
 import type { Profile } from './profiles'
 import { noteLabel } from './changes'
-import { scopeKey, type Tag } from './threads'
+import { scopeKey, type HunkNote, type Tag } from './threads'
 
 export type Suggestion = Tag & { label: string; hint: string }
 
@@ -259,7 +259,11 @@ export function promptFor(text: string, tags: Tag[], ctx: { workspace?: string; 
       out += `"${tag.value}" skill`
       if (!skillNames.includes(tag.value)) skillNames.push(tag.value)
     } else if (tag.type === 'folder') out += `@${tag.value}`
-    else if (tag.type === 'hunk') {
+    else if (tag.type === 'hunk' && tag.comments) {
+      out += `${tag.path} line ${tag.notes?.[0]?.line ?? ''}`.trimEnd()
+      const quote = commentQuote(tag)
+      if (!quotes.includes(quote)) quotes.push(quote)
+    } else if (tag.type === 'hunk') {
       if (!hunks.includes(tag)) hunks.push(tag)
       out += `hunk ${hunks.indexOf(tag) + 1} (${tag.path})`
     } else if (!tag.line) out += `@${tag.value}`
@@ -282,10 +286,17 @@ export function promptFor(text: string, tags: Tag[], ctx: { workspace?: string; 
 function hunkQuote(h: Extract<Tag, { type: 'hunk' }>, n: number): string {
   const fence = h.patch.includes('```') ? '````' : '```'
   const diff = `${fence}diff\n--- a/${h.path}\n+++ b/${h.path}\n${h.patch.trimEnd()}\n${fence}`
-  const notes = (h.notes ?? []).map((x) => {
-    const where = x.endLine ? `lines ${noteLabel(x)}` : `${x.side === 'old' ? 'removed' : 'new'} line ${x.line}`
-    const code = x.code.includes('\n') ? `\n  \`\`\`\n${x.code.split('\n').map((l) => `  ${l}`).join('\n')}\n  \`\`\`\n  ` : ` \`${x.code.trim().slice(0, 120)}\`: `
-    return `- ${where}${code}${x.text}`
-  })
+  const notes = (h.notes ?? []).map(noteLine)
   return [`Hunk ${n}, from an edit you made to ${h.path}:`, diff, ...(notes.length ? ['My comments on its lines:', ...notes] : [])].join('\n')
+}
+
+/** Comments without their hunk: the file, then each line's number, code and comment. */
+function commentQuote(h: Extract<Tag, { type: 'hunk' }>): string {
+  return [`My comments on ${h.path}:`, ...(h.notes ?? []).map(noteLine)].join('\n')
+}
+
+function noteLine(x: HunkNote): string {
+  const where = x.endLine ? `lines ${noteLabel(x)}` : `${x.side === 'old' ? 'removed' : 'new'} line ${x.line}`
+  const code = x.code.includes('\n') ? `\n  \`\`\`\n${x.code.split('\n').map((l) => `  ${l}`).join('\n')}\n  \`\`\`\n  ` : ` \`${x.code.trim().slice(0, 120)}\`: `
+  return `- ${where}${code}${x.text}`
 }

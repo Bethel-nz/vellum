@@ -98,6 +98,34 @@ try {
   await wait(500)
   expect('hovering the pill shows the hunk', (await app.getByTestId('hunk-slice').count()) === 1)
   await shot('3-draft')
+
+  // A comment on its own: no hunk picked, one line commented, and only that goes.
+  await c.press('cmd-shift-d')
+  await app.getByTestId('changes').waitFor({ timeoutMs: 3000 })
+  await wait(600)
+  if (!(await ids('hunk-diff-')).length) await app.getByTestId('change-ui/theme.ts').click()
+  await wait(500)
+  const diff = (await ids('hunk-diff-'))[0]!
+  const d2 = await app.getByTestId(diff).bounds()
+  await app.mouse.click({ x: d2.x + 120, y: d2.y + 3.5 * (d2.height / 5) })
+  await wait(400)
+  await app.getByTestId('hunk-comment').fill('why zero')
+  await app.getByTestId('hunk-comment').press('enter')
+  await wait(400)
+  const label = await app.getByTestId('changes-add').textContent().catch(() => '')
+  expect('a comment alone can be added', label.includes('Add 1 comment to the note'), label)
+  await shot('4-comment-only')
+  await app.getByTestId('changes-add').click()
+  for (let t = 0; t < 2000 && (await app.getByTestId('changes').count()); t += 100) await wait(100)
+  let lone: any
+  for (let i = 0; i < 30 && !lone; i++) {
+    await wait(100)
+    const all = JSON.parse(readFileSync(path.join(home, 'drafts.json'), 'utf8'))
+    lone = (Object.values(all)[0] as any).tags.find((t: any) => t.type === 'hunk' && t.comments)
+  }
+  expect('…as its line and what you said, without the hunk', lone?.value === 'ui/theme.ts:3' && lone.notes?.length === 1 && lone.notes[0].text === 'why zero', JSON.stringify(lone && { value: lone.value, notes: lone.notes }))
+  await wait(300)
+  await shot('5-comment-pill')
 } finally {
   await app.close()
 }

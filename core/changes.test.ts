@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { hunkRows, hunkTags, noteFor, noteLabel, splitHunks } from './changes'
+import { commentTags, hunkRows, hunkTags, noteFor, noteLabel, splitHunks } from './changes'
 import { promptFor, tagText } from './tags'
 
 const patch = '@@ -1,3 +1,4 @@\n export function concentric(parentRadius: number, inset: number) {\n-  return parentRadius - inset\n+  // Nested rounding shares one centre.\n+  return Math.max(0, parentRadius - inset)\n }\n'
@@ -29,4 +29,15 @@ test('a range comment names both ends and quotes every line', () => {
   expect(note.code.split('\n')).toHaveLength(4)
   const [tag] = hunkTags([h!], { [h!.id]: [note] })
   expect(promptFor(tagText(tag!), [tag!])).toContain('- lines +1 to +3\n  ```\n  export function concentric')
+})
+
+test('a comment on a hunk you did not pick goes alone: its line, its code and what you said', () => {
+  const [h] = splitHunks('ed1', 'ui/theme.ts', patch)
+  const [tag] = commentTags([h!], { [h!.id]: [{ side: 'new', line: 3, code: '  return Math.max(0, parentRadius - inset)', text: 'why zero?' }] })
+  expect(tagText(tag!)).toBe('±ui/theme.ts:3')
+  const prompt = promptFor(`Look at ${tagText(tag!)}`, [tag!])
+  expect(prompt.startsWith('Look at ui/theme.ts line 3')).toBe(true)
+  expect(prompt).toContain('My comments on ui/theme.ts:\n- new line 3 `return Math.max(0, parentRadius - inset)`: why zero?')
+  expect(prompt).not.toContain('```diff')
+  expect(commentTags([h!], {})).toEqual([])
 })

@@ -66,7 +66,8 @@ export function Chip({
  * A hunk from the Changes sheet, in your writing: a small ± pill, not a wall of diff. File glyph,
  * name, +n −m in the diff colours, and how many lines you commented on. Hover shows the hunk.
  */
-export function HunkPill({ path, added, removed, notes = 0, onHover, testId }: { path: string; added: number; removed: number; notes?: number; onHover?: (inside: boolean) => void; testId?: string }) {
+/** A hunk in the draft; with `line`, only comments on that file from that line, so no counts. */
+export function HunkPill({ path, added, removed, notes = 0, line, onHover, testId }: { path: string; added: number; removed: number; notes?: number; line?: number; onHover?: (inside: boolean) => void; testId?: string }) {
   const m = useM()
   const ink = diffInk(m)
   const name = path.split('/').pop() ?? path
@@ -94,9 +95,9 @@ export function HunkPill({ path, added, removed, notes = 0, onHover, testId }: {
     >
       <text style={{ fontSize: 12, lineHeight: 16, color: m.textMuted, fontFamily: font.mono }}>±</text>
       <FileIcon path={path} size={11} />
-      <text style={{ fontSize: 12, lineHeight: 16, color: m.text, fontFamily: font.mono, whiteSpace: 'nowrap' }}>{name}</text>
-      <text style={{ fontSize: 11.5, lineHeight: 16, color: ink.add, fontFamily: font.mono }}>{`+${added}`}</text>
-      <text style={{ fontSize: 11.5, lineHeight: 16, color: ink.del, fontFamily: font.mono }}>{`−${removed}`}</text>
+      <text style={{ fontSize: 12, lineHeight: 16, color: m.text, fontFamily: font.mono, whiteSpace: 'nowrap' }}>{line ? `${name}:${line}` : name}</text>
+      {line ? null : <text style={{ fontSize: 11.5, lineHeight: 16, color: ink.add, fontFamily: font.mono }}>{`+${added}`}</text>}
+      {line ? null : <text style={{ fontSize: 11.5, lineHeight: 16, color: ink.del, fontFamily: font.mono }}>{`−${removed}`}</text>}
       {notes ? (
         <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 3, marginLeft: 2 }}>
           <Icon name="comment" size={11} color={m.blue} />

@@ -1,9 +1,10 @@
-// Changes (⇧⌘D, or the count in the strip): every file Claude edited in this note, in a sheet
-// from the right. Rows read like an editor's review list: file-type glyph, name, folder in
-// faint mono, +n −m, status. A row opens to its hunks; clicking a hunk's header selects it
-// (violet wash and gutter tick). Clicking a line inside a hunk opens a comment field for that
-// line, and a comment selects its hunk. "Add n hunks" puts them in your draft as ± pills that
-// carry the hunk and its comments (core/changes.ts hunkTags); Claude gets them spelled out.
+// Changes (⇧⌘D, or the count in the strip): every file Claude edited in this note, or the
+// folder's uncommitted edits, in a sheet from the right. Rows read like an editor's review list:
+// file-type glyph, name, folder in faint mono, +n −m, status. A row opens to its hunks; clicking a
+// hunk's header selects it (violet wash and gutter tick). Clicking a line inside a hunk opens a
+// comment field for that line. "Add" puts picked hunks in your draft as ± pills that carry the
+// hunk and its comments (core/changes.ts hunkTags), and a comment on a hunk you didn't pick as a
+// pill that carries only the line and what you said (commentTags); Claude gets them spelled out.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EventPayload } from '@gpuix/react'
@@ -20,7 +21,8 @@ import { concentric, diffHeaderClip, diffInk, diffTheme, font, radiusXl } from '
 /** The rows being commented on, as indexes into the hunk's rows; `to` moves with ⇧-click. */
 type Commenting = { hunkId: string; from: number; to: number }
 
-export function Changes({ open, onClose, thread, onAdd }: { open: boolean; onClose: () => void; thread?: Thread; onAdd: (hunks: Hunk[], notes: Record<string, HunkNote[]>) => void }) {
+/** `onAdd` gets the hunks you picked, every comment, and the hunks you only commented on. */
+export function Changes({ open, onClose, thread, onAdd }: { open: boolean; onClose: () => void; thread?: Thread; onAdd: (hunks: Hunk[], notes: Record<string, HunkNote[]>, commented: Hunk[]) => void }) {
   const m = useM()
   const [scope, setScope] = useState<'note' | 'uncommitted'>('note')
   const [scopeOpen, setScopeOpen] = useState(false)
@@ -35,7 +37,10 @@ export function Changes({ open, onClose, thread, onAdd }: { open: boolean; onClo
   const [notes, setNotes] = useState<Record<string, HunkNote[]>>({})
   const [commenting, setCommenting] = useState<Commenting | null>(null)
   const selected = all.filter((h) => picked[h.id])
-  const noteCount = selected.reduce((n, h) => n + (notes[h.id]?.length ?? 0), 0)
+  const noteCount = all.reduce((n, h) => n + (notes[h.id]?.length ?? 0), 0)
+  // A comment goes on its own, as its line and what you said, when its hunk isn't picked.
+  const commented = all.filter((h) => !picked[h.id] && notes[h.id]?.length)
+  const loose = commented.reduce((n, h) => n + notes[h.id]!.length, 0)
   const totals = groups.flatMap((group) => group.files).reduce((sum, file) => ({ added: sum.added + file.added, removed: sum.removed + file.removed }), { added: 0, removed: 0 })
   useEffect(() => {
     setPicked({})
@@ -73,8 +78,6 @@ export function Changes({ open, onClose, thread, onAdd }: { open: boolean; onClo
       const note = noteFor(hunkRows(hunk.patch), commenting.from, commenting.to, text.trim())
       const same = (x: HunkNote) => x.side === note.side && x.line === note.line && x.endLine === note.endLine
       setNotes((n) => ({ ...n, [hunk.id]: [...(n[hunk.id] ?? []).filter((x) => !same(x)), note] }))
-      const hunkId = hunk.id
-      setPicked((p) => ({ ...p, [hunkId]: true }))
       setCommenting(null)
     },
     remove: (hunkId, i) => setNotes((n) => ({ ...n, [hunkId]: (n[hunkId] ?? []).filter((_, j) => j !== i) })),
@@ -128,19 +131,27 @@ export function Changes({ open, onClose, thread, onAdd }: { open: boolean; onClo
         <div style={{ flexGrow: 1 }} />
         <Button
           variant="solid"
-          disabled={!selected.length}
+          disabled={!selected.length && !loose}
           testId="changes-add"
           onPress={() => {
-            onAdd(selected, notes)
+            onAdd(selected, notes, commented)
             setPicked({})
             setNotes({})
           }}
         >
-          <Label variant="solid">{selected.length === 1 ? 'Add 1 hunk to the note' : `Add ${selected.length} hunks to the note`}</Label>
+          <Label variant="solid">{addLabel(selected.length, loose)}</Label>
         </Button>
       </div>
     </SidePanel>
   )
+}
+
+/** "Add 2 hunks to the note", "Add 1 comment to the note", "Add 1 hunk and 2 comments". */
+function addLabel(hunks: number, comments: number) {
+  const h = hunks === 1 ? '1 hunk' : `${hunks} hunks`
+  const c = comments === 1 ? '1 comment' : `${comments} comments`
+  if (hunks && comments) return `Add ${h} and ${c}`
+  return `Add ${comments ? c : h} to the note`
 }
 
 type Comments = {

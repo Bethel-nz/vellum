@@ -54,7 +54,7 @@ import { History } from './ui/History'
 import { Changes } from './ui/Changes'
 import { revealEnd } from './ui/glide'
 import { Timeline, watchRows } from './ui/Timeline'
-import { changeSummary, hunkTags } from './core/changes'
+import { changeSummary, commentTags, hunkTags } from './core/changes'
 import { uncommittedFiles } from './core/gitsnap'
 import type { ChangeSummary } from './components/ChangesSummary'
 import { Dot, Icon, Kbd, MaterialContext, Meta, Quiet, useM } from './ui/kit'
@@ -1454,11 +1454,12 @@ function App() {
           open={overlay === 'changes'}
           onClose={() => setOverlay(null)}
           thread={active}
-          onAdd={(hunks, notes) => {
+          onAdd={(hunks, notes, commented) => {
             if (!active) return
             const d = draftsRef.current[active.id] ?? { text: '', tags: [] }
             // ± pills at the end of the draft; you write what to do with them around them.
-            const added = hunkTags(hunks, notes, d.tags)
+            const picked = hunkTags(hunks, notes, d.tags)
+            const added = [...picked, ...commentTags(commented, notes, [...d.tags, ...picked])]
             const pills = added.map(tagText).join(' ')
             setDraft(active.id, d.text.trim() ? `${d.text.trimEnd()} ${pills} ` : `${pills} `, [...d.tags, ...added])
             setOverlay(null)

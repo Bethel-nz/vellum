@@ -27,8 +27,11 @@ export type Tag =
   | { type: 'skill'; value: string }
   | { type: 'file'; value: string; line?: number; scope?: 'line' | 'file' }
   | { type: 'folder'; value: string }
-  /** One hunk of an edit Claude made, carried whole, with your comments on its lines. */
-  | { type: 'hunk'; value: string; path: string; header: string; patch: string; added: number; removed: number; notes?: HunkNote[] }
+  /**
+   * One hunk of an edit Claude made, carried whole, with your comments on its lines. With
+   * `comments`, only the comments go: each line's number and code, and what you said about it.
+   */
+  | { type: 'hunk'; value: string; path: string; header: string; patch: string; added: number; removed: number; notes?: HunkNote[]; comments?: true }
 
 /**
  * A comment on a line, or a run of lines, of a hunk. `side` is new for + and context lines, old

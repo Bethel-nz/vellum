@@ -111,7 +111,7 @@ function TokenChip({ token, hover, testId }: { token: Extract<Token, { kind: 'ta
   const key = keyOf(token.tag)
   if (token.tag.type === 'hunk') {
     const h = token.tag
-    return <HunkPill path={h.path} added={h.added} removed={h.removed} notes={h.notes?.length} testId={testId} onHover={(inside) => (inside ? hover.enter(key) : hover.leave())} />
+    return <HunkPill path={h.path} added={h.added} removed={h.removed} notes={h.notes?.length} line={h.comments ? h.notes?.[0]?.line : undefined} testId={testId} onHover={(inside) => (inside ? hover.enter(key) : hover.leave())} />
   }
   const label = token.tag.type === 'skill' ? token.tag.value : token.text.replace(/^[#@]/, '')
   return (

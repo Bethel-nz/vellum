@@ -117,6 +117,23 @@ export function hunkTags(hunks: Hunk[], notes: Record<string, HunkNote[]> = {}, 
   })
 }
 
+/**
+ * Tags for comments on hunks you didn't pick: each carries only its comments, so Claude reads
+ * the file, the line and what you said, not the whole hunk. The token is `±path:line` at the first
+ * comment's line.
+ */
+export function commentTags(hunks: Hunk[], notes: Record<string, HunkNote[]>, taken: Tag[] = []): Extract<Tag, { type: 'hunk' }>[] {
+  const used = new Set(taken.filter((t) => t.type === 'hunk').map((t) => t.value))
+  return hunks.flatMap((h) => {
+    const own = notes[h.id]
+    if (!own?.length) return []
+    let value = `${h.path}:${own[0]!.line}`
+    for (let n = 2; used.has(value); n++) value = `${h.path}:${own[0]!.line}~${n}`
+    used.add(value)
+    return [{ type: 'hunk' as const, value, path: h.path, header: h.header, patch: h.patch, added: h.added, removed: h.removed, notes: own, comments: true as const }]
+  })
+}
+
 /** One row of a hunk as the diff draws it: its line numbers, its marker and its code. */
 export type HunkRow = { old?: number; new?: number; kind: '+' | '-' | ' '; code: string }
 
