@@ -45,6 +45,7 @@ import { Composer } from './ui/Composer'
 import { NewThreadDialog, ThreadSwitcher } from './ui/dialogs'
 import { History } from './ui/History'
 import { Changes } from './ui/Changes'
+import { revealEnd } from './ui/glide'
 import { Timeline, watchRows } from './ui/Timeline'
 import { changeCount, hunkTags } from './core/changes'
 import { Dot, Icon, Kbd, MaterialContext, Meta, Quiet, useM } from './ui/kit'
@@ -398,10 +399,23 @@ function App() {
     if (activeId) setUnread((u) => (u[activeId] ? { ...u, [activeId]: 0 } : u))
   }, [activeId])
 
+  // Writing, sending or coming back to the composer while it's scrolled out of view brings the
+  // note down to it, smoothly (ui/glide.ts). The slack is the 240px of room under the composer
+  // less 80: up to there its last line is still clear of the bottom edge.
+  const glide = useRef<(() => void) | null>(null)
+  const revealComposer = useCallback(() => {
+    const list = noteList.current?.id
+    if (list == null || glide.current) return
+    glide.current = revealEnd(renderer, list, 160, () => {
+      glide.current = null
+    })
+  }, [renderer])
+
   const focusComposer = useCallback(() => {
     const id = composerRef.current?.id
     if (id != null) renderer.focusElement?.(id)
-  }, [renderer])
+    revealComposer()
+  }, [renderer, revealComposer])
 
   // ---- thread state
 
@@ -1096,8 +1110,12 @@ function App() {
                       setDraft(active.id, text, tags)
                       // An autofocused textarea never reports focus, so typing counts as writing too.
                       setWriting(true)
+                      revealComposer()
                     }}
-                    onSend={send}
+                    onSend={() => {
+                      revealComposer()
+                      send()
+                    }}
                     profile={activeProfile}
                     workspace={active.workspace}
                     placeholder={placeholder}

@@ -585,3 +585,36 @@ frames 0–260ms on a paused clock (`app.clock.pause()` / `fastForward()`) into
   - check-changes' "Add closes the sheet" now polls rather than sleeping 900ms. With the Sheet's
     hold and the composer re-render, the panel goes at about 750ms.
   - The scroll keeper (components/Scroll.tsx) went in earlier, in e1cd85f.
+
+## 2026-10-24 — the note glides back to the composer
+
+- **What.** Writing, sending or coming back to the composer (⌘K back to the note, Add from
+  Changes, a click under the note) while it's scrolled out of view eases the note down to it.
+  Small distances take `standard` (0.24s), a page or more `considered` (0.48s), on the standard
+  curve. From further than 1.25 viewports the glide starts 1.25 viewports from the end, so
+  coming back from the top of a long note is one short slide, not a ten-second scroll. A scroll
+  of your own during the glide stops it. Reduced motion jumps. At the end, typing moves nothing.
+- **How (ui/glide.ts).** GPUIX has no animated scroll, so this steps the list's anchor every
+  16ms (spikes/list-glide.tsx found the facts):
+  - `scrollToItem` and `getListScrollTop` resolve synchronously. The end can be read and the
+    old anchor put back in the same tick, before anything paints.
+  - An index past the last item lands exactly on the end, and the list follows the tail from
+    there. A negative offset resolves against measured rows; a positive one past an item's
+    height is kept as given, so offsets can be stepped in pixels.
+  - There is no `requestAnimationFrame` in the Bun host, so the frames run on timers.
+  - The glide is laid out from the end. Each frame reads where the end is now (a streaming
+    reply moves it) and sits `r` px above it, `r` easing to 0. The last step lands on the end
+    itself, so following the tail resumes.
+  - The starting distance comes from a binary search over "x px above the end" anchors.
+- **Slack.** The glide starts only when the note sits more than 160px above its end: the 240px
+  of room under the composer, less 80. Up to there the composer's last line is still clear of
+  the bottom edge.
+- **Checks.** `scripts/check-glide.ts` passes in full and reduced motion:
+  - At the end, typing moves nothing.
+  - A short scroll up comes back.
+  - From the top, the composer returns over about ten frames, one way only
+    (650 → 571 → 523 → … → 465 px).
+  - A wheel during the glide stops it.
+  - ⌘Enter from far up lands at the end and keeps following.
+  - Verified in a clean worktree of HEAD plus this change, which also passed check-motion,
+    check-changes and check-timeline.
