@@ -56,8 +56,16 @@ export const SHARED: { name: string; dir: boolean }[] = [
   { name: 'paste-cache', dir: true },
 ]
 
-/** ~/.claude, the hub every account links to. VELLUM_CLAUDE_HOME moves it for checks. */
-export const claudeHome = () => process.env.VELLUM_CLAUDE_HOME ?? path.join(homedir(), '.claude')
+/**
+ * ~/.claude, the hub every account links to. VELLUM_CLAUDE_HOME moves it for checks, and must be
+ * an absolute path: a relative one (say "undefined/claude-home" from a script missing its
+ * argument) would quietly build a second hub wherever the app happened to start.
+ */
+export function claudeHome(): string {
+  const moved = process.env.VELLUM_CLAUDE_HOME
+  if (moved !== undefined && !path.isAbsolute(moved)) throw new Error(`VELLUM_CLAUDE_HOME must be an absolute path (got "${moved}")`)
+  return moved ?? path.join(homedir(), '.claude')
+}
 /** The default account's .claude.json lives beside ~/.claude, not in it. */
 export const defaultClaudeJson = () => path.join(path.dirname(claudeHome()), '.claude.json')
 
@@ -178,6 +186,8 @@ function backupPath(account: string, name: string) {
  */
 export function linkAccount(account: string, configDir: string): LinkAction[] {
   const hub = claudeHome()
+  // No hub, nothing to link to: never build one here, and never move an account's links away.
+  if (!existsSync(hub)) return []
   mkdirSync(configDir, { recursive: true })
   const actions: LinkAction[] = []
   for (const { name, dir } of SHARED) {
@@ -197,8 +207,6 @@ export function linkAccount(account: string, configDir: string): LinkAction[] {
       continue
     }
     if (linked(link, target)) continue
-    // No ~/.claude at all (claude has never run as the default account): leave the account's own.
-    if (!st.isSymbolicLink() && !existsSync(hub)) continue
 
     // Something else is here: fold it into the hub, keep a copy, then link.
     const pointsElsewhere = st.isSymbolicLink()

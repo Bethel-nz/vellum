@@ -5,8 +5,8 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
+// VELLUM_HOME is a scratch folder already (core/test-setup.ts, preloaded).
 const root = mkdtempSync(path.join(tmpdir(), 'vellum-accounts-'))
-process.env.VELLUM_HOME = path.join(root, 'vellum')
 let hub = ''
 let acct = ''
 const { linkAccount, mergeJson, mergeMcpServers } = await import('./accounts')
@@ -128,4 +128,15 @@ test('nothing is created in ~/.claude ahead of time; a folder only the account h
   linkAccount('work', acct)
   expect(readFileSync(path.join(hub, 'todos', 't.json'), 'utf8')).toBe('[]')
   expect(isLinkTo(path.join(acct, 'todos'), path.join(hub, 'todos'))).toBe(true)
+})
+
+test('no hub, or a relative one: nothing happens to the account', () => {
+  linkAccount('work', acct)
+  const before = readdirSync(acct).sort()
+  process.env.VELLUM_CLAUDE_HOME = path.join(root, 'missing-hub')
+  expect(linkAccount('work', acct)).toEqual([])
+  expect(readdirSync(acct).sort()).toEqual(before)
+  expect(isLinkTo(path.join(acct, 'skills'), path.join(hub, 'skills'))).toBe(true)
+  process.env.VELLUM_CLAUDE_HOME = 'undefined/claude-home'
+  expect(() => linkAccount('work', acct)).toThrow('absolute')
 })
