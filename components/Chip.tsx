@@ -29,8 +29,8 @@ export function Chip({
   const m = useM()
   const skill = kind === 'skill'
   const label = String(children)
-  // `:42` reads as a suffix of the path, not part of it.
-  const line = kind === 'line' ? /:(\d+)$/.exec(label) : null
+  // `:42` and `:12-18` read as a suffix of the path, not part of it.
+  const line = kind === 'line' ? /:(\d+(?:-\d+)?)$/.exec(label) : null
   const base = line ? label.slice(0, line.index) : label
   const ink = skill ? m.accent : m.text
   const rule = skill ? m.accent + '66' : m.blue + 'aa'

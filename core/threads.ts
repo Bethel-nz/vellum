@@ -25,7 +25,8 @@ import { contextFromUsage, windowFromResult, type ContextUse } from './models'
  */
 export type Tag =
   | { type: 'skill'; value: string }
-  | { type: 'file'; value: string; line?: number; scope?: 'line' | 'file' }
+  /** `line` alone is one line; with `endLine`, lines `line`–`endLine` (`#path:12-18`). */
+  | { type: 'file'; value: string; line?: number; endLine?: number; scope?: 'line' | 'file' }
   | { type: 'folder'; value: string }
   /**
    * One hunk of an edit Claude made, carried whole, with your comments on its lines. With

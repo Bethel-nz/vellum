@@ -2,9 +2,11 @@
 // in a TypeScript file, a markdown file and one that's gone. Pressing the line chip opens the
 // file beside the note, which narrows, with that line washed; the markdown chip swaps it for the
 // rendered page, Source shows its text; the same chip again closes it; a missing file says why;
-// Esc closes. In a narrow window it slides over the note instead. Shots: screenshots/preview-*.png.
+// Esc closes. In a narrow window it slides over the note instead. Dragging down the line numbers
+// picks lines, ⇧-click stretches the pick, Esc clears it, and "Add to note" (or ↵) puts a
+// `#core/printed.ts:20-24` chip on the end of the draft. Shots: screenshots/preview-*.png.
 //   bun scripts/check-preview.ts
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
@@ -53,6 +55,43 @@ async function run(size: string, wide: boolean) {
     if (!wide) return await shot('narrow')
     expect(`${size}: the chip's line is washed`, (await count('file-preview-line')) === 1)
     await shot('1-code')
+
+    // A row's middle, from the gutter's painted top: every row is 18 high.
+    const g = await app.getByTestId('file-preview-gutter').bounds()
+    const row = (n: number) => ({ x: g.x + g.width / 2, y: g.y + (n - 1) * 18 + 9 })
+    const picked = () => app.getByTestId('file-preview-picked').textContent()
+    // Off to the right of the numbers on the way: the pick still follows.
+    await app.mouse.drag(row(20), { x: g.x + 200, y: row(24).y })
+    await wait(400)
+    expect('dragging down the line numbers picks lines', (await picked()) === 'Lines 20–24' && (await count('file-preview-pick')) === 1, await picked())
+    await shot('4-pick')
+    await app.getByTestId('file-preview-mention').click()
+    await wait(500)
+    // drafts.json is written a moment after the draft changes: wait for what's expected.
+    const draftText = () => {
+      try { return (JSON.parse(readFileSync(path.join(home, 'drafts.json'), 'utf8'))[id]?.text ?? '') as string } catch { return '' }
+    }
+    const draft = async (want: string) => {
+      for (let i = 0; i < 30 && !draftText().includes(want); i++) await wait(100)
+      return draftText()
+    }
+    expect('"Add to note" puts the lines on the draft', (await draft('#core/printed.ts:20-24')).includes('#core/printed.ts:20-24'), draftText())
+    expect('…and clears the pick', (await count('file-preview-mention-bar')) === 0)
+    await shot('5-mentioned')
+
+    await app.mouse.click(row(22))
+    await wait(300)
+    await app.mouse.click(row(19), { modifiers: 'shift' })
+    await wait(300)
+    expect('⇧-click stretches the pick, up too', (await picked()) === 'Lines 19–22', await picked())
+    await app.getByTestId('file-preview').press('escape')
+    await wait(300)
+    expect('Esc clears a pick first', (await count('file-preview-mention-bar')) === 0 && (await count('file-preview')) === 1)
+    await app.mouse.click(row(21))
+    await wait(300)
+    await app.getByTestId('file-preview').press('enter')
+    await wait(500)
+    expect('↵ adds one line', (await draft('#core/printed.ts:21 ')).includes('#core/printed.ts:21 '), draftText())
 
     await app.getByTestId('chip-1').click()
     await wait(700)

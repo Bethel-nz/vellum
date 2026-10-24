@@ -153,8 +153,11 @@ export function tagText(tag: Tag) {
   if (tag.type === 'skill') return `@skill:${tag.value}`
   if (tag.type === 'folder') return `@${tag.value}`
   if (tag.type === 'hunk') return `±${tag.value}`
-  return `#${tag.value}${tag.line ? `:${tag.line}` : ''}`
+  return `#${tag.value}${tag.line ? `:${lineLabel(tag)}` : ''}`
 }
+
+/** `42` for a line tag, `12-18` for a range. */
+export const lineLabel = (tag: { line?: number; endLine?: number }) => (tag.endLine ? `${tag.line}-${tag.endLine}` : `${tag.line ?? ''}`)
 
 export type Token = { kind: 'text'; text: string } | { kind: 'tag'; tag: Tag; text: string }
 
@@ -178,9 +181,11 @@ export function tokens(text: string, known: Tag[]): Token[] {
     let word = tail ? part.slice(0, -tail.length) : part
     let tag: Tag | undefined
     if (word.startsWith('#') || (word.startsWith('@') && !word.startsWith('@skill:'))) {
-      // `#path:42` — the trailing colon-number is the line; `TRAILING` may have eaten a lone ':'.
-      const m = /^[#@](.+?)(?::(\d+))?$/.exec(word)
-      if (m && files.has(m[1]!)) tag = { type: 'file', value: m[1]!, ...(m[2] ? { line: Number(m[2]) } : {}) }
+      // `#path:42` or `#path:12-18` — the trailing colon-number is the line or range; `TRAILING`
+      // may have eaten a lone ':'.
+      const m = /^[#@](.+?)(?::(\d+)(?:-(\d+))?)?$/.exec(word)
+      const end = m?.[3] ? Number(m[3]) : 0
+      if (m && files.has(m[1]!)) tag = { type: 'file', value: m[1]!, ...(m[2] ? { line: Number(m[2]) } : {}), ...(m[2] && end > Number(m[2]) ? { endLine: end } : {}) }
     }
     if (!tag && others.has(word)) tag = known.find((t) => t.type !== 'file' && tagText(t) === word)
     if (tag) {
@@ -227,12 +232,15 @@ export function mentionedFiles(markdown: string, workspace: string, limit = 6): 
 
 export type Slice = { start: number; lines: string[] }
 
-/** The line a `#path:42` tag points at, or the head of the file for a plain file tag. */
-export function readSlice(workspace: string, file: string, line?: number, head = 4): Slice | undefined {
+/**
+ * The line a `#path:42` tag points at, the lines of a `#path:12-18` range, or the head of the file
+ * for a plain file tag.
+ */
+export function readSlice(workspace: string, file: string, line?: number, endLine?: number, head = 4): Slice | undefined {
   const text = readWorkspaceFile(workspace, file)
   if (text === undefined) return
   const all = text.split('\n')
-  if (line) return line <= all.length ? { start: line, lines: [all[line - 1]!] } : undefined
+  if (line) return line <= all.length ? { start: line, lines: all.slice(line - 1, Math.max(line, Math.min(endLine ?? line, all.length))) } : undefined
   return { start: 1, lines: all.slice(0, head) }
 }
 
@@ -267,12 +275,14 @@ export function promptFor(text: string, tags: Tag[], ctx: { workspace?: string; 
       if (!hunks.includes(tag)) hunks.push(tag)
       out += `hunk ${hunks.indexOf(tag) + 1} (${tag.path})`
     } else if (!tag.line) out += `@${tag.value}`
-    else if (widened(tag, ctx.scopes)) out += `@${tag.value} (line ${tag.line})`
+    else if (widened(tag, ctx.scopes)) out += `@${tag.value} (${tag.endLine ? 'lines' : 'line'} ${lineLabel(tag)})`
     else {
-      out += `${tag.value}:${tag.line}`
-      const slice = ctx.workspace ? readSlice(ctx.workspace, tag.value, tag.line) : undefined
-      const quoted = slice ? `\n\n\`\`\`\n${tag.line} | ${slice.lines[0]}\n\`\`\`` : ''
-      const note = `Refer only to line ${tag.line} of ${tag.value} (quoted below); read the file first if you need more.${quoted}`
+      out += `${tag.value}:${lineLabel(tag)}`
+      const slice = ctx.workspace ? readSlice(ctx.workspace, tag.value, tag.line, tag.endLine) : undefined
+      const fence = slice?.lines.some((l) => l.includes('```')) ? '````' : '```'
+      const quoted = slice ? `\n\n${fence}\n${slice.lines.map((l, i) => `${slice.start + i} | ${l}`).join('\n')}\n${fence}` : ''
+      const which = tag.endLine ? `lines ${tag.line}–${tag.endLine}` : `line ${tag.line}`
+      const note = `Refer only to ${which} of ${tag.value} (quoted below); read the file first if you need more.${quoted}`
       if (!quotes.includes(note)) quotes.push(note)
     }
   }

@@ -389,7 +389,7 @@ function App() {
   const togglePreview = useCallback((noteId: string, file: Previewing) => {
     setPreviews((all) => {
       const { [noteId]: open, ...rest } = all
-      return open?.path === file.path && open.line === file.line ? rest : { ...rest, [noteId]: file }
+      return open?.path === file.path && open.line === file.line && open.endLine === file.endLine ? rest : { ...rest, [noteId]: file }
     })
   }, [])
   /** A pasted image open full size over everything (ui/ImageViewer.tsx). */
@@ -660,6 +660,15 @@ function App() {
 
   const draftsRef = useRef(drafts)
   draftsRef.current = drafts
+
+  /** Lines picked in the file preview go on the end of the draft as a `#path:12-18` chip. */
+  const mentionLines = useCallback((threadId: string, file: string, line: number, endLine?: number) => {
+    const tag: Tag = { type: 'file', value: file, line, ...(endLine ? { endLine } : {}) }
+    const d = draftsRef.current[threadId] ?? { text: '', tags: [] }
+    const text = d.text.trim() ? `${d.text.trimEnd()} ${tagText(tag)} ` : `${tagText(tag)} `
+    setDraft(threadId, text, [...d.tags, tag])
+    setTimeout(focusComposer, 50)
+  }, [focusComposer, setDraft])
 
   /**
    * Moves a note to another account. Its agent lets go of the old session (that login keeps its
@@ -1091,7 +1100,7 @@ function App() {
       workspace: active?.workspace ?? homedir(),
       scopes: active?.tagScopes ?? {},
       onWiden: (key: string) => active && record(active.id, { type: 'vellum/tag-scope', key, scope: 'file' }),
-      onOpen: (file: string, line?: number) => active && togglePreview(active.id, { path: file, line }),
+      onOpen: (file: string, line?: number, endLine?: number) => active && togglePreview(active.id, { path: file, line, endLine }),
     }),
     [active?.id, active?.workspace, active?.tagScopes, record, togglePreview],
   )
@@ -1434,6 +1443,7 @@ function App() {
                   version={active.updatedAt}
                   width={previewSize.width}
                   split={previewSize.split}
+                  onMention={(file, line, endLine) => mentionLines(active.id, file, line, endLine)}
                   onClose={() => {
                     setPreviews(({ [active.id]: _, ...rest }) => rest)
                     setTimeout(focusComposer, 30)

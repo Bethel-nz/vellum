@@ -7,18 +7,22 @@
 // narrow window it slides over the note's right side instead. Esc or the ✕ closes it, and so does
 // pressing the same chip again. The file is read again whenever the note changes, so an edit
 // Claude makes shows up.
+//
+// In the code view the line numbers pick lines: press one, drag down or up, or ⇧-click to stretch
+// the pick, and "Add to note" (↵) drops a `#path:12-18` chip into the draft, the same tag a line
+// chip is. Esc clears a pick before it closes the pane.
 
 import path from 'node:path'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { motion, useGpuixRequired, type KeyEvent, type PublicInstance } from '@gpuix/react'
-import { Button, Icon, Segmented } from '../components'
+import { motion, useGpuixRequired, type EventPayload, type KeyEvent, type PublicInstance } from '@gpuix/react'
+import { Button, Icon, Label, Segmented } from '../components'
 import { duration, ease, offset, tween, useReducedMotion } from '../components/motion'
 import { readPreview, type Preview, type PreviewKind } from '../core/preview'
 import { FileIcon, useM } from './kit'
 import { elevation, font, nativeTheme, replyText, replyTheme, type } from './theme'
 
-export type Previewing = { path: string; line?: number }
-export type PreviewViewProps = { preview: Extract<Preview, { ok: true }>; line?: number }
+export type Previewing = { path: string; line?: number; endLine?: number }
+export type PreviewViewProps = { preview: Extract<Preview, { ok: true }>; line?: number; endLine?: number }
 
 /** Views of their own for some kinds of file; any kind not here reads as code. JSON's goes here. */
 export const previewViews: Partial<Record<PreviewKind, (props: PreviewViewProps) => ReactNode>> = {}
@@ -27,6 +31,10 @@ export const previewViews: Partial<Record<PreviewKind, (props: PreviewViewProps)
 const ROW = type.mono.lineHeight
 const TOP = 14
 const HEADER = 46
+/** The strip over <code>'s line numbers that picks lines. */
+const GUTTER = 46
+
+const linesLabel = (a: number, b: number) => (a === b ? `Line ${a}` : `Lines ${a}–${b}`)
 
 /** The pane's width for a window, and whether the note keeps enough room to sit beside it. */
 export function previewLayout(windowWidth: number) {
@@ -34,7 +42,7 @@ export function previewLayout(windowWidth: number) {
   return { width, split: windowWidth - width >= 560 }
 }
 
-export function FilePreview({ workspace, file, version, width, split, onClose }: {
+export function FilePreview({ workspace, file, version, width, split, onMention, onClose }: {
   workspace: string
   file: Previewing
   /** Changes whenever the note does, so the file is read again. */
@@ -42,18 +50,56 @@ export function FilePreview({ workspace, file, version, width, split, onClose }:
   width: number
   /** Beside the note; otherwise over its right side. */
   split: boolean
+  /** Picked lines, for the draft: the file as the note's folder names it. */
+  onMention: (file: string, line: number, endLine?: number) => void
   onClose: () => void
 }) {
   const m = useM()
   const renderer = useGpuixRequired()
   const reduced = useReducedMotion()
   const scroller = useRef<PublicInstance>(null)
+  const root = useRef<PublicInstance>(null)
+  const gutter = useRef<PublicInstance>(null)
   const preview = useMemo(() => readPreview(workspace, file.path), [workspace, file.path, version])
   const [source, setSource] = useState(Boolean(file.line))
   useEffect(() => setSource(Boolean(file.line)), [file.path, file.line])
   const markdown = preview.ok && preview.kind === 'markdown'
   const asCode = preview.ok && (!markdown || source) && !(preview.kind in previewViews)
   const View = preview.ok ? previewViews[preview.kind] : undefined
+
+  // The pick: where it started and where the pointer is now, in either order.
+  const [pick, setPick] = useState<{ from: number; to: number }>()
+  // Moves go only to what's under the pointer, so while a drag is on the strip covers the code.
+  const [dragging, setDragging] = useState(false)
+  useEffect(() => setPick(undefined), [file.path, source])
+  const picked = pick ? ([Math.min(pick.from, pick.to), Math.max(pick.from, pick.to)] as const) : undefined
+  const lineAt = (y?: number) => {
+    const b = gutter.current ? renderer.getElementBounds?.(gutter.current.id) : null
+    if (!b || y === undefined || !preview.ok) return undefined
+    return Math.min(preview.shown, Math.max(1, Math.floor((y - b.y) / ROW) + 1))
+  }
+  const press = (e: EventPayload) => {
+    const line = lineAt(e.y)
+    if (!line) return
+    setDragging(true)
+    setPick((p) => (e.modifiers?.shift && p ? { from: p.from, to: line } : { from: line, to: line }))
+    // Keys (↵, esc) go to the pane once a line is picked.
+    if (root.current) renderer.focusElement?.(root.current.id)
+  }
+  const drag = (e: EventPayload) => {
+    if (!dragging) return
+    if (e.pressedButton !== 0) return setDragging(false)
+    const line = lineAt(e.y)
+    if (line) setPick((p) => (p && p.to !== line ? { ...p, to: line } : p))
+  }
+  const mention = () => {
+    if (!picked || !preview.ok) return
+    onMention(preview.rel, picked[0], picked[1] > picked[0] ? picked[1] : undefined)
+    setPick(undefined)
+  }
+  // The chip's own lines, washed until a pick takes over.
+  const chipLines = file.line ? ([file.line, Math.max(file.line, file.endLine ?? file.line)] as const) : undefined
+  const wash = picked ?? chipLines
 
   // A new file or mode is a new scroll box, so it starts at the top; a chip's line comes into
   // view a few rows down from it.
@@ -65,9 +111,13 @@ export function FilePreview({ workspace, file, version, width, split, onClose }:
   }, [file.path, file.line, asCode])
 
   const onKeyDown = (e: KeyEvent) => {
-    if (e.key === 'escape') {
+    if (e.key === 'enter' && picked) {
       e.preventDefault()
-      onClose()
+      mention()
+    } else if (e.key === 'escape') {
+      e.preventDefault()
+      if (picked) setPick(undefined)
+      else onClose()
     }
   }
   const name = path.basename(preview.rel)
@@ -92,7 +142,7 @@ export function FilePreview({ workspace, file, version, width, split, onClose }:
         ...(split ? {} : { boxShadow: elevation(m, 'sheet') }),
       }}
     >
-      <div testId="file-preview" tabIndex={0} onKeyDown={onKeyDown} style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, keyboardFocusDim: false }}>
+      <div ref={root} testId="file-preview" tabIndex={0} onKeyDown={onKeyDown} style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, keyboardFocusDim: false }}>
         <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, height: HEADER, paddingLeft: 16, paddingRight: 8, borderBottomWidth: 1, borderColor: m.border, flexShrink: 0 }}>
           <FileIcon path={preview.rel} size={13} />
           <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'baseline', gap: 6, flexGrow: 1, minWidth: 0 }}>
@@ -115,18 +165,23 @@ export function FilePreview({ workspace, file, version, width, split, onClose }:
           <div key={`${file.path}:${file.line}:${source}`} ref={scroller} testId="file-preview-scroll" style={{ flexGrow: 1, minHeight: 0, overflowY: 'scroll', scrollbarColor: m.scrollbar, scrollbarWidth: 6 }}>
             <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
               {View && !(markdown && source) ? (
-                <View preview={preview} line={file.line} />
+                <View preview={preview} line={file.line} endLine={file.endLine} />
               ) : markdown && !source ? (
                 <div testId="file-preview-markdown" style={{ paddingLeft: 24, paddingRight: 24, paddingTop: 18, paddingBottom: 32 }}>
                   <markdown source={preview.text} theme={replyTheme(m)} style={{ color: replyText(m) }} />
                 </div>
               ) : (
                 <div testId="file-preview-code" style={{ position: 'relative', paddingTop: TOP, paddingBottom: 32 }}>
-                  {/* <code> paints no surface, so the wash sits under the chip's line. */}
-                  {file.line && file.line <= preview.shown ? (
-                    <div testId="file-preview-line" style={{ position: 'absolute', left: 0, right: 0, top: TOP + (file.line - 1) * ROW, height: ROW, backgroundColor: m.lineWash }} />
+                  {/* <code> paints no surface, so the wash sits under the lines. */}
+                  {wash && wash[0] <= preview.shown ? (
+                    <div
+                      testId={picked ? 'file-preview-pick' : 'file-preview-line'}
+                      style={{ position: 'absolute', left: 0, right: 0, top: TOP + (wash[0] - 1) * ROW, height: (Math.min(wash[1], preview.shown) - wash[0] + 1) * ROW, backgroundColor: m.lineWash }}
+                    />
                   ) : null}
                   <code code={preview.text || ' '} path={preview.abs} language={preview.kind === 'text' ? 'text' : undefined} showLineNumbers theme={nativeTheme(m)} style={{ paddingLeft: 10, paddingRight: 16, color: m.text, fontFamily: font.mono }} />
+                  {/* Over the line numbers, after <code> so it takes the press; over all of it mid-drag. */}
+                  <div ref={gutter} testId="file-preview-gutter" onMouseDown={press} onMouseMove={drag} onMouseUp={() => setDragging(false)} style={{ position: 'absolute', left: 0, top: TOP, ...(dragging ? { right: 0 } : { width: GUTTER }), height: preview.shown * ROW, cursor: 'pointer' }} />
                 </div>
               )}
               {preview.shown < preview.lines ? (
@@ -137,6 +192,17 @@ export function FilePreview({ workspace, file, version, width, split, onClose }:
             </div>
           </div>
         )}
+        {picked ? (
+          <div testId="file-preview-mention-bar" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6, height: 44, paddingLeft: 16, paddingRight: 8, borderTopWidth: 1, borderColor: m.border, flexShrink: 0 }}>
+            <text testId="file-preview-picked" style={{ fontSize: 12.5, lineHeight: 16, color: m.textUi, flexGrow: 1 }}>{linesLabel(picked[0], picked[1])}</text>
+            <Button testId="file-preview-clear" title="Clear (esc)" onPress={() => setPick(undefined)}>
+              <Label muted>Clear</Label>
+            </Button>
+            <Button testId="file-preview-mention" variant="solid" title="Add to note (↵)" onPress={mention}>
+              <Label variant="solid">Add to note</Label>
+            </Button>
+          </div>
+        ) : null}
       </div>
     </motion.div>
   )

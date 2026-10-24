@@ -1064,5 +1064,12 @@ would open the paragraph for editing. The paragraph skips a click that a chip to
 100ms (`chipTookClick`). Each file and mode gets a new scroll box, so it starts at the top
 instead of keeping the last file's scroll position.
 
-Not yet: selecting lines in the pane to mention them in the draft, comments on lines, and
-opening file paths from Claude's tool calls.
+Lines picked in the code view go into the draft. Press a line number, then drag or ⇧-click to
+stretch the pick; "Add to note" (or ↵) puts `#path:12-18` on the end of the draft, and Esc clears
+the pick before it closes the pane. A range is a file tag with `endLine` (core/tags.ts). Its chip
+reads `:12-18`, and the prompt quotes those lines with their numbers (`12 | …`). GPUIX mouse moves
+only reach the element under the pointer and don't bubble. So the strip over the line numbers
+takes the moves itself, and while a drag is on it stretches across the code, so a pointer that
+drifts right doesn't lose the pick.
+
+Not yet: comments on lines, and opening file paths from Claude's tool calls.

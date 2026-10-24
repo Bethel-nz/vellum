@@ -19,6 +19,8 @@ import { useM } from './kit'
 import { concentric, diffHeaderClip, diffTheme, font, radiusBase, type } from './theme'
 
 const SLICE_LINE = 19
+/** A range's slice shows this many lines; the rest are a count. */
+const SLICE_MAX = 12
 const SLICE_PAD = 6
 const WIDEN_ROW = 28
 /** Leaving a chip closes its slice after this, so the pointer can reach "Read whole file". */
@@ -30,7 +32,7 @@ export type TokenContext = {
   /** Absent for read-only chips (Claude's replies). */
   onWiden?: (key: string) => void
   /** Opens a file chip's file beside the note. */
-  onOpen?: (file: string, line?: number) => void
+  onOpen?: (file: string, line?: number, endLine?: number) => void
 }
 
 const keyOf = (t: Tag) => `${t.type}:${tagText(t)}`
@@ -49,7 +51,7 @@ function useSlices(tags: Tag[], workspace: string) {
     const out = new Map<string, Slice>()
     for (const t of tags) {
       if (t.type !== 'file') continue
-      const s = readSlice(workspace, t.value, t.line)
+      const s = readSlice(workspace, t.value, t.line, t.endLine)
       if (s) out.set(keyOf(t), s)
     }
     return out
@@ -83,8 +85,10 @@ function SlicePanel({ tag, slice, ctx, onEnter, onLeave }: { tag: Extract<Tag, {
   const m = useM()
   const wide = widened(tag, ctx.scopes)
   const canWiden = Boolean(tag.line && !wide && ctx.onWiden)
-  const height = SLICE_PAD * 2 + slice.lines.length * SLICE_LINE + (canWiden || wide ? WIDEN_ROW : 0)
-  const gutter = String(slice.start + slice.lines.length - 1).length * 7.4 + 10
+  const shown = slice.lines.slice(0, SLICE_MAX)
+  const more = slice.lines.length - shown.length
+  const height = SLICE_PAD * 2 + (shown.length + (more ? 1 : 0)) * SLICE_LINE + (canWiden || wide ? WIDEN_ROW : 0)
+  const gutter = String(slice.start + shown.length - 1).length * 7.4 + 10
   return (
     <motion.div
       initial={{ opacity: 0, height: 0 }}
@@ -95,12 +99,13 @@ function SlicePanel({ tag, slice, ctx, onEnter, onLeave }: { tag: Extract<Tag, {
       style={{ overflow: 'hidden', marginTop: 6, borderRadius: concentric(radiusBase, 2), backgroundColor: tag.line ? m.lineWash : m.codeBg, borderWidth: 1, borderColor: m.border }}
     >
       <div testId="token-slice" style={{ display: 'flex', flexDirection: 'column', paddingTop: SLICE_PAD, paddingBottom: SLICE_PAD }}>
-        {slice.lines.map((line, i) => (
+        {shown.map((line, i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'row', height: SLICE_LINE, alignItems: 'center' }}>
             <text style={{ width: gutter, paddingRight: 8, fontFamily: font.mono, fontSize: 11.5, lineHeight: SLICE_LINE, color: m.textFaint, textAlign: 'right', flexShrink: 0 }}>{String(slice.start + i)}</text>
             <text style={{ flexGrow: 1, minWidth: 0, fontFamily: font.mono, ...type.mono, lineHeight: SLICE_LINE, color: m.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{line || ' '}</text>
           </div>
         ))}
+        {more ? <text style={{ height: SLICE_LINE, paddingLeft: gutter, fontSize: 11.5, lineHeight: SLICE_LINE, color: m.textFaint }}>{more === 1 ? '1 more line' : `${more} more lines`}</text> : null}
       </div>
       {canWiden ? (
         <div style={{ height: WIDEN_ROW, display: 'flex', flexDirection: 'row', alignItems: 'center', paddingLeft: gutter - 8 }}>
@@ -125,7 +130,7 @@ function TokenChip({ token, hover, ctx, testId }: { token: Extract<Token, { kind
   }
   const label = token.tag.type === 'skill' ? token.tag.value : token.text.replace(/^[#@]/, '')
   const file = token.tag.type === 'file' ? token.tag : undefined
-  const open = file && ctx.onOpen ? () => ((chipPressedAt = Date.now()), hover.close(), ctx.onOpen!(file.value, file.line)) : undefined
+  const open = file && ctx.onOpen ? () => ((chipPressedAt = Date.now()), hover.close(), ctx.onOpen!(file.value, file.line, file.endLine)) : undefined
   return (
     <Chip kind={chipKind(token.tag)} path={file?.value} testId={testId} onPress={open} onHover={file ? (inside) => (inside ? hover.enter(key) : hover.leave()) : undefined}>
       {label}
