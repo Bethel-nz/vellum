@@ -1,4 +1,4 @@
-// Vellum's components: GPUIX versions of arc-library's, styled from groknight.
+// Vellum's components: GPUIX versions of arc-library's, styled from the dark material.
 export * from './ApprovalCard'
 export * from './Badge'
 export * from './Button'

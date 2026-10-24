@@ -68,19 +68,13 @@ import {
   font,
   readingWidthFor,
   shellInset,
+  materialNamed,
   materialNames,
   materials,
-  translucent,
-  wantsBlur,
-  solid,
   windowRadius,
   type MaterialName,
 } from './ui/theme'
 
-const SOLID = process.env.VELLUM_SOLID === '1'
-// Window material is fixed when the window opens: translucency and blur apply on next launch.
-const TRANSLUCENT = !SOLID && readSettings().translucent === true
-const START_BLUR = !SOLID && (TRANSLUCENT || wantsBlur(materials[readSettings().material ?? 'groknight']))
 /** Your Mac account picture and name, read once at launch (core/avatar.ts). */
 const MACHINE_ME = { src: machineAvatar(), name: realName() }
 /** Most tabs open at once: one per ⌘1–⌘9. The rest live in History (⌘Y). */
@@ -359,17 +353,14 @@ function TerminalView({ term, onLeave }: { term: Term; onLeave: () => void }) {
 // ---------------------------------------------------------------- app
 
 function initialMaterial(): MaterialName {
-  return readSettings().material ?? 'groknight'
+  return materialNamed(readSettings().material)
 }
 
 function App() {
   const renderer = useGpuixRequired()
   const windowSize = useWindowSize()
   const [materialName, setMaterialName] = useState<MaterialName>(initialMaterial)
-  const material = useMemo(() => {
-    const base = materials[materialName]
-    return SOLID ? solid(base) : TRANSLUCENT ? translucent(base) : base
-  }, [materialName])
+  const material = materials[materialName]
 
   const [profiles, setProfiles] = useState<Profile[]>(loadProfiles)
   const [threads, setThreadsState] = useState<Thread[]>(loadThreads)
@@ -404,7 +395,6 @@ function App() {
   const [stripHover, setStripHover] = useState(false)
   const [writing, setWriting] = useState(false)
   const [motionSetting, setMotionSetting] = useState<MotionPref>(() => readSettings().motion ?? 'system')
-  const [translucentSetting, setTranslucentSetting] = useState(() => readSettings().translucent === true)
   // A tab whose Claude is still working waits here for "stop and close?".
   const [confirmClose, setConfirmClose] = useState<string | null>(null)
   const { toast, show: showToast } = useToast()
@@ -1388,12 +1378,6 @@ function App() {
                 setMaterialName(next)
                 updateSettings({ material: next })
               }}
-              translucent={translucentSetting}
-              onTranslucent={(next) => {
-                setTranslucentSetting(next)
-                updateSettings({ translucent: next })
-                showToast('Translucency applies after you restart Vellum')
-              }}
               tabs={tabMode}
               onTabs={(next) => {
                 setTabMode(next)
@@ -1514,7 +1498,7 @@ render(<App />, {
   // GPUIX has no option to hide them, so they sit off the window (see NOTES). Windows and Linux keep
   // the system title bar: GPUIX can't draw window controls or a drag area there.
   ...(isMac ? { titlebarTransparent: true, trafficLightX: -200, trafficLightY: -200 } : {}),
-  windowBackground: START_BLUR ? 'blurred' : 'opaque',
+  windowBackground: 'opaque',
   keyboardFocusDim: false,
   focus: process.env.GPUIX_BACKGROUND !== '1',
   onKeyDown(event) {

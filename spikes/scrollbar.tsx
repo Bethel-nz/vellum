@@ -3,9 +3,9 @@
 // The fix under test: no padding on the box, padding on an inner column, with room on the right
 // for the thumb. Rows don't shrink, so the last box really overflows.
 import { render } from '@gpuix/react'
-import { groknight } from '../ui/theme'
+import { dark } from '../ui/theme'
 
-const m = groknight
+const m = dark
 const rows = (n: number) => Array.from({ length: n }, (_, i) => <div key={i} style={{ height: 30, flexShrink: 0, backgroundColor: m.hover, marginBottom: 2 }} />)
 const box = (id: string, n: number, inner: boolean) => (
   <div testId={id} style={{ display: 'flex', flexDirection: 'column', width: 120, height: 300, overflowY: 'scroll', scrollbarColor: '#ff0000', scrollbarWidth: 6, borderWidth: 1, borderColor: m.border, ...(inner ? {} : { padding: 6 }) }}>

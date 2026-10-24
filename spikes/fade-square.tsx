@@ -6,9 +6,9 @@
 //   e  motion with no bg; its child has bg + radius
 import { useState } from 'react'
 import { motion, render } from '@gpuix/react'
-import { elevation, groknight } from '../ui/theme'
+import { elevation, dark } from '../ui/theme'
 
-const m = groknight
+const m = dark
 const panel = { width: 140, height: 110, backgroundColor: m.popup, borderRadius: 12, borderWidth: 1, borderColor: m.border }
 const fade = { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.3, ease: 'linear' as const } }
 

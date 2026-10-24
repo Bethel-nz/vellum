@@ -1,7 +1,7 @@
 // Spike: does GPUIX draw Nerd Font private-use glyphs when a <text> names the font?
 // Renders candidate file-type glyphs (seti / devicons codepoints) next to their labels.
 import { render } from '@gpuix/react'
-import { groknight } from '../ui/theme'
+import { dark } from '../ui/theme'
 
 const glyphs: [string, number][] = [
   ['ts seti', 0xe628], ['tsx react', 0xe7ba], ['js seti', 0xe60c], ['json', 0xe60b], ['md seti', 0xe609], ['md dev', 0xe73e],
@@ -11,14 +11,14 @@ const glyphs: [string, number][] = [
 ]
 const fonts = ['Liga SFMono Nerd Font', 'Geist Mono']
 render(
-  <div testId="grid" style={{ width: '100%', height: '100%', backgroundColor: groknight.pane, padding: 20, display: 'flex', flexDirection: 'row', gap: 40 }}>
+  <div testId="grid" style={{ width: '100%', height: '100%', backgroundColor: dark.pane, padding: 20, display: 'flex', flexDirection: 'row', gap: 40 }}>
     {fonts.map((f) => (
       <div key={f} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <text style={{ color: groknight.textMuted, fontSize: 12 }}>{f}</text>
+        <text style={{ color: dark.textMuted, fontSize: 12 }}>{f}</text>
         {glyphs.map(([l, c]) => (
           <div key={l} style={{ display: 'flex', flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-            <text style={{ fontFamily: f, fontSize: 14, lineHeight: 18, color: groknight.blue, width: 20 }}>{String.fromCodePoint(c)}</text>
-            <text style={{ fontSize: 12, lineHeight: 18, color: groknight.textUi }}>{`${l} ${c.toString(16)}`}</text>
+            <text style={{ fontFamily: f, fontSize: 14, lineHeight: 18, color: dark.blue, width: 20 }}>{String.fromCodePoint(c)}</text>
+            <text style={{ fontSize: 12, lineHeight: 18, color: dark.textUi }}>{`${l} ${c.toString(16)}`}</text>
           </div>
         ))}
       </div>

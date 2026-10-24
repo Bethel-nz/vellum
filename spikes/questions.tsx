@@ -3,7 +3,7 @@
 import { render } from '@gpuix/react'
 import { AskUserQuestions } from '../components/AskUserQuestions'
 import type { Ask } from '../core/asks'
-import { groknight } from '../ui/theme'
+import { dark } from '../ui/theme'
 
 const ask = {
   requestId: 'q1',
@@ -18,8 +18,8 @@ const ask = {
 } as unknown as Ask
 
 render(
-  <div testId="backdrop" style={{ width: '100%', height: '100%', backgroundColor: groknight.pane.slice(0, 7), padding: 32, display: 'flex', flexDirection: 'column', gap: 12 }}>
-    {Array.from({ length: 12 }, (_, i) => <text key={i} style={{ fontSize: 15, lineHeight: 22, color: groknight.text }}>The note behind the panel, line {i + 1}: enough text to see the wash.</text>)}
+  <div testId="backdrop" style={{ width: '100%', height: '100%', backgroundColor: dark.pane.slice(0, 7), padding: 32, display: 'flex', flexDirection: 'column', gap: 12 }}>
+    {Array.from({ length: 12 }, (_, i) => <text key={i} style={{ fontSize: 15, lineHeight: 22, color: dark.text }}>The note behind the panel, line {i + 1}: enough text to see the wash.</text>)}
     <AskUserQuestions ask={ask} onAnswer={() => {}} />
   </div>,
   { title: 'questions-spike', width: 640, height: 520 },

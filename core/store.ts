@@ -42,10 +42,8 @@ export function writeJson(file: string, value: unknown) {
 }
 
 export type Settings = {
-  /** groknight (default), or the older smoke / frost glass looks. */
-  material?: 'groknight' | 'smoke' | 'frost'
-  /** Groknight with alpha and the blurred window behind it. Applies on next launch. */
-  translucent?: boolean
+  /** dark (default) or light. Older files say groknight, smoke or frost (ui/theme.ts materialNamed). */
+  material?: 'dark' | 'light' | 'groknight' | 'smoke' | 'frost'
   /** Tab strip: always shown, collapsed while writing, or hidden (⌘⇧T reveals). */
   tabs?: 'pinned' | 'auto' | 'hidden'
   /** Reduce motion: follow macOS, always reduce, or always animate. */

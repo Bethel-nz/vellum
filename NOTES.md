@@ -881,3 +881,14 @@ frames 0–260ms on a paused clock (`app.clock.pause()` / `fastForward()`) into
   follow it. `VELLUM_WINDOW=WxH` opens the window at another size for checks
   (scripts/check-width.ts); GPUIX automation can't resize a window.
 - **The timeline rests at 40%** and comes up while the pointer is on it or its preview.
+
+## 2026-10-24 — two themes, Dark and Light, and no glass
+
+- **The materials are `dark` and `light`, both opaque.** Dark is groknight under its plain name.
+  Light is frost's palette on solid surfaces: an #ececef frame, a white page and white popups, and
+  a blue focus ring (frost's was a pale mauve that vanished on white). Settings → Appearance has
+  the two, and ⇧⌘L still flips between them.
+- **The glass is gone:** smoke, the "Translucent window" switch, the blurred window and the
+  `solid` / `translucent` / `wantsBlur` helpers. The window is always opaque. A saved
+  `groknight` or `smoke` opens as Dark and `frost` as Light (`materialNamed`), so nobody's setting
+  breaks.

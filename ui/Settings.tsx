@@ -10,7 +10,7 @@ import { Button, Dot, Field, Label, Segmented, SheetRow, SheetSection, Switch } 
 import { enter, offset } from '../components/motion'
 import { sameLogin } from '../core/auth'
 import type { Profile } from '../core/profiles'
-import { accentFor, solid } from './theme'
+import { accentFor } from './theme'
 import { useM } from './kit'
 import type { Settings } from '../core/store'
 import type { MaterialName } from './theme'
@@ -30,8 +30,6 @@ export function SettingsPage({
   onClose,
   material,
   onMaterial,
-  translucent,
-  onTranslucent,
   tabs,
   onTabs,
   motion: motionPref,
@@ -47,8 +45,6 @@ export function SettingsPage({
   onClose: () => void
   material: MaterialName
   onMaterial: (next: MaterialName) => void
-  translucent: boolean
-  onTranslucent: (next: boolean) => void
   tabs: TabMode
   onTabs: (next: TabMode) => void
   motion: MotionPref
@@ -101,9 +97,7 @@ export function SettingsPage({
 
   return (
     <DismissableLayer onEscapeKeyDown={onClose} initialFocus={() => root.current?.id ?? null}>
-      {/* Opaque, whatever the material: on the glass ones the pane colour is translucent and the
-          note underneath showed through the page. */}
-      <div ref={root} testId="settings" tabIndex={0} style={{ position: 'absolute', top, left: 0, right: 0, bottom: 0, backgroundColor: m.name === 'groknight' ? m.pane.slice(0, 7) : solid(m).pane, keyboardFocusDim: false }}>
+      <div ref={root} testId="settings" tabIndex={0} style={{ position: 'absolute', top, left: 0, right: 0, bottom: 0, backgroundColor: m.pane, keyboardFocusDim: false }}>
         <motion.div
           initial={{ opacity: 0, top: offset.menu }}
           animate={{ opacity: 1, top: 0 }}
@@ -130,21 +124,17 @@ export function SettingsPage({
                 {section(
                   'Appearance',
                   <SheetSection label="Appearance">
-                    <SheetRow label="Theme" detail="Groknight is the default; smoke and frost are the older glass looks.">
+                    <SheetRow label="Theme" detail="⌘⇧L switches between them.">
                       <Segmented
                         testId="set-material"
                         value={material}
                         onChange={onMaterial}
                         options={[
-                          { value: 'groknight', label: 'Groknight' },
-                          { value: 'smoke', label: 'Smoke' },
-                          { value: 'frost', label: 'Frost' },
+                          { value: 'dark', label: 'Dark' },
+                          { value: 'light', label: 'Light' },
                         ]}
                         width={84}
                       />
-                    </SheetRow>
-                    <SheetRow label="Translucent window" detail="Blur the desktop behind the window. Next launch.">
-                      <Switch testId="set-translucent" checked={translucent} onChange={onTranslucent} label="Translucent window" />
                     </SheetRow>
                   </SheetSection>,
                 )}

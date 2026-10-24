@@ -1,18 +1,22 @@
 // Every colour, radius, font and easing in Vellum. Components read tokens only.
 //
-// Three materials with identical keys:
-//   groknight — the default: opaque near-black from the user's Zed / Ghostty theme
-//               (~/dotfiles/themes/editors/zed/groknight.json), violet for agent identity,
-//               blue for selection and focus
-//   smoke     — black glass over the blurred desktop, near-white text
-//   frost     — cool off-white glass, near-black text
-// smoke/frost oklch sources were converted with culori (scripts/oklch.ts).
+// Two materials with identical keys, both opaque (no glass, no blurred window):
+//   dark  — the default: near-black from the user's Zed / Ghostty theme (groknight,
+//           ~/dotfiles/themes/editors/zed/groknight.json), violet for agent identity, blue for
+//           selection and focus
+//   light — off-white frame, white page, near-black text; its oklch sources were converted with
+//           culori (scripts/oklch.ts)
 
 import type { GpuixTheme } from '@gpuix/react'
 import { nerdFamily, preferredTerminalFamily } from '../core/fonts'
 
-export type MaterialName = 'groknight' | 'smoke' | 'frost'
-export const materialNames: MaterialName[] = ['groknight', 'smoke', 'frost']
+export type MaterialName = 'dark' | 'light'
+export const materialNames: MaterialName[] = ['dark', 'light']
+
+/** A saved material by its current name. The glass looks are gone: smoke opens as dark, frost as light. */
+export function materialNamed(name: string | undefined): MaterialName {
+  return name === 'light' || name === 'frost' ? 'light' : 'dark'
+}
 
 export const shellInset = 4
 export const radiusBase = 10
@@ -72,7 +76,7 @@ export const motion = {
   popoverRise: 4,
 }
 
-/** 16 ANSI colours, retuned per material so yellow and white stay legible on frost. */
+/** 16 ANSI colours, retuned per material so yellow and white stay legible on light. */
 type Ansi = [string, string, string, string, string, string, string, string, string, string, string, string, string, string, string, string]
 
 export type Material = {
@@ -104,7 +108,7 @@ export type Material = {
   scrim: string
   codeBg: string
   // accents
-  /** Agent / skill identity (violet in groknight). Never plain focus. */
+  /** Agent / skill identity (violet in dark). Never plain focus. */
   accent: string
   /** Links, permission, selection family. */
   blue: string
@@ -139,8 +143,8 @@ export type Material = {
 
 const accents = ['#BBB0FF', '#7aa2f7', '#9ece6a', '#ff9e64', '#7dcfff', '#e0af68', '#f7768e', '#1abc9c']
 
-export const groknight: Material = {
-  name: 'groknight',
+export const dark: Material = {
+  name: 'dark',
   appearance: 'dark',
   rootTint: '#0a0a0a',
   pane: '#141414',
@@ -195,67 +199,14 @@ export const groknight: Material = {
   accents,
 }
 
-export const smoke: Material = {
-  name: 'smoke',
-  appearance: 'dark',
-  rootTint: '#00000099',
-  pane: '#0000004d',
-  paneHighlight: '#ffffff0f',
-  titleBar: '#00000000',
-  panel: '#ffffff05',
-  text: '#fafafa',
-  textUi: '#e4e4e7',
-  textMuted: '#8e8e95', // oklch(65% .01 286)
-  textFaint: '#8e8e9580',
-  border: '#ffffff1a',
-  borderFaint: '#ffffff06',
-  borderFocused: '#ffffff2e',
-  hover: '#ffffff14',
-  pressed: '#ffffff1f',
-  selected: '#ffffff1f',
-  popup: '#1f1f1f',
-  popupHover: '#2a2a2a',
-  scrim: '#00000066',
-  codeBg: '#ffffff08',
-  accent: '#1447e6', // oklch(48.8% .243 264.4)
-  blue: '#7aa2e8',
-  focusRing: '#d8c7d9', // oklch(85% .03 325)
-  selection: '#7aa2e855',
-  lineWash: '#7aa2e828',
-  chipBg: '#ffffff0f',
-  skillBg: '#c39ae01f',
-  success: '#5fb98a',
-  warning: '#d9b56c',
-  danger: '#e5766b',
-  dangerBg: '#e5766b14',
-  diffAdd: '#3fb95026',
-  diffDel: '#f8514926',
-  diffHunkBg: '#ffffff06',
-  termBg: '#ffffff05',
-  termFg: '#d9d9de',
-  termCursor: '#fafafa',
-  ansi: [
-    '#3a3a40', '#e5766b', '#7cc49a', '#d9b56c', '#7aa2e8', '#c39ae0', '#6cc2c9', '#d9d9de',
-    '#66666e', '#f0938a', '#97d8b0', '#ecca85', '#98b9f2', '#d6b3ee', '#8ad6dc', '#fafafa',
-  ],
-  scrollbar: '#ffffff1a',
-  scrollbarHover: '#ffffff2e',
-  shadow: '#00000066',
-  syntax: {
-    keyword: '#c39ae0', function: '#98b9f2', string: '#97d8b0', comment: '#66666e', number: '#ecca85',
-    typeName: '#8ad6dc', constant: '#ecca85', tag: '#e5766b', variable: '#fafafa', punctuation: '#a1a1aa', special: '#ecca85', link: '#98b9f2',
-  },
-  accents,
-}
-
-export const frost: Material = {
-  name: 'frost',
+export const light: Material = {
+  name: 'light',
   appearance: 'light',
-  rootTint: '#f4f4f6d9',
-  pane: '#ffffff66',
-  paneHighlight: '#ffffffb3',
-  titleBar: '#00000000',
-  panel: '#00000005',
+  rootTint: '#ececef',
+  pane: '#ffffff',
+  paneHighlight: '#ffffff',
+  titleBar: '#ececef',
+  panel: '#f7f7f8',
   text: '#171717',
   textUi: '#27272a',
   textMuted: '#57575f', // oklch(46% .012 286)
@@ -266,13 +217,13 @@ export const frost: Material = {
   hover: '#0000000d',
   pressed: '#00000014',
   selected: '#00000014',
-  popup: '#fbfbfc',
-  popupHover: '#efeff2',
+  popup: '#ffffff',
+  popupHover: '#f0f0f3',
   scrim: '#0000001f',
   codeBg: '#0000000a',
   accent: '#1447e6',
   blue: '#1447e6',
-  focusRing: '#d8c7d9',
+  focusRing: '#1447e699',
   selection: '#1447e633',
   lineWash: '#1447e61a',
   chipBg: '#0000000a',
@@ -301,27 +252,7 @@ export const frost: Material = {
   accents,
 }
 
-export const materials: Record<MaterialName, Material> = { groknight, smoke, frost }
-
-/** Solid fallback (VELLUM_SOLID=1): opaque window, same keys. Groknight is already opaque. */
-export function solid(m: Material): Material {
-  if (m.name === 'groknight') return m
-  return m.name === 'smoke'
-    ? { ...m, rootTint: '#171717', pane: '#262626', paneHighlight: '#ffffff0a' }
-    : { ...m, rootTint: '#f5f5f5', pane: '#ffffff', paneHighlight: '#ffffff' }
-}
-
-/**
- * The opt-in translucent look (settings `translucent`). Groknight takes alpha off its solid
- * ramp; smoke and frost are translucent already.
- */
-export function translucent(m: Material): Material {
-  if (m.name !== 'groknight') return m
-  return { ...m, rootTint: '#0a0a0ae6', pane: '#141414d9', titleBar: '#0c0c0cd9' }
-}
-
-/** Whether a material wants the blurred window background. */
-export const wantsBlur = (m: Material) => m.rootTint.length === 9 && !m.rootTint.endsWith('ff')
+export const materials: Record<MaterialName, Material> = { dark, light }
 
 function syntaxTheme(m: Material): GpuixTheme['syntax'] {
   const x = m.syntax
@@ -386,7 +317,7 @@ export function nativeTheme(m: Material): GpuixTheme {
     textDim: m.textMuted,
     // Markdown paints bullets and links with the accent: keep them quiet, not saturated.
     accent: m.textMuted,
-    caret: m.name === 'groknight' ? m.termCursor : dark ? m.text : m.accent,
+    caret: dark ? m.termCursor : m.accent,
     codeText: m.text,
     codeWash: m.codeBg,
     diffAdd: m.diffAdd,
@@ -440,8 +371,8 @@ function mix(a: string, b: string, t: number) {
 // ---------------------------------------------------------------- diffs
 
 /**
- * Diffs read in Pierre (~/dev/pierre-theme): Pierre Dark on the dark materials, Pierre Light on
- * frost. Its add/delete washes and syntax are tuned for reviewing changes, which groknight's
+ * Diffs read in Pierre (~/dev/pierre-theme): Pierre Dark on dark, Pierre Light on light. Its
+ * add/delete washes and syntax are tuned for reviewing changes, which the dark material's
  * editor colours are not. Everything else in the card stays the material's.
  */
 const pierre = {

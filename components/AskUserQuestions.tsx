@@ -5,7 +5,7 @@ import { motion, useWindowSize, type KeyEvent } from '@gpuix/react'
 import { Button as Base } from '@gpuix/react/button'
 import type { Ask } from '../core/asks'
 import { questionError, type QuestionContent, type UserQuestion } from '../core/questions'
-import { concentric, elevation, radiusXl, shellInset, solid, windowRadius } from '../ui/theme'
+import { concentric, elevation, radiusXl, shellInset, windowRadius } from '../ui/theme'
 import { Button, Label } from './Button'
 import { Field } from './Field'
 import { Kbd } from './Kbd'
@@ -77,7 +77,7 @@ function Questions({ questions, onAnswer }: { questions: UserQuestion[]; onAnswe
   }
   return <>
     {/* GPUIX blurs only the whole window, so the note behind washes toward the pane instead. */}
-    <motion.div initial={reduced ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={tween({ duration: duration.fast, ease: ease.standard })} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: concentric(windowRadius, shellInset), backgroundColor: solid(m).pane.slice(0, 7) + 'b8', pointerEvents: 'none' }} />
+    <motion.div initial={reduced ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={tween({ duration: duration.fast, ease: ease.standard })} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: concentric(windowRadius, shellInset), backgroundColor: m.pane + 'b8', pointerEvents: 'none' }} />
     <div testId="user-questions" role="dialog" aria-label={question.title} onKeyDown={keys} style={{ position: 'absolute', left: (window.width - width) / 2, bottom: 50, width }}>
     <Lifted initial={reduced ? false : { opacity: 0, top: offset.dialog }} animate={{ opacity: 1, top: 0 }} transition={enter()} shadow={elevation(m, 'card')} style={{ position: 'absolute', left: 0, right: 0, bottom: 0, borderRadius: radiusXl, backgroundColor: m.popup, borderWidth: 1, borderColor: m.border, pointerEvents: 'none' }} />
     <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', padding: inset }}>
