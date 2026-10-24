@@ -8,13 +8,18 @@
 // stat cache makes every snapshot after the first rehash only the files that changed. The first
 // one in a repo with a big untracked folder can take a while; the turn doesn't wait for it
 // (core/agent.ts) and falls back to the tool calls' own diffs, as outside a repo.
+//
+// Vellum isn't sandboxed and the agent may have written .git/config during the turn, so a
+// snapshot never runs a command the repo's config names: no fsmonitor, no hooks, and every
+// filter driver's clean/smudge/process is blanked (files are hashed as they are on disk).
 
 import { createHash } from 'node:crypto'
 import { mkdirSync, realpathSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { paths } from './store'
 
-export type Snapshot = { root: string; prefix: string; tree: string; env: Record<string, string> }
+/** `config` is the `-c` overrides that keep the repo's filter drivers from running (see `noFilters`). */
+export type Snapshot = { root: string; prefix: string; tree: string; env: Record<string, string>; config: string[] }
 
 /** One file in a turn's diff. `path` is relative to the note's workspace. */
 export type GitFile = { path: string; patch: string; added: number; removed: number }
@@ -25,8 +30,11 @@ const LIMIT_MS = 5000
 /** A file whose diff is bigger than this is listed with its counts but no hunks. */
 const MAX_PATCH = 200_000
 
+/** Config the repo can't override: nothing it names gets run. */
+const SAFE = ['-c', 'core.quotePath=false', '-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null']
+
 async function git(cwd: string, args: string[], env?: Record<string, string>, limit = LIMIT_MS) {
-  const proc = Bun.spawn(['git', '-c', 'core.quotePath=false', ...args], { cwd, env: { ...process.env, ...env }, stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' })
+  const proc = Bun.spawn(['git', ...SAFE, ...args], { cwd, env: { ...process.env, ...env }, stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' })
   let killed = false
   const timer = setTimeout(() => {
     killed = true
@@ -45,18 +53,27 @@ export async function snapshot(cwd: string): Promise<Snapshot | undefined> {
   const store = path.join(paths.home, 'git', createHash('sha1').update(root).digest('hex').slice(0, 16))
   mkdirSync(path.join(store, 'objects'), { recursive: true })
   const env = { GIT_INDEX_FILE: path.join(store, 'index'), GIT_OBJECT_DIRECTORY: path.join(store, 'objects'), GIT_ALTERNATE_OBJECT_DIRECTORIES: objects }
-  const add = await git(root, ['add', '-A', '--', prefix || '.'], env, ADD_LIMIT_MS)
+  // Not only `add`: `write-tree` runs a clean filter too (core/gitsnap.test.ts), so every call gets them.
+  const config = await noFilters(root)
+  const add = await git(root, [...config, 'add', '-A', '--', prefix || '.'], env, ADD_LIMIT_MS)
   // A killed `git add` leaves its lock behind, and every later snapshot would fail on it.
   if (add.killed) rmSync(env.GIT_INDEX_FILE + '.lock', { force: true })
   if (add.out === undefined) return
-  const tree = (await git(root, ['write-tree'], env)).out?.trim()
-  return tree ? { root, prefix, tree, env } : undefined
+  const tree = (await git(root, [...config, 'write-tree'], env)).out?.trim()
+  return tree ? { root, prefix, tree, env, config } : undefined
+}
+
+/** `-c` overrides that blank every filter driver the repo's config defines (a .gitattributes names them). */
+async function noFilters(root: string): Promise<string[]> {
+  const keys = (await git(root, ['config', '--name-only', '--get-regexp', '^filter\\.'])).out ?? ''
+  const drivers = new Set(keys.split('\n').filter(Boolean).map((k) => k.slice('filter.'.length, k.lastIndexOf('.'))))
+  return [...drivers].flatMap((d) => ['clean', 'smudge', 'process'].flatMap((k) => ['-c', `filter.${d}.${k}=`]).concat('-c', `filter.${d}.required=false`))
 }
 
 /** The files that differ between two snapshots of the same workspace. */
 export async function changedFiles(a: Snapshot, b: Snapshot, workspace: string): Promise<GitFile[]> {
   if (a.tree === b.tree) return []
-  const patch = (await git(a.root, ['diff-tree', '-p', '-M', '--no-color', '--no-ext-diff', '-r', a.tree, b.tree, '--', a.prefix || '.'], a.env)).out
+  const patch = (await git(a.root, [...b.config, 'diff-tree', '-p', '-M', '--no-color', '--no-ext-diff', '-r', a.tree, b.tree, '--', a.prefix || '.'], a.env)).out
   if (!patch) return []
   // git names the real path (macOS: /private/var for /var), so the workspace has to be too.
   const ws = realpathSync(workspace)

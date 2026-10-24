@@ -27,7 +27,8 @@ const index = new Map<string, Promise<string[]>>()
 const name = 'test'
 
 async function gitFiles(workspace: string): Promise<string[] | undefined> {
-  const proc = Bun.spawn(['git', 'ls-files', '--cached', '--others', '--exclude-standard'], {
+  // The repo's config may name an fsmonitor to run; Vellum isn't sandboxed, so it never runs one.
+  const proc = Bun.spawn(['git', '-c', 'core.fsmonitor=false', 'ls-files', '--cached', '--others', '--exclude-standard'], {
     cwd: workspace,
     stdout: 'pipe',
     stderr: 'ignore',

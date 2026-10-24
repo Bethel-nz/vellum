@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -98,4 +98,28 @@ test("the repo's own object store is never written", async () => {
   expect((await changedFiles(a!, b!, repo)).map((f) => f.path)).toEqual(['brand-new.txt'])
   expect(count()).toBe(before)
   rmSync(path.join(repo, 'brand-new.txt'))
+})
+
+test("a repo's own config can't make a snapshot run a command (fsmonitor, filter drivers)", async () => {
+  const evil = path.join(root, 'evil')
+  mkdirSync(evil)
+  sh(evil, 'git', 'init', '-q')
+  const marker = (n: string) => path.join(root, `ran-${n}`)
+  const script = (n: string) => {
+    const f = path.join(root, `${n}.sh`)
+    writeFileSync(f, `#!/bin/sh\ntouch '${marker(n)}'\ncat\n`, { mode: 0o755 })
+    return f
+  }
+  sh(evil, 'git', 'config', 'core.fsmonitor', script('fsmonitor'))
+  sh(evil, 'git', 'config', 'filter.x.clean', script('clean'))
+  sh(evil, 'git', 'config', 'filter.y.process', script('process'))
+  writeFileSync(path.join(evil, '.gitattributes'), '*.txt filter=x\n*.md filter=y\n')
+  writeFileSync(path.join(evil, 'a.txt'), 'one\n')
+  writeFileSync(path.join(evil, 'b.md'), 'two\n')
+  const a = await snapshot(evil)
+  writeFileSync(path.join(evil, 'a.txt'), 'one more\n')
+  const b = await snapshot(evil)
+  expect(a && b).toBeTruthy()
+  expect((await changedFiles(a!, b!, evil)).map((f) => f.path)).toEqual(['a.txt'])
+  expect(['fsmonitor', 'clean', 'process'].filter((n) => existsSync(marker(n)))).toEqual([])
 })

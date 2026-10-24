@@ -510,3 +510,9 @@ Agent SDK (`CLAUDE_CODE_EXECUTABLE`), with your login, per account through `CLAU
   turn fall back to tool diffs while it finishes warming the cache.
   Not done: the store under ~/.vellum/git only grows (by the blobs of changed files); nothing
   prunes it yet.
+  **Security:** Vellum runs outside the agent's sandbox, and the agent can write .git/config
+  during a turn, so a snapshot must not run anything the repo's config names. `git add` runs
+  `core.fsmonitor` and filter drivers' clean/process commands, and `write-tree` runs clean too
+  (a test proved all three). Every snapshot call sets `core.fsmonitor=false`,
+  `core.hooksPath=/dev/null` and blanks each configured filter driver; files are hashed as they
+  are on disk. The `#` file picker's `git ls-files` gets the fsmonitor guard as well.
