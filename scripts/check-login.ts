@@ -37,7 +37,7 @@ const expect = (label: string, ok: boolean, detail = '') => {
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}${detail ? ` (${detail})` : ''}`)
 }
 const openSettings = async () => {
-  // The account marker's menu ends in Accounts…, which opens Settings.
+  // The account marker's menu ends in Settings…, which opens them.
   await app.getByTestId('account-pill').click()
   await app.getByTestId('account-settings').waitFor({ timeoutMs: 5_000 })
   await wait(300)

@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { motion, render, useGpuixRequired, useWindowSize, type KeyEvent, type PublicInstance } from '@gpuix/react'
+import { motion, render, useGpuixRequired, useWindowSize, type EventPayload, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { ApprovalCard, Button, closedByOutsidePress, Field, Label, Menu, stripHeight, TabStrip, useToast, type MenuItem as MenuEntry } from './components'
 import { FloatingLayer } from '@gpuix/react/floating'
 import { StreamChunk, useStreamChunks } from './components/StreamChunk'
@@ -31,7 +31,7 @@ import { setDockIcon } from './core/dock'
 import { notify } from './core/notify'
 import { FONTS } from './assets/fonts'
 import { ImageViewer, type Viewing } from './ui/ImageViewer'
-import { FilePreview, previewLayout, type Previewing } from './ui/FilePreview'
+import { fitFile, FILE_MIN, FilePreview, previewLayout, TREE_MAX, TREE_MIN, TREE_WIDTH, type Previewing } from './ui/FilePreview'
 import { purgeTrash, trashNote } from './core/trash'
 import { claudeBin, compiled, hasPty, isMac, keys, openConsole, pasteImage, primary, revealFolder, revealLabel, shellArgv, tabStep } from './core/platform'
 import {
@@ -224,7 +224,7 @@ function AccountSwitcher({
       onSelect: () => p.id !== profile.id && onMove(p.id),
     })),
     { kind: 'separator' },
-    { label: 'Accounts…', icon: 'settings', testId: 'account-settings', onSelect: onSettings },
+    { label: 'Settings…', icon: 'settings', testId: 'account-settings', onSelect: onSettings },
   ]
   return (
     <div style={{ position: 'relative' }}>
@@ -233,7 +233,7 @@ function AccountSwitcher({
         <Label muted>{profile.name}</Label>
         <Icon name="chevronDown" size={11} />
       </Button>
-      <Menu open={open} onClose={() => setOpen(false)} side="bottom" align="end" width={280} testId="account-menu" closeKey="account" items={items} />
+      <Menu open={open} onClose={() => setOpen(false)} side="bottom" align="start" width={280} testId="account-menu" closeKey="account" items={items} />
     </div>
   )
 }
@@ -440,7 +440,37 @@ function App() {
 
   const active = threads.find((t) => t.id === activeId)
   const previewing = active ? previews[active.id] : undefined
-  const previewSize = previewLayout(windowSize.width, fileTree)
+  // The pane's sizes once dragged: the file side (unset follows the window) and the tree.
+  const [paneSize, setPaneSize] = useState(() => ({ file: readSettings().previewWidth, tree: readSettings().fileTreeWidth ?? TREE_WIDTH }))
+  const previewSize = previewLayout(windowSize.width, fileTree ? paneSize.tree : 0, paneSize.file)
+  // A drag on the pane's edge or the tree's: where it started, and the sizes then.
+  const [resizing, setResizing] = useState<{ edge: 'pane' | 'tree'; x: number; file: number; tree: number }>()
+  const startResize = (edge: 'pane' | 'tree', x: number, reset: boolean) => {
+    if (reset) {
+      const next = edge === 'pane' ? { ...paneSize, file: undefined } : { ...paneSize, tree: TREE_WIDTH }
+      setPaneSize(next)
+      updateSettings({ previewWidth: next.file, fileTreeWidth: next.tree })
+      return
+    }
+    setResizing({ edge, x, file: previewSize.width - (fileTree ? paneSize.tree + 12 : 0), tree: paneSize.tree })
+  }
+  const followResize = (e: EventPayload) => {
+    if (!resizing) return
+    if (e.pressedButton !== 0) return endResize()
+    // The pane's edge is its left one, so a drag to the left widens it; the tree's is the tree's
+    // right one, between it and the file, so a drag to the right widens the tree.
+    const dx = (e.x ?? resizing.x) - resizing.x
+    if (resizing.edge === 'pane') setPaneSize((p) => ({ ...p, file: fitFile(windowSize.width, fileTree ? p.tree : 0, resizing.file - dx) }))
+    else {
+      // The edge between the tree and the file: one gives what the other takes.
+      const tree = Math.round(Math.max(TREE_MIN, Math.min(TREE_MAX, resizing.tree + dx, resizing.tree + resizing.file - FILE_MIN)))
+      setPaneSize({ tree, file: resizing.file - (tree - resizing.tree) })
+    }
+  }
+  const endResize = () => {
+    setResizing(undefined)
+    updateSettings({ previewWidth: paneSize.file, fileTreeWidth: paneSize.tree })
+  }
   // The note's edits by file, from its folder, oldest first: the pane's "Show changes".
   const fileChanges = useMemo(() => {
     const byFile = new Map<string, Hunk[]>()
@@ -693,8 +723,7 @@ function App() {
   draftsRef.current = drafts
 
   /** Lines picked in the file preview go on the end of the draft as a `#path:12-18` chip. */
-  const mentionLines = useCallback((threadId: string, file: string, line: number, endLine?: number) => {
-    const tag: Tag = { type: 'file', value: file, line, ...(endLine ? { endLine } : {}) }
+  const mentionTag = useCallback((threadId: string, tag: Tag) => {
     const d = draftsRef.current[threadId] ?? { text: '', tags: [] }
     const tags = [...d.tags, tag]
     setDraft(threadId, relabel(d.text.trim() ? `${d.text.trimEnd()} ${tagText(tag)} ` : `${tagText(tag)} `, tags), tags)
@@ -1312,11 +1341,13 @@ function App() {
                   <Button onPress={() => setOverlay('history')} testId="open-history" title={keys('Past notes (⌘Y) and recipes (⇧⌘Y)')}>
                     <Icon name="library" size={14} />
                   </Button>
-                  {active && !term ? (
-                    <Button onPress={toggleFiles} selected={Boolean(previewing) && fileTree} testId="open-files" title={keys('Files in this folder (⇧⌘E)')}>
-                      <Icon name="folder" size={14} />
-                    </Button>
-                  ) : null}
+                  <AccountSwitcher
+                    thread={active}
+                    profiles={profiles}
+                    colorOf={(id) => accentFor(m, profiles, id)}
+                    onMove={(id) => active && moveNote(active, id)}
+                    onSettings={() => setOverlay('settings')}
+                  />
                 </>
               }
               menuOpen={noteMenu}
@@ -1363,13 +1394,12 @@ function App() {
                     <Icon name="search" size={13} />
                     <Kbd>⌘K</Kbd>
                   </Button>
-                  <AccountSwitcher
-                    thread={active}
-                    profiles={profiles}
-                    colorOf={(id) => accentFor(m, profiles, id)}
-                    onMove={(id) => active && moveNote(active, id)}
-                    onSettings={() => setOverlay('settings')}
-                  />
+                  {/* At the right end, over the pane it opens. */}
+                  {active && !term ? (
+                    <Button onPress={toggleFiles} selected={Boolean(previewing) && fileTree} testId="open-files" title={keys('Files in this folder (⇧⌘E)')}>
+                      <Icon name={previewing && fileTree ? 'folderOpen' : 'folderClosed'} size={15} />
+                    </Button>
+                  ) : null}
                 </>
               }
             />
@@ -1539,13 +1569,17 @@ function App() {
               file={previewing}
               version={active.updatedAt}
               width={previewSize.width}
+              treeWidth={paneSize.tree}
               split={previewSize.split}
               radius={paneRadius}
               tree={fileTree}
               changes={fileChanges}
               onTree={showTree}
               onOpenFile={(file) => setPreviews((all) => ({ ...all, [active.id]: { path: file } }))}
-              onMention={(file, line, endLine) => mentionLines(active.id, file, line, endLine)}
+              onMention={(file, line, endLine) => mentionTag(active.id, { type: 'file', value: file, line, ...(endLine ? { endLine } : {}) })}
+              onMentionPath={(rel, dir) => mentionTag(active.id, dir ? { type: 'folder', value: `${rel}/` } : { type: 'file', value: rel })}
+              onViewImage={(src) => setViewing({ images: [src], index: 0 })}
+              onResize={startResize}
               onClose={() => {
                 setPreviews(({ [active.id]: _, ...rest }) => rest)
                 setTimeout(focusComposer, 30)
@@ -1638,6 +1672,8 @@ function App() {
             }}
           />
         ) : null}
+        {/* While an edge is dragged, moves go to whatever is under the pointer: this covers it all. */}
+        {resizing ? <div testId="resize-cover" onMouseMove={followResize} onMouseUp={endResize} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, cursor: 'col-resize' }} /> : null}
       </div>
     </MaterialContext.Provider>
   )

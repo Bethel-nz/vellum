@@ -1116,3 +1116,41 @@ back to writing. The textarea stays mounted, out of the layout, invisible, so fo
 still reach it. "Not writing" is a press outside the composer (`onMouseDownOutside`), as for a
 paragraph being edited, because a click on empty space doesn't take a GPUI field's focus. Typing
 brings the textarea straight back. Editing a tag's name turns it back into a `#` search.
+
+## 2026-10-24 — the tree as a card, git status, a right-click menu, resizing, long lists
+
+The tree is an inset card down the pane's left side: the folder's name, then search, new file
+and new folder. Folders draw as the two folder icons supplied for it, shut and open. The file
+beside it is a tab rather than a path pill. The header's tree button is gone; the folder button
+is at the strip's right end now (⇧⌘E still works), and the account pill moved to the left, after
+History, its menu's last item reading "Settings…".
+
+Marks are git's own status (`git status --porcelain -z`, fsmonitor off): M, A, U for untracked,
+R, D, with a dot on every folder above a change. Outside a repo they fall back to this note's
+edits. Search collapses folders without matches rather than listing results flat: the folders
+holding a match open, the rest close, matching names are washed, the first match scrolls into
+view, ↵ opens it. A right click (`onAuxClick`, at the pointer) offers Open, Add to note (a file
+or `folder/` tag in the draft), New file/folder here, Copy path, Show in Finder and Rename.
+Rename and new names are typed in the row, never over something that's there, and stay in the
+note's folder (`renameEntry`, `createEntry`).
+
+Images (png, jpg, gif, webp, bmp, ico, up to 32 MB) show as themselves with their size, and open
+full size; any other file with a NUL in its first 8 KB is binary and shows `hexdump -C` of its
+first 4 KB.
+
+The pane's left edge and the edge between the tree and the file drag to resize. GPUIX sends
+moves only to what's under the pointer, so a press on an edge puts a cover over the window
+(app.tsx `resize-cover`) that follows the drag. The pane stops where the note would have less
+than 560, the tree between 160 and 360 (the file side gives what the tree takes), the file side
+at 320. Both sizes are kept (`previewWidth`, `fileTreeWidth`); a double click puts one back.
+
+Long lists mount a window at a time (ui/windowed.ts): `<virtual-list>` with `itemCount` and
+`windowStart` keeps the room of what isn't mounted by estimate, and the window follows
+`onVisibleRange`. A row outside the window can't be scrolled to, so `reveal` moves the window
+first, then `scrollToItem`. Past notes built every row before (400 notes, 400 rows); now it builds
+about 40, rows are memoized so a hover rebuilds two, and each note's lower-cased text is cached
+for search (scripts/check-history.ts). `<code>` draws one element per line, so the pane's code
+goes in blocks of 100 lines, each its own `<code>`, with line numbers drawn beside so they count
+on; a block highlights alone, so a comment that crosses into the next can lose its colour there.
+Long markdown goes in pages split at a blank line before a heading or paragraph, outside fences.
+The tree's rows are windowed the same way, for node_modules.

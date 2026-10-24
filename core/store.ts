@@ -53,6 +53,9 @@ export type Settings = {
   openIn?: string
   /** The file pane shows the folder's tree beside the file (⇧⌘E). */
   fileTree?: boolean
+  /** The file pane's file side and its tree, once dragged wider or narrower. */
+  previewWidth?: number
+  fileTreeWidth?: number
   /** What a new note starts with; unset is Edits and the agent's own effort. */
   newNoteMode?: PermissionMode
   newNoteThink?: Think

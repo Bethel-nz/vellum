@@ -2,9 +2,14 @@
 // folders open. Folders come first, then files, each in name order. `.git` is left out, and so
 // is anything that looks like credentials, under the same rule as previews. In a git repo, what
 // git ignores is marked so the tree can dim it (node_modules, dist) without hiding it.
+//
+// The tree's new file, new folder and rename work inside the note's folder only, never over
+// something that's there, and never in `.git` or under a credentials-looking name. `gitStatus`
+// is what the tree marks: git's own status of each file, as a letter.
 
-import { readdirSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { insideWorkspace } from './files'
 
 export type TreeEntry = { name: string; rel: string; dir: boolean; ignored: boolean }
 
@@ -54,4 +59,99 @@ function gitIgnored(workspace: string, entries: TreeEntry[]): Set<string> {
 export function ancestors(rel: string): string[] {
   const parts = rel.split('/').slice(0, -1)
   return parts.map((_, i) => parts.slice(0, i + 1).join('/'))
+}
+
+/** Makes an empty file or a folder named `name` in `dir` (from the note's folder; '' is the folder itself). */
+export function createEntry(workspace: string, dir: string, name: string, kind: 'file' | 'folder'): { rel: string } | { error: string } {
+  const clean = name.trim().replace(/^\/+|\/+$/g, '')
+  if (!clean) return { error: 'Give it a name.' }
+  const rel = dir ? `${dir}/${clean}` : clean
+  const parts = rel.split('/')
+  if (path.isAbsolute(clean) || parts.some((p) => !p || p === '.' || p === '..' || p === '.git') || /credentials|keychain/i.test(rel)) return { error: 'Pick a name inside this folder.' }
+  // A folder that's a link out of the note's folder doesn't count as inside it.
+  if (dir && !insideWorkspace(workspace, dir)) return { error: 'Pick a name inside this folder.' }
+  const abs = path.join(workspace, rel)
+  if (existsSync(abs)) return { error: `${clean} is already there.` }
+  try {
+    if (kind === 'folder') mkdirSync(abs, { recursive: true })
+    else {
+      mkdirSync(path.dirname(abs), { recursive: true })
+      writeFileSync(abs, '', { flag: 'wx' })
+    }
+  } catch {
+    return { error: `Couldn’t make ${clean}.` }
+  }
+  return { rel }
+}
+
+/** Files whose path holds `query`, names that start with it first. */
+export function matchFiles(files: string[], query: string, limit = 100): string[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return []
+  const rank = (f: string) => {
+    const name = f.slice(f.lastIndexOf('/') + 1).toLowerCase()
+    return name.startsWith(q) ? 0 : name.includes(q) ? 1 : 2
+  }
+  return files
+    .filter((f) => f.toLowerCase().includes(q))
+    .sort((a, b) => rank(a) - rank(b) || a.length - b.length || byName.compare(a, b))
+    .slice(0, limit)
+}
+
+/** A file's git status as one letter: Modified, Added, Untracked, Renamed, Deleted. */
+export type GitMark = 'M' | 'A' | 'U' | 'R' | 'D'
+
+/** Every changed file's status, by path from the note's folder; undefined outside a git repo. */
+export async function gitStatus(workspace: string): Promise<Map<string, GitMark> | undefined> {
+  const git = async (...args: string[]) => {
+    // The repo's config may name an fsmonitor to run; Vellum isn't sandboxed, so it never runs one.
+    const proc = Bun.spawn(['git', '-c', 'core.fsmonitor=false', '-C', workspace, ...args], { stdout: 'pipe', stderr: 'ignore' })
+    const out = await new Response(proc.stdout).text()
+    return (await proc.exited) === 0 ? out : undefined
+  }
+  const root = (await git('rev-parse', '--show-toplevel'))?.trim()
+  const out = root ? await git('status', '--porcelain=v1', '-z', '--untracked-files=all') : undefined
+  if (!root || out === undefined) return undefined
+  // git names the top by its real path; /tmp and the like are links.
+  let base = workspace
+  try {
+    base = realpathSync(workspace)
+  } catch {}
+  return parseStatus(out, root, base)
+}
+
+/** `git status --porcelain -z`, whose paths are from the repo's top, as paths from the note's folder. */
+export function parseStatus(out: string, root: string, workspace: string): Map<string, GitMark> {
+  const marks = new Map<string, GitMark>()
+  const parts = out.split('\0')
+  for (let i = 0; i < parts.length; i++) {
+    const entry = parts[i]!
+    if (entry.length < 4) continue
+    const xy = entry.slice(0, 2)
+    // A rename or copy names the old path next.
+    if (xy[0] === 'R' || xy[0] === 'C') i++
+    const rel = path.relative(workspace, path.join(root, entry.slice(3)))
+    if (!rel || rel.startsWith('..')) continue
+    const mark: GitMark = xy === '??' ? 'U' : xy[0] === 'A' ? 'A' : xy[0] === 'R' ? 'R' : xy.includes('D') ? 'D' : 'M'
+    marks.set(rel.split(path.sep).join('/'), mark)
+  }
+  return marks
+}
+
+/** Renames a file or folder in place: the same folder, a new name. */
+export function renameEntry(workspace: string, rel: string, name: string): { rel: string } | { error: string } {
+  const clean = name.trim()
+  if (!clean) return { error: 'Give it a name.' }
+  if (clean.includes('/') || clean === '.' || clean === '..' || clean === '.git' || /credentials|keychain/i.test(clean)) return { error: 'Pick a name without a slash.' }
+  if (!insideWorkspace(workspace, rel)) return { error: 'Only what’s inside this folder can be renamed.' }
+  const dir = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : ''
+  const next = dir ? `${dir}/${clean}` : clean
+  if (next === rel) return { rel }
+  if (existsSync(path.join(workspace, next))) return { error: `${clean} is already there.` }
+  try {
+    renameSync(path.join(workspace, rel), path.join(workspace, next))
+  } catch {
+    return { error: `Couldn’t rename it to ${clean}.` }
+  }
+  return { rel: next }
 }

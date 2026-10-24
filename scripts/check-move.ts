@@ -108,7 +108,7 @@ try {
   await shot('3-menu-after')
   await app.getByTestId('account-settings').click()
   await wait(500)
-  expect('Accounts… opens Settings', (await count('settings')) === 1)
+  expect('Settings… opens Settings', (await count('settings')) === 1)
 } finally {
   await app.close()
 }

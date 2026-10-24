@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { ancestors, listDir } from './filetree'
+import { ancestors, createEntry, gitStatus, listDir, matchFiles, parseStatus, renameEntry } from './filetree'
 
 const folder = () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'vellum-tree-'))
@@ -38,4 +38,42 @@ test('what git ignores is marked', () => {
 test('ancestors', () => {
   expect(ancestors('a/b/c.ts')).toEqual(['a', 'a/b'])
   expect(ancestors('c.ts')).toEqual([])
+})
+
+test('new files and folders stay inside the folder and never replace anything', () => {
+  const dir = folder()
+  expect(createEntry(dir, 'src', 'y.ts', 'file')).toEqual({ rel: 'src/y.ts' })
+  expect(existsSync(path.join(dir, 'src/y.ts'))).toBe(true)
+  expect(createEntry(dir, '', 'lib/deep', 'folder')).toEqual({ rel: 'lib/deep' })
+  expect(createEntry(dir, 'src', 'y.ts', 'file')).toEqual({ error: 'y.ts is already there.' })
+  for (const bad of ['../out.ts', 'a/../../b', '.git/x', '.credentials.json', '  '])
+    expect('error' in createEntry(dir, '', bad, 'file')).toBe(true)
+  const outside = mkdtempSync(path.join(tmpdir(), 'vellum-out-'))
+  symlinkSync(outside, path.join(dir, 'link'))
+  expect('error' in createEntry(dir, 'link', 'x.ts', 'file')).toBe(true)
+  expect(existsSync(path.join(outside, 'x.ts'))).toBe(false)
+})
+
+test('search puts names that start with the query first', () => {
+  const files = ['docs/button-guide.md', 'src/Button.tsx', 'src/components/IconButton.tsx', 'README.md']
+  expect(matchFiles(files, 'button')).toEqual(['src/Button.tsx', 'docs/button-guide.md', 'src/components/IconButton.tsx'])
+  expect(matchFiles(files, '  ')).toEqual([])
+})
+
+test('git status, as letters by path from the note’s folder', async () => {
+  const out = [' M app/a.ts', 'A  app/new.ts', '?? app/scratch.md', 'R  app/b.ts', 'app/old.ts', ' D app/gone.ts', ' M other/x.ts', ''].join('\0')
+  expect([...parseStatus(out, '/repo', '/repo/app')]).toEqual([['a.ts', 'M'], ['new.ts', 'A'], ['scratch.md', 'U'], ['b.ts', 'R'], ['gone.ts', 'D']])
+  const dir = folder()
+  expect(await gitStatus(dir)).toBeUndefined()
+  Bun.spawnSync(['git', 'init', '-q', dir])
+  writeFileSync(path.join(dir, 'new.ts'), '')
+  expect((await gitStatus(dir))?.get('new.ts')).toBe('U')
+})
+
+test('rename keeps a thing in its folder and never replaces another', () => {
+  const dir = folder()
+  expect(renameEntry(dir, 'src/x.ts', 'y.ts')).toEqual({ rel: 'src/y.ts' })
+  expect(existsSync(path.join(dir, 'src/y.ts'))).toBe(true)
+  expect(renameEntry(dir, 'src/y.ts', '../b.ts')).toMatchObject({ error: expect.any(String) })
+  expect(renameEntry(dir, 'a2.ts', 'b.ts')).toEqual({ error: 'b.ts is already there.' })
 })

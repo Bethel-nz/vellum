@@ -10,7 +10,7 @@
 // hides it; and the strip's Files button opens the pane on the tree alone.
 // Shots: screenshots/preview-*.png.
 //   bun scripts/check-preview.ts
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
@@ -123,16 +123,125 @@ async function run(size: string, wide: boolean) {
     await wait(300)
     expect('Open › Finder shows that file', readFileSync(opened, 'utf8').includes('"reveal"') && readFileSync(opened, 'utf8').includes('core/printed.ts'))
 
-    await app.getByTestId('file-preview-tree').click()
+    await app.getByTestId('file-preview').press('shift-cmd-e')
     await wait(700)
     const withTree = await app.getByTestId('file-preview').bounds()
     expect('the tree opens on the file', (await count('file-tree')) === 1 && (await count('file-tree-row-core/printed.ts')) === 1)
     expect('…and the pane widens for it', withTree.width > pane.width + 100, `${Math.round(pane.width)} → ${Math.round(withTree.width)}`)
-    expect('what the note changed is marked, and its folder', (await count('file-tree-changed-core/printed.ts')) === 1 && (await count('file-tree-changed-core')) === 1)
+    expect('git’s status marks a file, U for one it doesn’t track, and its folder', (await app.getByTestId('file-tree-mark-core/scratch-git.ts').textContent()) === 'U' && (await count('file-tree-mark-core')) === 1)
+    const treeBox = await app.getByTestId('file-tree').bounds()
+    expect('the tree runs down the pane’s left side', treeBox.x < withTree.x + 12, `${Math.round(treeBox.x)} vs ${Math.round(withTree.x)}`)
+    expect('beside the tree the file is a tab', (await app.getByTestId('file-preview-path').textContent()).replace(/[^\x20-\x7e]/g, '') === 'printed.ts')
     await shot('7-tree')
     await app.getByTestId('file-tree-row-core/tags.ts').click()
     await wait(600)
-    expect('a file in the tree opens in the pane', (await app.getByTestId('file-preview-name').textContent()) === 'tags.ts')
+    expect('a file in the tree opens in the pane', (await app.getByTestId('file-preview-name').textContent()) === 'tags.ts', await app.getByTestId('file-preview-name').textContent())
+    await app.getByTestId('file-tree-search').click()
+    await wait(400)
+    await app.getByTestId('file-tree-query').fill('tags.te')
+    await wait(800)
+    expect('search opens the folders holding a match', (await count('file-tree-row-core/tags.test.ts')) === 1)
+    expect('…and closes the ones that don’t', (await count('file-tree-row-assets/check-image.png')) === 0 && (await count('file-tree-row-assets')) === 1)
+    await shot('9-search')
+    await app.getByTestId('file-tree-query').press('escape')
+    await wait(400)
+    expect('Esc ends the search, not the pane', (await count('file-tree-query')) === 0 && (await count('file-preview')) === 1)
+
+    // A right click on a row: its menu.
+    await app.getByTestId('file-tree-row-core/tags.ts').click({ button: 2 })
+    await wait(500)
+    expect('a right click opens the row’s menu', (await count('file-tree-menu')) === 1 && (await count('file-tree-menu-rename')) === 1 && (await count('file-tree-menu-mention')) === 1)
+    await shot('14-menu')
+    await app.getByTestId('file-tree-menu-mention').click()
+    // drafts.json is written a moment after the draft changes.
+    let drafted: { tags?: { value: string }[] } | undefined
+    for (let i = 0; i < 20 && !drafted?.tags?.some((t) => t.value === 'core/tags.ts'); i++) {
+      await wait(150)
+      drafted = JSON.parse(readFileSync(path.join(home, 'drafts.json'), 'utf8'))[id]
+    }
+    expect('Add to note puts the file in the draft', drafted?.tags?.some((t: { value: string }) => t.value === 'core/tags.ts') ?? false, JSON.stringify(drafted?.tags))
+    await app.getByTestId('file-tree-search').click()
+    await wait(300)
+    await app.getByTestId('file-tree-query').fill('scratch-git')
+    await wait(700)
+    await app.getByTestId('file-tree-row-core/scratch-git.ts').click({ button: 2 })
+    await wait(500)
+    await app.getByTestId('file-tree-menu-rename').click()
+    await wait(400)
+    await app.getByTestId('file-tree-name').fill('scratch-renamed.ts')
+    await app.getByTestId('file-tree-name').press('enter')
+    await wait(700)
+    expect('Rename renames it in place', existsSync(path.join(workspace, 'core/scratch-renamed.ts')) && !existsSync(path.join(workspace, 'core/scratch-git.ts')) && (await count('file-tree-row-core/scratch-renamed.ts')) === 1)
+    rmSync(path.join(workspace, 'core/scratch-renamed.ts'), { force: true })
+
+    // The pane's edge and the tree's drag; the pane stops where the note would get too narrow,
+    // the tree at its widest.
+    const paneBefore = await app.getByTestId('file-preview').bounds()
+    await app.mouse.drag(app.getByTestId('file-preview-edge'), { x: paneBefore.x + 80, y: paneBefore.y + paneBefore.height / 2 }, { steps: 12 })
+    await wait(500)
+    const paneAfter = await app.getByTestId('file-preview').bounds()
+    expect('dragging the pane’s edge narrows it', paneAfter.width < paneBefore.width - 40, `${Math.round(paneBefore.width)} → ${Math.round(paneAfter.width)}`)
+    await app.mouse.drag(app.getByTestId('file-preview-edge'), { x: paneAfter.x - 600, y: paneAfter.y + paneAfter.height / 2 }, { steps: 12 })
+    await wait(500)
+    const widest = await app.getByTestId('file-preview').bounds()
+    const note = await app.getByTestId('page').bounds()
+    expect('…and widens it only as far as the note can spare', widest.width > paneAfter.width + 40 && note.width >= 556, `${Math.round(widest.width)}, note ${Math.round(note.width)}`)
+    const tree0 = await app.getByTestId('file-tree').bounds()
+    await app.mouse.drag(app.getByTestId('file-tree-edge'), { x: tree0.x + tree0.width + 400, y: tree0.y + 200 }, { steps: 12 })
+    await wait(500)
+    const tree1 = await app.getByTestId('file-tree').bounds()
+    expect('dragging the tree’s edge widens it, up to its widest', tree1.width > tree0.width + 40 && Math.round(tree1.width) <= 360, `${Math.round(tree0.width)} → ${Math.round(tree1.width)}`)
+    const sizes = JSON.parse(readFileSync(path.join(home, 'settings.json'), 'utf8'))
+    expect('…and both sizes are kept', typeof sizes.previewWidth === 'number' && sizes.fileTreeWidth === Math.round(tree1.width), JSON.stringify({ previewWidth: sizes.previewWidth, fileTreeWidth: sizes.fileTreeWidth }))
+    await shot('15-resized')
+    await app.getByTestId('file-tree-new-file').click()
+    await wait(400)
+    await app.getByTestId('file-tree-name').fill('scratch-note.md')
+    await app.getByTestId('file-tree-name').press('enter')
+    await wait(700)
+    expect('New file makes it in the open file’s folder, and opens it', existsSync(path.join(workspace, 'core/scratch-note.md')) && (await app.getByTestId('file-preview-name').textContent()) === 'scratch-note.md')
+    rmSync(path.join(workspace, 'core/scratch-note.md'), { force: true })
+    await app.getByTestId('file-tree-new-folder').click()
+    await wait(400)
+    await app.getByTestId('file-tree-name').fill('printed.ts')
+    await app.getByTestId('file-tree-name').press('enter')
+    await wait(400)
+    expect('…and never over something that’s there', (await count('file-tree-error')) === 1)
+    await shot('10-exists')
+    await app.getByTestId('file-tree-name').press('escape')
+    await wait(300)
+    await app.getByTestId('file-tree-search').click()
+    await wait(300)
+    await app.getByTestId('file-tree-query').fill('check-image')
+    await wait(700)
+    await app.getByTestId('file-tree-row-assets/check-image.png').click()
+    await wait(700)
+    const info = await app.getByTestId('file-preview-image-info').textContent().catch(() => '')
+    expect('an image shows as itself, with its size', (await count('file-preview-image')) === 1 && /^PNG · \d+ × \d+ · /.test(info), info)
+    await shot('12-image')
+    await app.getByTestId('file-preview-image-open').click()
+    await wait(600)
+    expect('…and opens full size', (await count('image-viewer-image')) === 1)
+    await app.getByTestId('image-viewer-image').press('escape')
+    await wait(500)
+    await app.getByTestId('file-tree-query').fill('Geist-Medium.ttf')
+    await wait(700)
+    await app.getByTestId('file-tree-row-assets/fonts/Geist-Medium.ttf').click()
+    await wait(700)
+    const bin = await app.getByTestId('file-preview-binary-info').textContent().catch(() => '')
+    expect('another binary file shows as hex, from its start', (await count('file-preview-binary')) === 1 && bin.includes('the first 4.0 KB'), bin)
+    await shot('13-binary')
+
+    // A long file is mounted a block at a time, its numbers counting on across blocks.
+    await app.getByTestId('file-tree-query').fill('app.tsx')
+    await wait(700)
+    await app.getByTestId('file-tree-row-app.tsx').click()
+    await wait(800)
+    const total = Math.ceil(readFileSync(path.join(workspace, 'app.tsx'), 'utf8').split('\n').length / 100)
+    const mounted = (await Promise.all(Array.from({ length: total }, (_, i) => count(i ? `file-preview-gutter-${i}` : 'file-preview-gutter')))).filter(Boolean).length
+    expect('a long file mounts only the blocks near the top', mounted >= 1 && mounted < total, `${mounted} of ${total}`)
+    await app.getByTestId('file-tree-query').press('escape')
+    await wait(300)
     await app.getByTestId('file-preview').press('shift-cmd-e')
     await wait(500)
     expect('⇧⌘E hides the tree, the file stays', (await count('file-tree')) === 0 && (await count('file-preview')) === 1)
@@ -180,7 +289,15 @@ async function firstUserBlock(app: Awaited<ReturnType<typeof launch>>) {
   return ids[0]?.slice(5) ?? ''
 }
 
-await run('1280x800', true)
-await run('900x700', false)
+// A file git doesn't track, for the tree's marks.
+writeFileSync(path.join(workspace, 'core/scratch-git.ts'), '')
+try {
+  await run('1280x800', true)
+  // The narrow run starts from the pane's own sizes, not the ones dragged above.
+  writeFileSync(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: id, fileTree: false }))
+  await run('900x700', false)
+} finally {
+  for (const f of ['core/scratch-git.ts', 'core/scratch-renamed.ts']) rmSync(path.join(workspace, f), { force: true })
+}
 console.log(failed ? `${failed} failed` : 'all passed')
 process.exit(failed ? 1 : 0)
