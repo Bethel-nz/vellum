@@ -17,6 +17,7 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import { readWorkspaceFile } from './files'
 import type { Profile } from './profiles'
+import { noteLabel } from './changes'
 import { scopeKey, type Tag } from './threads'
 
 export type Suggestion = Tag & { label: string; hint: string }
@@ -280,6 +281,10 @@ export function promptFor(text: string, tags: Tag[], ctx: { workspace?: string; 
 function hunkQuote(h: Extract<Tag, { type: 'hunk' }>, n: number): string {
   const fence = h.patch.includes('```') ? '````' : '```'
   const diff = `${fence}diff\n--- a/${h.path}\n+++ b/${h.path}\n${h.patch.trimEnd()}\n${fence}`
-  const notes = (h.notes ?? []).map((x) => `- ${x.side === 'old' ? 'removed' : 'new'} line ${x.line} \`${x.code.trim().slice(0, 120)}\`: ${x.text}`)
+  const notes = (h.notes ?? []).map((x) => {
+    const where = x.endLine ? `lines ${noteLabel(x)}` : `${x.side === 'old' ? 'removed' : 'new'} line ${x.line}`
+    const code = x.code.includes('\n') ? `\n  \`\`\`\n${x.code.split('\n').map((l) => `  ${l}`).join('\n')}\n  \`\`\`\n  ` : ` \`${x.code.trim().slice(0, 120)}\`: `
+    return `- ${where}${code}${x.text}`
+  })
   return [`Hunk ${n}, from an edit you made to ${h.path}:`, diff, ...(notes.length ? ['My comments on its lines:', ...notes] : [])].join('\n')
 }

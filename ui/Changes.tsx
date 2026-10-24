@@ -5,17 +5,18 @@
 // line, and a comment selects its hunk. "Add n hunks" puts them in your draft as ± pills that
 // carry the hunk and its comments (core/changes.ts hunkTags); Claude gets them spelled out.
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { EventPayload } from '@gpuix/react'
 import { motion } from '@gpuix/react'
 import { Button, Dot, Field, FileIcon, Icon, Label, Scroll, SidePanel } from '../components'
 import { duration, ease, tween } from '../components/motion'
-import { collectChanges, type FileChange, type Hunk } from '../core/changes'
+import { collectChanges, hunkRows, noteFor, noteLabel, noteRows, rowOf, type FileChange, type Hunk } from '../core/changes'
 import type { HunkNote, Thread } from '../core/threads'
 import { Meta, useM } from './kit'
 import { concentric, diffHeaderClip, diffInk, diffTheme, font, radiusXl } from './theme'
 
-type Commenting = { hunkId: string; side: 'old' | 'new'; line: number; code: string }
+/** The rows being commented on, as indexes into the hunk's rows; `to` moves with ⇧-click. */
+type Commenting = { hunkId: string; from: number; to: number }
 
 export function Changes({ open, onClose, thread, onAdd }: { open: boolean; onClose: () => void; thread?: Thread; onAdd: (hunks: Hunk[], notes: Record<string, HunkNote[]>) => void }) {
   const m = useM()
@@ -34,9 +35,12 @@ export function Changes({ open, onClose, thread, onAdd }: { open: boolean; onClo
     commenting,
     start: setCommenting,
     save: (text) => {
-      if (!commenting || !text.trim()) return setCommenting(null)
-      const { hunkId, ...at } = commenting
-      setNotes((n) => ({ ...n, [hunkId]: [...(n[hunkId] ?? []).filter((x) => !(x.side === at.side && x.line === at.line)), { ...at, text: text.trim() }] }))
+      const hunk = commenting && all.find((h) => h.id === commenting.hunkId)
+      if (!commenting || !hunk || !text.trim()) return setCommenting(null)
+      const note = noteFor(hunkRows(hunk.patch), commenting.from, commenting.to, text.trim())
+      const same = (x: HunkNote) => x.side === note.side && x.line === note.line && x.endLine === note.endLine
+      setNotes((n) => ({ ...n, [hunk.id]: [...(n[hunk.id] ?? []).filter((x) => !same(x)), note] }))
+      const hunkId = hunk.id
       setPicked((p) => ({ ...p, [hunkId]: true }))
       setCommenting(null)
     },
@@ -140,15 +144,25 @@ function HunkView({ hunk, picked, onPick, comments }: { hunk: Hunk; picked: bool
   const notes = comments.notes[hunk.id] ?? []
   const here = comments.commenting?.hunkId === hunk.id ? comments.commenting : null
   const [text, setText] = useState('')
-  // A line's numbers say its side: only an old number is a removed line.
+  const rows = useMemo(() => hunkRows(hunk.patch), [hunk.patch])
+  const [rowH, setRowH] = useState(0)
+  // <diff>'s lineClick carries no modifiers, so the press just before it says whether ⇧ was held.
+  const shift = useRef(false)
+  // A line's numbers say its side: only an old number is a removed line. ⇧-click extends the
+  // range being commented on; a plain click starts a new one.
   const onLine = (e: EventPayload & { oldLine?: number; newLine?: number }) => {
-    const side = e.newLine ? 'new' : 'old'
     const line = e.newLine ?? e.oldLine
     if (!line) return
-    const existing = notes.find((n) => n.side === side && n.line === line)
+    const i = rowOf(rows, { side: e.newLine ? 'new' : 'old', line })
+    if (i < 0) return
+    if (shift.current && here) return comments.start({ ...here, to: i })
+    const existing = notes.find((n) => noteRows(rows, n)?.[0] === i)
     setText(existing?.text ?? '')
-    comments.start({ hunkId: hunk.id, side, line, code: String(e.value ?? '') })
+    comments.start({ hunkId: hunk.id, from: i, to: i })
   }
+  const span = here ? [Math.min(here.from, here.to), Math.max(here.from, here.to)] as const : undefined
+  const washes = notes.map((n) => noteRows(rows, n)).filter((x): x is [number, number] => Boolean(x))
+  const selLabel = span ? noteLabel(noteFor(rows, span[0], span[1], '')) : ''
   // One card per hunk: its header row, then the diff. No card inside a card.
   return (
     <div style={{ display: 'flex', flexDirection: 'column', borderRadius: concentric(radiusXl, 6), borderWidth: 1, borderColor: picked ? m.accent + '88' : m.border, backgroundColor: m.codeBg, overflow: 'hidden' }}>
@@ -159,15 +173,31 @@ function HunkView({ hunk, picked, onPick, comments }: { hunk: Hunk; picked: bool
         <text style={{ fontSize: 11.5, lineHeight: 15, color: ink.add, fontFamily: font.mono }}>{`+${hunk.added}`}</text>
         <text style={{ fontSize: 11.5, lineHeight: 15, color: ink.del, fontFamily: font.mono }}>{`−${hunk.removed}`}</text>
       </Button>
-      <div testId={`hunk-diff-${hunk.id}`} style={{ overflow: 'hidden', borderTopWidth: 1, borderColor: m.border }}>
+      <div
+        testId={`hunk-diff-${hunk.id}`}
+        // The diff's rows are all one height, so its visible height over the row count is that height.
+        onLayout={(e) => rows.length && setRowH((e.height ?? 0) / rows.length)}
+        onMouseDown={(e) => void (shift.current = Boolean(e.modifiers?.shift))}
+        style={{ position: 'relative', overflow: 'hidden', borderTopWidth: 1, borderColor: m.border }}
+      >
         <diff patch={`--- a/${hunk.path}\n+++ b/${hunk.path}\n${hunk.patch}`} wordDiff theme={diffTheme(m)} onLineClick={onLine} style={{ marginTop: -diffHeaderClip }} />
+        {/* GPUIX can't tint a diff row, so commented and selected rows get a wash laid over them. */}
+        {rowH
+          ? [...washes.map((w) => ({ w, live: false })), ...(span ? [{ w: span, live: true }] : [])].map(({ w, live }, i) => (
+              <div
+                key={`${live ? 'sel' : 'note'}-${i}`}
+                testId={live ? 'hunk-selection' : undefined}
+                style={{ position: 'absolute', left: 0, right: 0, top: w[0] * rowH, height: (w[1] - w[0] + 1) * rowH, pointerEvents: 'none', backgroundColor: m.blue + (live ? '2e' : '14'), borderLeftWidth: 2, borderColor: live ? m.blue : m.blue + '66' }}
+              />
+            ))
+          : null}
       </div>
       {notes.length || here ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 10, paddingRight: 8, paddingTop: 8, paddingBottom: 8, borderTopWidth: 1, borderColor: m.border }}>
           {notes.map((n, i) => (
-            <div key={`${n.side}${n.line}`} testId={`hunk-note-${i}`} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 22 }}>
+            <div key={`${n.side}${n.line}-${n.endLine ?? ''}`} testId={`hunk-note-${i}`} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 22 }}>
               <Icon name="comment" size={12} color={m.blue} />
-              <text style={{ fontSize: 11.5, lineHeight: 15, color: m.textFaint, fontFamily: font.mono, flexShrink: 0 }}>{`${n.side === 'old' ? '−' : '+'}${n.line}`}</text>
+              <text style={{ fontSize: 11.5, lineHeight: 15, color: m.textFaint, fontFamily: font.mono, flexShrink: 0 }}>{noteLabel(n)}</text>
               <text style={{ fontSize: 12.5, lineHeight: 17, color: m.textUi, flexGrow: 1, minWidth: 0 }}>{n.text}</text>
               <Button onPress={() => comments.remove(hunk.id, i)} title="Remove this comment" style={{ width: 20, height: 20, minHeight: 20, paddingLeft: 0, paddingRight: 0 }}>
                 <Icon name="x" size={11} />
@@ -176,7 +206,7 @@ function HunkView({ hunk, picked, onPick, comments }: { hunk: Hunk; picked: bool
           ))}
           {here ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <Meta>{`Comment on ${here.side === 'old' ? 'removed' : ''} line ${here.line} · ↵ saves · esc cancels`.replace('on  line', 'on line')}</Meta>
+              <Meta>{`${span && span[1] > span[0] ? 'Lines' : 'Line'} ${selLabel} · ⇧-click to extend · ↵ saves · esc cancels`}</Meta>
               <Field
                 testId="hunk-comment"
                 value={text}

@@ -62,6 +62,20 @@ try {
   await wait(400)
   expect('the comment sits under the hunk', (await app.getByTestId('hunk-note-0').count()) === 1)
   expect('the header counts it', (await app.getByTestId('changes-count').textContent()).includes('1 comment'))
+
+  // ⇧-click makes a range: the first row through the fourth
+  const rowH = b.height / 5
+  const row = (i: number) => ({ x: b.x + 120, y: b.y + (i + 0.5) * rowH })
+  await app.mouse.click(row(0))
+  await wait(300)
+  await app.mouse.click(row(3), { modifiers: 'shift' })
+  await wait(300)
+  expect('⇧-click extends the selection', (await app.getByTestId('hunk-selection').count()) === 1 && (await app.getByText('Lines +1 to +3 · ⇧-click to extend · ↵ saves · esc cancels').count()) === 1)
+  await shot('2-range')
+  await app.getByTestId('hunk-comment').fill('this whole block')
+  await app.getByTestId('hunk-comment').press('enter')
+  await wait(400)
+  expect('a range comment is kept', (await app.getByTestId('hunk-note-1').count()) === 1)
   await shot('2-comment')
 
   await app.getByTestId('changes-add').click()
@@ -77,6 +91,7 @@ try {
   expect('the hunk is a ± pill in the draft, not a diff fence', d.text.includes('±ui/theme.ts:1') && !d.text.includes('```'), JSON.stringify(d.text))
   const tag = d.tags.find((t: any) => t.type === 'hunk')
   expect('the pill carries the hunk and the comment', tag?.patch?.includes('@@') && tag?.notes?.[0]?.text === 'clamp it instead' && tag.notes[0].side === 'old', JSON.stringify(tag?.notes))
+  expect('…and the range', tag?.notes?.[1]?.line === 1 && tag.notes[1].endLine === 3 && tag.notes[1].code.split('\n').length === 4, JSON.stringify(tag?.notes?.[1]))
   expect('the chip row shows the pill', (await app.getByTestId('draft-chips-0').count()) === 1)
   await app.getByTestId('draft-chips-0').hover()
   await wait(500)

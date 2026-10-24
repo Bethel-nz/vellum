@@ -29,8 +29,11 @@ export type Tag =
   /** One hunk of an edit Claude made, carried whole, with your comments on its lines. */
   | { type: 'hunk'; value: string; path: string; header: string; patch: string; added: number; removed: number; notes?: HunkNote[] }
 
-/** A comment on one line of a hunk: `side` new for + and context lines, old for − lines. */
-export type HunkNote = { side: 'old' | 'new'; line: number; code: string; text: string }
+/**
+ * A comment on a line, or a run of lines, of a hunk. `side` is new for + and context lines, old
+ * for − lines; `end*` is the last line of a range. `code` is the lines' text, one per line.
+ */
+export type HunkNote = { side: 'old' | 'new'; line: number; endSide?: 'old' | 'new'; endLine?: number; code: string; text: string }
 
 /** Key for a line-scoped file tag: `path:line`. */
 export const scopeKey = (file: string, line: number) => `${file}:${line}`

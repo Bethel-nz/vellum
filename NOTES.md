@@ -466,3 +466,26 @@ Agent SDK (`CLAUDE_CODE_EXECUTABLE`), with your login, per account through `CLAU
   only the account has).
 - **Not done yet:** relinking the real `work` account. Doing it from the session was blocked by
   the permission check; it happens on the next launch of Vellum (with a toast), or by hand.
+
+## 2026-10-24 — scrollbars, menu shadows, line ranges in hunks
+
+- **Scrollbars.** GPUIX counts a scroll box's own padding as overflow: a padded box over three
+  short rows paints a full-length thumb, right on the rows' edge (spikes/scrollbar.tsx).
+  `components/Scroll.tsx` keeps padding on an inner column that never shrinks, with a right
+  gutter for the 6px thumb. Every scroll box uses it.
+- **The dark panel behind dropdowns** was the popover shadow: 12/32 at 60% black draws a square
+  halo around the menu on the dark materials (spikes/menu-fade-run.ts). `elevation(m, level)`
+  in the theme: popovers 4/12 at 45% of the material's shadow, cards 8/20, sheets keep 18/48.
+  Also: a menu closes on mouse-down outside it, which includes its own trigger, whose click then
+  reopened it; triggers check `closedByOutsidePress()`.
+- **Status bar** moved to the bottom right (you asked); the approval card and its menus open
+  from there, toasts sit bottom left. Tooltips name the state and what a click does.
+- **Line ranges in a hunk.** Click a line to comment, ⇧-click another to extend. `<diff>`'s
+  lineClick has no modifiers, so a mouse-down on the wrapper records ⇧ just before it. GPUIX
+  can't tint a diff row, so the selection and commented ranges are washes laid over the diff,
+  placed by row: the wrapper's height over the row count (`hunkRows`). A range reaches Claude as
+  "lines +1 to +3" with every line quoted.
+- **ACP stays.** The original spec said to drive `claude` directly and not use the ACP adapter;
+  on 2026-10-24 you decided Vellum keeps the ACP layer (core/acp.ts, core/agent.ts), which also
+  opens the door to other ACP agents.
+- Run the project's core tests as `bun test ./core/`.

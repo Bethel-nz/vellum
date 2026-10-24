@@ -219,8 +219,8 @@ function ContextCard({ context, running, onClose, onCompact }: { context?: Conte
             <Bar fraction={window ? used / window : 0} />
             <text style={{ fontSize: 12, lineHeight: 17, color: m.textMuted }}>
               {used
-                ? 'Everything Claude is holding for this note: your paragraphs, its replies, files it read and tool output. Compacting replaces the older part with a summary.'
-                : 'Nothing yet. It fills as you and Claude write.'}
+                ? 'Compact summarizes the older part to make room.'
+                : 'Empty so far.'}
             </text>
             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <div style={{ flexGrow: 1 }} />
