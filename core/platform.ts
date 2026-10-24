@@ -15,6 +15,11 @@ import path from 'node:path'
 export type OS = 'mac' | 'windows' | 'linux'
 export const os: OS = process.platform === 'darwin' ? 'mac' : process.platform === 'win32' ? 'windows' : 'linux'
 export const isMac = os === 'mac'
+/**
+ * Running as the compiled Vellum binary (scripts/build-app.ts) rather than from source. There is
+ * no Bun beside it to run a script, so it runs its own parts instead (bin.ts).
+ */
+export const compiled = /^(\/\$bunfs|B:\\~BUN)/.test(import.meta.dir)
 
 type Mods = { shift?: boolean; ctrl?: boolean; alt?: boolean; cmd?: boolean } | undefined
 
@@ -124,6 +129,19 @@ export function revealFolder(dir: string) {
 export function shellArgv(command: string): string[] {
   if (os === 'windows') return [process.env.ComSpec ?? 'cmd.exe', '/d', '/s', '/c', command]
   return [process.env.SHELL ?? (os === 'mac' ? '/bin/zsh' : '/bin/sh'), '-lc', command]
+}
+
+/**
+ * The PATH your login shell sets up. An app opened from Finder or the Dock gets launchd's bare
+ * one, with no `claude`, no Homebrew and no version managers. Undefined when the shell can't say.
+ */
+export function loginShellPath(): string | undefined {
+  if (os === 'windows') return undefined
+  const mark = '__vellum_path__'
+  const shell = process.env.SHELL ?? (os === 'mac' ? '/bin/zsh' : '/bin/sh')
+  // Interactive too: most people extend PATH in ~/.zshrc, not ~/.zprofile.
+  const r = Bun.spawnSync([shell, '-ilc', `printf '${mark}%s${mark}' "$PATH"`], { stdin: 'ignore', stderr: 'ignore', timeout: 5000 })
+  return r.stdout.toString().match(new RegExp(`${mark}(.+)${mark}`))?.[1]
 }
 
 /** Bun's PTY is POSIX only; on Windows a spawn with `terminal` fails with ENOTSUP. */

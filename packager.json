@@ -1,0 +1,12 @@
+{
+  "name": "vellum",
+  "productName": "Vellum",
+  "version": "0.1.0",
+  "identifier": "dev.vellum.app",
+  "description": "A markdown note you can talk to",
+  "binariesDir": "dist",
+  "outDir": "dist/bundle",
+  "binaries": [{ "path": "Vellum", "main": true }],
+  "icons": ["dist/AppIcon.icns"],
+  "formats": ["app"]
+}

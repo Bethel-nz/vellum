@@ -72,7 +72,7 @@ type Held = HeldTerm & { proc: ReturnType<typeof Bun.spawn>; chunks: Uint8Array[
 
 if (import.meta.main) await serve(process.argv[2]!)
 
-async function serve(sock: string) {
+export async function serve(sock: string) {
   if (!sock || !path.isAbsolute(sock)) throw new Error('usage: bun core/termd.ts <absolute socket path>')
   // Whoever can connect can run commands as you, so the socket lives in a folder only you can open.
   const dir = path.dirname(sock)

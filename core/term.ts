@@ -11,7 +11,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, openSync } from 'node:fs'
 import path from 'node:path'
 import { VtTerminal, type Grid, type KeyInput } from './ghostty'
-import { hasPty } from './platform'
+import { compiled, hasPty } from './platform'
 import { paths } from './store'
 import { TERMD_VERSION, Wire, type HeldTerm } from './termd'
 
@@ -262,7 +262,9 @@ async function open(): Promise<Link> {
 
 function startHolder() {
   const log = openSync(path.join(paths.home, 'termd.log'), 'a', 0o600)
-  spawn(process.execPath, [path.join(import.meta.dir, 'termd.ts'), socketPath()], { detached: true, stdio: ['ignore', log, log], cwd: paths.home }).unref()
+  // Once compiled, Vellum is its own holder (bin.ts).
+  const args = compiled ? ['--termd', socketPath()] : [path.join(import.meta.dir, 'termd.ts'), socketPath()]
+  spawn(process.execPath, args, { detached: true, stdio: ['ignore', log, log], cwd: paths.home }).unref()
 }
 
 /** The holder, started if it isn't running; undefined when there's none to be had. */

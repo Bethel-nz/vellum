@@ -892,3 +892,35 @@ frames 0–260ms on a paused clock (`app.clock.pause()` / `fastForward()`) into
   `solid` / `translucent` / `wantsBlur` helpers. The window is always opaque. A saved
   `groknight` or `smoke` opens as Dark and `frost` as Light (`materialNamed`), so nobody's setting
   breaks.
+
+## 2026-10-24 — Vellum.app: one compiled binary, bundled by cargo-packager
+
+`bun scripts/build-app.ts` (or `bun run package`) builds `dist/bundle/Vellum.app`: `bin.ts` compiled
+with `bun build --compile` into one executable, `assets/icon.png` turned into an `.icns` (sips +
+iconutil), and cargo-packager (`packager.json`) wrapping both, signed ad hoc. The bundle is what
+gives Vellum its name in the menu bar and its icon in the Dock and Finder. GPUIX can't: `appName`
+only names Hide/Quit, and a bare binary has no icon.
+
+A compiled binary has no Bun beside it and no node_modules, so a few things changed:
+
+- **One executable, several parts.** `bin.ts` picks by its first argument: the app, `--agent` (the
+  ACP adapter, bundled in), `--termd SOCK` (the terminal holder) or `--run FILE` (a script from disk,
+  for the fake agents checks swap in). `agentArgv` and `startHolder` ask for these when
+  `platform.compiled`. From source nothing changes.
+- **Files ride inside.** Fonts are imported `with { type: 'file' }` (`assets/fonts.ts`). The GPUIX
+  addon is too, and `NAPI_RS_NATIVE_LIBRARY_PATH` points napi-rs's loader at it. libghostty-vt-node
+  reads its wasm relative to its own file, so a build plugin rewrites that one line into a file
+  import. The plugin throws if the line ever changes, rather than shipping a binary without a terminal.
+- **PATH.** Opened from Finder, the app gets launchd's `/usr/bin:/bin:/usr/sbin:/sbin`, which has no
+  `claude`. With no `TERM` set, `bin.ts` takes the login shell's PATH (`$SHELL -ilc`, with a 5s
+  timeout). Only PATH, not the rest of the shell's environment.
+- **Dock icon.** `setDockIcon` only runs from source; the bundle names its own icon.
+
+`scripts/check-app.ts` drives the bundled binary: the note opens, a fake agent turn runs through
+`--run`, and a terminal runs through `--termd` and the embedded wasm. Opened with `open` on a
+throwaway home, the menu bar says Vellum and macOS shows the V icon for the bundle.
+
+Not done: Apple silicon only (`bin.ts` names the darwin-arm64 addon); signing is ad hoc, so the app
+opens on this Mac but needs a Developer ID and notarization before anyone else can open it; no
+.dmg yet (add `"dmg"` to `formats`). cargo-packager needs a `name` in its config when there's no
+Cargo.toml, or it fails with "Not a directory".

@@ -28,8 +28,9 @@ import { paths, readJson, readSettings, updateSettings, writeJson } from './core
 import { promptFor, tagsIn, tagText } from './core/tags'
 import { heldTerms, holdTerm, killAllTerms, startTerm, type TermSession } from './core/term'
 import { setDockIcon } from './core/dock'
+import { FONTS } from './assets/fonts'
 import { OpenIn } from './ui/OpenIn'
-import { claudeBin, hasPty, isMac, keys, openConsole, pasteImage, primary, revealFolder, revealLabel, shellArgv, tabStep } from './core/platform'
+import { claudeBin, compiled, hasPty, isMac, keys, openConsole, pasteImage, primary, revealFolder, revealLabel, shellArgv, tabStep } from './core/platform'
 import {
   appendLine,
   appendRecord,
@@ -83,13 +84,6 @@ const MAX_TABS = 9
 const ASK_KEY_DELAY_MS = 400
 const motionPref = (p: MotionPref) => setReducedMotion(p === 'system' ? undefined : p === 'reduce')
 motionPref(readSettings().motion ?? 'system')
-const FONT_DIR = path.join(import.meta.dir, 'assets', 'fonts')
-// Geist for UI and prose, Geist Mono for code; Inter stays registered as the sans fallback.
-const FONTS = [
-  'Geist-Regular.ttf', 'Geist-Medium.ttf', 'Geist-SemiBold.ttf', 'Geist-Italic.ttf',
-  'GeistMono-Regular.ttf', 'GeistMono-Medium.ttf',
-  'Inter-Regular.ttf', 'Inter-Medium.ttf', 'Inter-SemiBold.ttf',
-]
 
 /**
  * A terminal of its own in the terminal view: a login, Claude Code on a note, or a shell.
@@ -444,13 +438,12 @@ function App() {
 
   // Fonts: Inter for UI and prose. Text repaints once a family registers.
   useEffect(() => {
-    for (const f of FONTS) {
-      const file = path.join(FONT_DIR, f)
+    for (const file of FONTS) {
       if (!existsSync(file)) continue
       try {
         renderer.registerFont?.(readFileSync(file))
       } catch (err) {
-        console.error(`[vellum] font ${f}:`, err)
+        console.error(`[vellum] font ${path.basename(file)}:`, err)
       }
     }
   }, [renderer])
@@ -1507,4 +1500,5 @@ render(<App />, {
 })
 
 // Run from `bun app.tsx`, the Dock would show Bun's icon: only a .app bundle names one (core/dock.ts).
-setTimeout(() => setDockIcon(path.join(import.meta.dir, 'assets', 'icon.png')), 0)
+// Vellum.app names its own (scripts/build-app.ts).
+if (!compiled) setTimeout(() => setDockIcon(path.join(import.meta.dir, 'assets', 'icon.png')), 0)

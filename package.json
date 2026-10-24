@@ -8,7 +8,8 @@
     "start": "bun app.tsx",
     "typecheck": "tsc --noEmit",
     "test": "bun test ./core",
-    "screenshot": "bun scripts/screenshot.ts"
+    "screenshot": "bun scripts/screenshot.ts",
+    "package": "bun scripts/build-app.ts"
   },
   "dependencies": {
     "@agentclientprotocol/claude-agent-acp": "0.95.0",

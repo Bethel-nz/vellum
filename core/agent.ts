@@ -24,7 +24,7 @@ import { filePatch } from './files'
 import { changedFiles, snapshot, type Snapshot } from './gitsnap'
 import { acquire, liveHolder, release } from './locks'
 import { effortLabel, effortValue, type EffortOption, type ModelOption } from './models'
-import { claudeBin, imageMime } from './platform'
+import { claudeBin, compiled, imageMime } from './platform'
 import type { Profile } from './profiles'
 import { profileEnv } from './profiles'
 import { vellumPrompt } from './prompt'
@@ -67,9 +67,13 @@ const fromAgentMode = (id: string): PermissionMode => (id === 'default' ? 'manua
 /** Thinking maps onto the adapter's effort option: off is its lowest level, max its highest. */
 const effortFor = (t: Think) => (t === 'off' ? 'low' : t === 'on' ? 'default' : t)
 
-/** The agent program: the bundled adapter, run by this Bun. VELLUM_AGENT swaps in a fake for checks. */
+/**
+ * The agent program: the bundled adapter, run by this Bun, or by Vellum itself once compiled
+ * (bin.ts). VELLUM_AGENT swaps in a fake for checks.
+ */
 export function agentArgv(): string[] {
-  if (process.env.VELLUM_AGENT) return [process.execPath, process.env.VELLUM_AGENT]
+  if (process.env.VELLUM_AGENT) return compiled ? [process.execPath, '--run', process.env.VELLUM_AGENT] : [process.execPath, process.env.VELLUM_AGENT]
+  if (compiled) return [process.execPath, '--agent']
   const entry = fileURLToPath(import.meta.resolve('@agentclientprotocol/claude-agent-acp/dist/index.js'))
   return [process.execPath, entry]
 }
