@@ -15,7 +15,7 @@ import { splitFences } from '../core/fences'
 import type { Identity } from '../core/avatar'
 import { formatTokens } from '../core/models'
 import { copyText, primary } from '../core/platform'
-import { concentric, diffHeaderClip, diffInk, diffTheme, font, nativeTheme, radiusBase, type } from './theme'
+import { concentric, diffHeaderClip, diffInk, diffTheme, font, nativeTheme, radiusBase, replyText, replyTheme, type } from './theme'
 
 const COMMIT_MS = 500
 
@@ -238,7 +238,7 @@ function AssistantBlock({ block, actions }: { block: Extract<Block, { kind: 'ass
         p.kind === 'code' ? (
           <CodeCard key={i} code={p.code} language={p.language} testId={`code-${block.id}-${i}`} />
         ) : (
-          <markdown key={i} source={p.text} theme={nativeTheme(m)} style={{ color: m.textUi }} />
+          <markdown key={i} source={p.text} theme={replyTheme(m)} style={{ color: replyText(m) }} />
         ),
       )}
     </div>

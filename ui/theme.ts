@@ -410,6 +410,24 @@ export function nativeTheme(m: Material): GpuixTheme {
   }
 }
 
+/**
+ * Claude's prose reads a step back from yours: your paragraphs are `text` at medium weight,
+ * replies sit 85% of the way from `textUi` to `textMuted`: 7.5–8:1 on every material against
+ * your 14.5–20:1, a step you see at a glance and still comfortable for a long reply (a 60% step
+ * read as the same colour next to yours). Code, inline code and bold keep their own colours.
+ */
+export const replyText = (m: Material) => mix(m.textUi, m.textMuted, 0.85)
+
+export function replyTheme(m: Material): GpuixTheme {
+  return { ...nativeTheme(m), text: replyText(m) }
+}
+
+/** Two opaque #rrggbb colours, `t` of the way from `a` to `b`. */
+function mix(a: string, b: string, t: number) {
+  const ch = (hex: string, i: number) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16)
+  return `#${[0, 1, 2].map((i) => Math.round(ch(a, i) + (ch(b, i) - ch(a, i)) * t).toString(16).padStart(2, '0')).join('')}`
+}
+
 // ---------------------------------------------------------------- diffs
 
 /**
