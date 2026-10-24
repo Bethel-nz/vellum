@@ -1072,4 +1072,8 @@ only reach the element under the pointer and don't bubble. So the strip over the
 takes the moves itself, and while a drag is on it stretches across the code, so a pointer that
 drifts right doesn't lose the pick.
 
+Hovering a file chip no longer opens a slice of the file under the paragraph: the pane does that
+job, at the chip's lines. "Read whole file" went with it. Older notes that widened a tag keep the
+widening (`vellum/tag-scope`), and prompts still honor it. A hunk pill still opens its diff on hover.
+
 Not yet: comments on lines, and opening file paths from Claude's tool calls.

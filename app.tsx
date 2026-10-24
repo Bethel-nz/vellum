@@ -1098,11 +1098,9 @@ function App() {
   const tokenCtx = useMemo(
     () => ({
       workspace: active?.workspace ?? homedir(),
-      scopes: active?.tagScopes ?? {},
-      onWiden: (key: string) => active && record(active.id, { type: 'vellum/tag-scope', key, scope: 'file' }),
       onOpen: (file: string, line?: number, endLine?: number) => active && togglePreview(active.id, { path: file, line, endLine }),
     }),
-    [active?.id, active?.workspace, active?.tagScopes, record, togglePreview],
+    [active?.id, active?.workspace, togglePreview],
   )
 
   const me = useMemo(() => identityFor(activeProfile, MACHINE_ME), [activeProfile?.avatarImage])

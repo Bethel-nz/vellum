@@ -1,8 +1,8 @@
-// Self-check for context tokens: a paragraph with `#ui/theme.ts:3` reads with chips, hovering
-// opens that exact line, "Read whole file" records the widening, replies carry no chip row,
-// and `#` in the draft opens a files-only picker whose pick becomes a chip.
+// Self-check for context tokens: a paragraph with `#ui/theme.ts:3` reads with chips, hovering a
+// file chip opens nothing under the paragraph (pressing it opens the file, see check-preview),
+// replies carry no chip row, and `#` in the draft opens a files-only picker whose pick becomes a chip.
 //   bun scripts/check-tokens.ts
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
@@ -12,7 +12,6 @@ await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_H
 const workspace = path.resolve(import.meta.dir, '..')
 const id = '20261023-tokens'
 const at = '2026-10-23T15:00:00.000Z'
-const line3 = readFileSync(path.join(workspace, 'ui/theme.ts'), 'utf8').split('\n')[2]!
 const log = path.join(home, 'threads', `${id}.jsonl`)
 writeFileSync(
   log,
@@ -45,19 +44,8 @@ try {
 
   await app.getByTestId('chip-0').hover()
   await wait(500)
-  const slice = app.getByTestId('token-slice')
-  expect('hover opens the slice', (await slice.count()) === 1)
-  const text = (await slice.count()) ? await slice.textContent() : ''
-  expect('slice shows line 3 with its number', text.includes('3') && text.includes(line3.trim().slice(0, 20)), JSON.stringify(text.slice(0, 60)))
+  expect('hovering a file chip opens nothing under the paragraph', (await app.getByTestId('token-slice').count()) === 0)
   await shot('2-hover-line')
-
-  await app.getByTestId('token-widen').click()
-  await wait(500)
-  expect('Read whole file is recorded', readFileSync(log, 'utf8').includes('"vellum/tag-scope"'))
-  await shot('3-widened')
-  await app.mouse.move({ x: 900, y: 700 })
-  await wait(500)
-  expect('leaving closes the slice', (await app.getByTestId('token-slice').count()) === 0)
 
   expect('replies carry no chip row', (await app.getByTestId('mentions-a-1-0').count()) === 0)
 

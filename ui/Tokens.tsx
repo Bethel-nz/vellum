@@ -1,36 +1,24 @@
-// Context tokens on the page: chips in your paragraphs, a chip row under the paragraph being
-// written, and the hover slice. Hovering a `#path:42` chip opens that one line beneath the
-// paragraph (gutter, source, blue line wash); a plain file chip opens the head of the file.
-// A line chip's slice carries "Read whole file", which widens the tag for this note. A hunk is a
-// ± pill; hovering it opens the hunk itself and your comments on its lines. Pressing a file chip
-// opens the file beside the note, at its line (ui/FilePreview.tsx).
+// Context tokens on the page: chips in your paragraphs and a chip row under the paragraph being
+// written. Pressing a file chip opens the file beside the note, at its lines (ui/FilePreview.tsx).
+// A hunk is a ± pill; hovering it opens the hunk itself and your comments on its lines.
 //
 // GPUIX has no inline spans (nested <text> breaks onto its own line, see
 // spikes/inline-chips.tsx), so a read paragraph is a wrapping row of words and chip boxes.
-// Slices are read when the paragraph renders, never on hover.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from '@gpuix/react'
-import { Button, Chip, HunkPill, Icon, Label } from '../components'
+import { Chip, HunkPill, Icon } from '../components'
 import { duration, ease, tween } from '../components/motion'
-import { readSlice, tagText, tokens, widened, type Slice, type Token } from '../core/tags'
-import { scopeKey, type Tag } from '../core/threads'
+import { tagText, tokens, type Token } from '../core/tags'
+import type { Tag } from '../core/threads'
 import { useM } from './kit'
 import { concentric, diffHeaderClip, diffTheme, font, radiusBase, type } from './theme'
 
-const SLICE_LINE = 19
-/** A range's slice shows this many lines; the rest are a count. */
-const SLICE_MAX = 12
-const SLICE_PAD = 6
-const WIDEN_ROW = 28
-/** Leaving a chip closes its slice after this, so the pointer can reach "Read whole file". */
+/** Leaving a hunk pill closes its diff after this, so the pointer can reach the diff. */
 const LEAVE_MS = 160
 
 export type TokenContext = {
   workspace: string
-  scopes: Record<string, 'file'>
-  /** Absent for read-only chips (Claude's replies). */
-  onWiden?: (key: string) => void
   /** Opens a file chip's file beside the note. */
   onOpen?: (file: string, line?: number, endLine?: number) => void
 }
@@ -45,20 +33,7 @@ let chipPressedAt = 0
 const chipTookClick = () => Date.now() - chipPressedAt < 100
 const chipKind = (t: Exclude<Tag, { type: 'hunk' }>) => (t.type === 'file' ? (t.line ? 'line' : 'file') : t.type)
 
-/** Slices for every file tag in a paragraph, read once per text. */
-function useSlices(tags: Tag[], workspace: string) {
-  return useMemo(() => {
-    const out = new Map<string, Slice>()
-    for (const t of tags) {
-      if (t.type !== 'file') continue
-      const s = readSlice(workspace, t.value, t.line, t.endLine)
-      if (s) out.set(keyOf(t), s)
-    }
-    return out
-  }, [tags.map(keyOf).join('|'), workspace])
-}
-
-/** Which chip's slice is open; leaving waits a moment so the slice itself can be reached. */
+/** Which hunk pill's diff is open; leaving waits a moment so the diff itself can be reached. */
 function useHover() {
   const [open, setOpen] = useState<string | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -81,47 +56,6 @@ function useHover() {
   }
 }
 
-function SlicePanel({ tag, slice, ctx, onEnter, onLeave }: { tag: Extract<Tag, { type: 'file' }>; slice: Slice; ctx: TokenContext; onEnter: () => void; onLeave: () => void }) {
-  const m = useM()
-  const wide = widened(tag, ctx.scopes)
-  const canWiden = Boolean(tag.line && !wide && ctx.onWiden)
-  const shown = slice.lines.slice(0, SLICE_MAX)
-  const more = slice.lines.length - shown.length
-  const height = SLICE_PAD * 2 + (shown.length + (more ? 1 : 0)) * SLICE_LINE + (canWiden || wide ? WIDEN_ROW : 0)
-  const gutter = String(slice.start + shown.length - 1).length * 7.4 + 10
-  return (
-    <motion.div
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height }}
-      transition={tween({ duration: duration.fast, ease: ease.enter })}
-      onMouseEnter={onEnter}
-      onMouseLeave={onLeave}
-      style={{ overflow: 'hidden', marginTop: 6, borderRadius: concentric(radiusBase, 2), backgroundColor: tag.line ? m.lineWash : m.codeBg, borderWidth: 1, borderColor: m.border }}
-    >
-      <div testId="token-slice" style={{ display: 'flex', flexDirection: 'column', paddingTop: SLICE_PAD, paddingBottom: SLICE_PAD }}>
-        {shown.map((line, i) => (
-          <div key={i} style={{ display: 'flex', flexDirection: 'row', height: SLICE_LINE, alignItems: 'center' }}>
-            <text style={{ width: gutter, paddingRight: 8, fontFamily: font.mono, fontSize: 11.5, lineHeight: SLICE_LINE, color: m.textFaint, textAlign: 'right', flexShrink: 0 }}>{String(slice.start + i)}</text>
-            <text style={{ flexGrow: 1, minWidth: 0, fontFamily: font.mono, ...type.mono, lineHeight: SLICE_LINE, color: m.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{line || ' '}</text>
-          </div>
-        ))}
-        {more ? <text style={{ height: SLICE_LINE, paddingLeft: gutter, fontSize: 11.5, lineHeight: SLICE_LINE, color: m.textFaint }}>{more === 1 ? '1 more line' : `${more} more lines`}</text> : null}
-      </div>
-      {canWiden ? (
-        <div style={{ height: WIDEN_ROW, display: 'flex', flexDirection: 'row', alignItems: 'center', paddingLeft: gutter - 8 }}>
-          <Button testId="token-widen" title="Claude reads the whole file for this note" onPress={() => ctx.onWiden!(scopeKey(tag.value, tag.line!))}>
-            <Label muted>Read whole file</Label>
-          </Button>
-        </div>
-      ) : wide ? (
-        <div style={{ height: WIDEN_ROW, display: 'flex', alignItems: 'center', paddingLeft: gutter }}>
-          <text style={{ fontSize: 11.5, lineHeight: 15, color: m.textMuted }}>Claude reads the whole file</text>
-        </div>
-      ) : null}
-    </motion.div>
-  )
-}
-
 function TokenChip({ token, hover, ctx, testId }: { token: Extract<Token, { kind: 'tag' }>; hover: ReturnType<typeof useHover>; ctx: TokenContext; testId?: string }) {
   const key = keyOf(token.tag)
   if (token.tag.type === 'hunk') {
@@ -132,7 +66,7 @@ function TokenChip({ token, hover, ctx, testId }: { token: Extract<Token, { kind
   const file = token.tag.type === 'file' ? token.tag : undefined
   const open = file && ctx.onOpen ? () => ((chipPressedAt = Date.now()), hover.close(), ctx.onOpen!(file.value, file.line, file.endLine)) : undefined
   return (
-    <Chip kind={chipKind(token.tag)} path={file?.value} testId={testId} onPress={open} onHover={file ? (inside) => (inside ? hover.enter(key) : hover.leave()) : undefined}>
+    <Chip kind={chipKind(token.tag)} path={file?.value} testId={testId} onPress={open}>
       {label}
     </Chip>
   )
@@ -168,12 +102,9 @@ function HunkPanel({ tag, onEnter, onLeave }: { tag: Extract<Tag, { type: 'hunk'
   )
 }
 
-function OpenSlice({ tags, slices, hover, ctx }: { tags: Tag[]; slices: Map<string, Slice>; hover: ReturnType<typeof useHover>; ctx: TokenContext }) {
+function OpenHunk({ tags, hover }: { tags: Tag[]; hover: ReturnType<typeof useHover> }) {
   const tag = tags.find((t) => keyOf(t) === hover.open)
-  if (tag?.type === 'hunk') return <HunkPanel key={hover.open!} tag={tag} onEnter={() => hover.enter(hover.open!)} onLeave={hover.leave} />
-  const slice = hover.open ? slices.get(hover.open) : undefined
-  if (!tag || tag.type !== 'file' || !slice) return null
-  return <SlicePanel key={hover.open!} tag={tag} slice={slice} ctx={ctx} onEnter={() => hover.enter(hover.open!)} onLeave={hover.leave} />
+  return tag?.type === 'hunk' ? <HunkPanel key={hover.open!} tag={tag} onEnter={() => hover.enter(hover.open!)} onLeave={hover.leave} /> : null
 }
 
 /** Your paragraph, read: words and chips wrapping together. Click to edit the source. */
@@ -181,7 +112,6 @@ export function TokenText({ text, tags, ctx, onPress, color, testId }: { text: s
   const hover = useHover()
   const found = useMemo(() => tokens(text, tags), [text, tags])
   const present = useMemo(() => found.flatMap((t) => (t.kind === 'tag' ? [t.tag] : [])), [found])
-  const slices = useSlices(present, ctx.workspace)
   // One wrapping row per source line; each word is its own run so chips sit between them.
   const lines: Token[][] = [[]]
   for (const t of found) {
@@ -213,7 +143,7 @@ export function TokenText({ text, tags, ctx, onPress, color, testId }: { text: s
           )}
         </div>
       ))}
-      <OpenSlice tags={present} slices={slices} hover={hover} ctx={ctx} />
+      <OpenHunk tags={present} hover={hover} />
     </div>
   )
 }
@@ -221,7 +151,6 @@ export function TokenText({ text, tags, ctx, onPress, color, testId }: { text: s
 /** The tokens in the paragraph being written, as a row of chips under the composer. */
 export function TokenRow({ tags, ctx, testId }: { tags: Tag[]; ctx: TokenContext; testId?: string }) {
   const hover = useHover()
-  const slices = useSlices(tags, ctx.workspace)
   if (!tags.length) return null
   return (
     <div testId={testId} style={{ display: 'flex', flexDirection: 'column' }}>
@@ -230,7 +159,7 @@ export function TokenRow({ tags, ctx, testId }: { tags: Tag[]; ctx: TokenContext
           <TokenChip key={keyOf(t)} token={{ kind: 'tag', tag: t, text: tagText(t) }} hover={hover} ctx={ctx} testId={testId ? `${testId}-${i}` : undefined} />
         ))}
       </div>
-      <OpenSlice tags={tags} slices={slices} hover={hover} ctx={ctx} />
+      <OpenHunk tags={tags} hover={hover} />
     </div>
   )
 }
