@@ -1,5 +1,6 @@
-// Self-check for writing while Claude works, against scripts/fake-acp.ts: ⌘↵ queues the message
-// and shows it above the composer, ⌥⌘↵ steers it into the running turn (one `_session/steering`,
+// Self-check for writing while Claude works, against scripts/fake-acp.ts: what you write gets
+// Queue and Steer under it; ⌘↵ (or Queue) queues the message, which shows above the composer as
+// a faded paragraph, ⌥⌘↵ steers it into the running turn (one `_session/steering`,
 // answered before that turn ends), a queued message's Send now steers it, ✕ takes one out, and
 // what's left goes out as the next turn once this one ends. A steer before the turn has reached
 // the agent (it's still starting) waits at the front of the queue instead.
@@ -53,7 +54,8 @@ try {
   await c.press('cmd-enter')
   expect('⌘↵ while it works queues the message, above the composer', await until(async () => (await count('queued-0')) === 1))
   await c.fill('drop this one')
-  await c.press('cmd-enter')
+  expect('what you write while it works has Queue and Steer under it', await until(async () => (await count('draft-queue')) === 1 && (await count('draft-steer')) === 1))
+  await app.getByTestId('draft-queue').click()
   await until(async () => (await count('queued-1')) === 1)
   await app.getByTestId('queued-remove-1').click()
   expect('✕ takes one out', await until(async () => (await count('queued-1')) === 0 && (await count('queued-0')) === 1))

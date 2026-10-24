@@ -278,7 +278,7 @@ export function Composer({
           <TagPopup items={rows} active={active} onPick={(i) => (recipesOpen ? pickRecipe(recipeItems[i]!) : pick(items[i]!))} onHover={setActive} />
         </DismissableLayer>
       ) : null}
-      {queue.length ? <QueueRows queue={queue} canSteer={canSteer} onSteer={onSteerQueued} onRemove={onUnqueue} /> : null}
+      {queue.length ? <Queued queue={queue} canSteer={canSteer} tokenCtx={tokenCtx} onSteer={onSteerQueued} onRemove={onUnqueue} /> : null}
       <textarea
         ref={composerRef}
         testId="composer"
@@ -320,7 +320,19 @@ export function Composer({
       {chips ? <TokenText testId="draft-read" chipPrefix="draft-chip" text={value} tags={tags} ctx={tokenCtx} color={m.text} onPress={focusInput} /> : null}
       {shell ? <Meta>{keys(`⌘↵ runs this in ${folder ?? 'the folder'}`)}</Meta> : null}
       {called && !open ? <Meta>{keys(`⌘↵ sends the $${called.recipe.name} recipe${called.recipe.mode ? ` in ${modeLabel(called.recipe.mode)}` : ''}${called.input.trim() ? ', with what follows as its input' : ''}`)}</Meta> : null}
-      {running && value.trim() && !shell && !called && !open ? <Meta>{keys(canSteer ? '⌘↵ queues it for after this turn · ⌥⌘↵ tells Claude now' : '⌘↵ queues it for after this turn')}</Meta> : null}
+      {running && value.trim() && !shell && !called && !open ? (
+        // Under what you're writing while Claude works: after this turn, or into it now.
+        <div testId="draft-actions" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: -8 }}>
+          <Quiet testId="draft-queue" title="Claude picks it up next turn" onPress={() => onSend(false)}>
+            <Meta color={m.textMuted}>{keys('Queue ⌘↵')}</Meta>
+          </Quiet>
+          {canSteer ? (
+            <Quiet testId="draft-steer" title="Tell Claude now, in this turn" onPress={() => onSend(true)}>
+              <Meta color={m.textMuted}>{keys('Steer ⌥⌘↵')}</Meta>
+            </Quiet>
+          ) : null}
+        </div>
+      ) : null}
       {asking && !value.trim() ? <Meta color={m.blue}>{keys('Claude is waiting on you · ↵ allow · ⌘↵ always · esc deny')}</Meta> : null}
       {images.length ? <ImageRow images={images} onRemove={onRemoveImage} /> : null}
     </div>
@@ -330,28 +342,36 @@ export function Composer({
 /** A message written while Claude was working, waiting for its turn to end. */
 export type QueuedMessage = { text: string; tags?: Tag[]; images?: string[] }
 
-/** The queue, above the field: each goes after the turn, in order, or now with Send now. */
-function QueueRows({ queue, canSteer, onSteer, onRemove }: { queue: QueuedMessage[]; canSteer?: boolean; onSteer?: (index: number) => void; onRemove?: (index: number) => void }) {
+/**
+ * What you queued, above the paragraph you're writing: your paragraphs as they'll be sent,
+ * faded until Claude picks them up next turn. Each can still go now (Steer now) or be taken out.
+ */
+function Queued({ queue, canSteer, tokenCtx, onSteer, onRemove }: { queue: QueuedMessage[]; canSteer?: boolean; tokenCtx?: TokenContext; onSteer?: (index: number) => void; onRemove?: (index: number) => void }) {
   const m = useM()
   return (
-    <div testId="queue" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+    <div testId="queue" style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 12 }}>
       {queue.map((item, i) => (
-        <div key={i} testId={`queued-${i}`} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 26 }}>
-          <Icon name="history" size={13} color={m.textFaint} />
-          {/* Its buttons follow the text rather than the far edge, where an approval card sits. */}
-          <text style={{ flexShrink: 1, minWidth: 0, maxWidth: 420, fontSize: 13, lineHeight: 18, color: m.textMuted, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-            {item.text || `${item.images?.length ?? 0} ${item.images?.length === 1 ? 'image' : 'images'}`}
-          </text>
-          {canSteer && onSteer ? (
-            <Quiet testId={`queued-steer-${i}`} title="Tell Claude now, in this turn" onPress={() => onSteer(i)}>
-              <Meta color={m.textMuted}>Send now</Meta>
-            </Quiet>
-          ) : null}
-          {onRemove ? (
-            <Quiet testId={`queued-remove-${i}`} title="Take it out of the queue" onPress={() => onRemove(i)} style={{ width: 22, height: 22, paddingLeft: 0, paddingRight: 0 }}>
-              <Icon name="x" size={12} color={m.textFaint} />
-            </Quiet>
-          ) : null}
+        <div key={i} testId={`queued-${i}`} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {item.text && tokenCtx && item.tags?.length ? (
+            <TokenText text={item.text} tags={item.tags} ctx={tokenCtx} color={m.textFaint} onPress={() => {}} chipPrefix={`queued-${i}-chip`} />
+          ) : (
+            <text style={{ fontFamily: font.sans, ...type.user, fontWeight: 500, color: m.textFaint }}>
+              {item.text || `${item.images?.length ?? 0} ${item.images?.length === 1 ? 'image' : 'images'}`}
+            </text>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+            <Meta>Picked up next turn</Meta>
+            {canSteer && onSteer ? (
+              <Quiet testId={`queued-steer-${i}`} title="Tell Claude now, in this turn" onPress={() => onSteer(i)}>
+                <Meta color={m.textMuted}>Steer now</Meta>
+              </Quiet>
+            ) : null}
+            {onRemove ? (
+              <Quiet testId={`queued-remove-${i}`} title="Take it out of the queue" onPress={() => onRemove(i)}>
+                <Meta color={m.textMuted}>Remove</Meta>
+              </Quiet>
+            ) : null}
+          </div>
         </div>
       ))}
     </div>
