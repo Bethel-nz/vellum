@@ -4,8 +4,9 @@
 // esc closes. ⌘K stays the quick jump. Recipes are the other side (ui/Recipes.tsx).
 
 import { useMemo, useRef, useState } from 'react'
-import { useGpuixRequired, type KeyEvent, type PublicInstance } from '@gpuix/react'
+import { motion, useGpuixRequired, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { Button, Label, Menu, Scroll, Segmented, SidePanel } from '../components'
+import { enter, offset, useReducedMotion } from '../components/motion'
 import { keys, primary } from '../core/platform'
 import type { Profile } from '../core/profiles'
 import type { Recipe } from '../core/recipes'
@@ -102,15 +103,28 @@ export function History({
     else if ((e.modifiers?.ctrl && e.key === 'p') || e.key === 'up') step(-1)
   }
 
+  // Switching sides slides the new one in from its side of the switch (Past notes left, Recipes
+  // right). Not as the panel opens: the panel's own entrance is enough.
+  const reduced = useReducedMotion()
+  const seen = useRef({ open, view })
+  const switched = open && seen.current.open && seen.current.view !== view
+  seen.current = { open, view }
+  const slideFrom = switched && !reduced ? (view === 'recipes' ? offset.dialog : -offset.dialog) : undefined
+
   return (
     <SidePanel open={open} onClose={onClose} side="left" width={480} initialFocus={view === 'recipes' ? recipesRef : inputRef} testId="history">
       <div style={{ display: 'flex', flexDirection: 'row', paddingLeft: 14, paddingRight: 14, paddingTop: 14, flexShrink: 0 }}>
         <Segmented<'history' | 'recipes'> pill testId="history-view" value={view} onChange={onView} width={96} options={[{ value: 'history', label: 'Past notes' }, { value: 'recipes', label: 'Recipes' }]} />
       </div>
+      <motion.div
+        key={view}
+        initial={slideFrom === undefined ? false : { opacity: 0, left: slideFrom }}
+        animate={{ opacity: 1, left: 0 }}
+        transition={enter('fast')}
+        style={{ position: 'relative', display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, paddingTop: view === 'recipes' ? 12 : 0 }}
+      >
       {view === 'recipes' ? (
-        <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, paddingTop: 12 }}>
-          <RecipesView recipes={recipes} folder={folder} onUse={onUseRecipe} onChanged={onRecipesChanged} inputRef={recipesRef} onKeyDown={onKeyDown} />
-        </div>
+        <RecipesView recipes={recipes} folder={folder} onUse={onUseRecipe} onChanged={onRecipesChanged} inputRef={recipesRef} onKeyDown={onKeyDown} />
       ) : (
       <>
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, borderBottomWidth: 1, borderColor: m.border, flexShrink: 0 }}>
@@ -180,6 +194,7 @@ export function History({
       </div>
       </>
       )}
+      </motion.div>
     </SidePanel>
   )
 }

@@ -970,3 +970,15 @@ Not done: Apple silicon only (`bin.ts` names the darwin-arm64 addon); signing is
 opens on this Mac but needs a Developer ID and notarization before anyone else can open it; no
 .dmg yet (add `"dmg"` to `formats`). cargo-packager needs a `name` in its config when there's no
 Cargo.toml, or it fails with "Not a directory".
+
+## 2026-10-24 — the shelf's two sides slide
+
+Switching between Past notes and Recipes (the switch, or ⇧⌘Y) slides the new side in 8px
+(`offset.dialog`) from its own side of the switch, Past notes from the left and Recipes from the
+right, fading in over `enter('fast')`, 160ms. The old side goes at once, so a switch never
+waits on an exit. Opening the panel doesn't slide its side, since the panel already has its own
+entrance. With reduced motion the switch is instant.
+
+In the renderer: a click on a recipe 10ms after switching lands (the contract warns that a moving
+element can swallow clicks; this one is the click's own container, and it didn't). Six switches
+40ms apart settle on the right side. check-recipes and check-tabs pass.
