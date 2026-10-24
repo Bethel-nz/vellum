@@ -43,6 +43,26 @@ export function previewKind(file: string): PreviewKind {
   return 'code'
 }
 
+// GPUIX's <code> highlights a fixed set of grammars (bash, c, css, go, html, js and ts, json,
+// markdown, python, rust, toml, yaml) and leaves everything else plain. A file of a type it has no
+// grammar for borrows the nearest one it has, close enough for comments, strings and keywords;
+// SQL and Lua have none near, so they stay plain. Undefined leaves the pick to <code>.
+const BORROWED: Record<string, string> = {
+  '.xml': 'html', '.svg': 'html', '.plist': 'html', '.xhtml': 'html', '.vue': 'html', '.svelte': 'html',
+  '.env': 'bash', '.envrc': 'bash', '.zsh': 'bash', '.zshrc': 'bash', '.bashrc': 'bash', '.profile': 'bash', '.gitignore': 'bash', '.dockerignore': 'bash', '.gitattributes': 'bash', '.ini': 'bash', '.cfg': 'bash', '.conf': 'bash', '.mk': 'bash',
+  '.cc': 'c', '.cpp': 'c', '.cxx': 'c', '.hpp': 'c', '.hh': 'c', '.m': 'c', '.mm': 'c', '.java': 'c', '.cs': 'c',
+  '.swift': 'typescript', '.kt': 'typescript', '.kts': 'typescript', '.scala': 'typescript', '.dart': 'typescript', '.groovy': 'typescript', '.gradle': 'typescript',
+  '.rb': 'python',
+}
+const BORROWED_NAMES: Record<string, string> = { makefile: 'bash', gnumakefile: 'bash', dockerfile: 'bash', containerfile: 'bash', gemfile: 'python', rakefile: 'python', brewfile: 'python' }
+
+export function codeLanguage(file: string): string | undefined {
+  const base = path.basename(file).toLowerCase()
+  // `.env.local` and `Dockerfile.dev` count as what they start with.
+  const ext = path.extname(base) || (base.startsWith('.') ? base : '')
+  return BORROWED_NAMES[base] ?? BORROWED_NAMES[base.split('.')[0]] ?? BORROWED[ext] ?? (base.startsWith('.env') ? 'bash' : undefined)
+}
+
 export function readPreview(workspace: string, file: string): Preview {
   const rel = path.isAbsolute(file) ? path.relative(workspace, file) : file
   const abs = insideWorkspace(workspace, file)

@@ -227,7 +227,7 @@ export function FilePreview({ workspace, file, version, width, treeWidth, split,
             {hunks?.length ? (
               <Button testId="file-preview-changes" selected={showDiff} title={showDiff ? 'Back to the file' : 'What this note changed in the file'} onPress={() => setDiff(!showDiff)} style={pill(m)}>
                 <Icon name="diff" size={13} />
-                {width >= 600 ? <Label>{showDiff ? 'Show file' : 'Show changes'}</Label> : null}
+                {contentWidth >= 560 ? <Label>{showDiff ? 'Show file' : 'Show changes'}</Label> : null}
               </Button>
             ) : null}
             <FileActions folder={workspace} rel={shown?.rel} abs={shown?.abs} />

@@ -60,6 +60,7 @@ import { Changes } from './ui/Changes'
 import { revealEnd } from './ui/glide'
 import { Timeline, watchRows } from './ui/Timeline'
 import { changeSummary, collectChanges, commentTags, hunkTags, type Hunk } from './core/changes'
+import { listDir } from './core/filetree'
 import { uncommittedFiles } from './core/gitsnap'
 import type { ChangeSummary } from './components/ChangesSummary'
 import { Dot, Icon, Kbd, MaterialContext, Meta, Quiet, useM } from './ui/kit'
@@ -195,6 +196,20 @@ const clock = (iso: string) => {
  * The note's account, on the strip: a menu of your accounts that moves the note to the one you
  * pick (Claude carries on there in a new session, with the note so far), and the way to Settings.
  */
+/**
+ * The file the pane opens on when it's asked for the files: the one this note changed last,
+ * else the folder's README, else its first file. Undefined only for an empty folder.
+ */
+function defaultFile(thread: Thread): string | undefined {
+  const workspace = thread.workspace
+  // Newest group first, and in a group the file edited last.
+  const recent = collectChanges(thread).flatMap((group) => group.files.map((f) => path.relative(workspace, path.resolve(workspace, f.path))).reverse())
+  const last = recent.find((rel) => !rel.startsWith('..') && existsSync(path.join(workspace, rel)))
+  if (last) return last
+  const files = listDir(workspace).filter((e) => !e.dir)
+  return (files.find((e) => /^readme(\.|$)/i.test(e.name)) ?? files.find((e) => !e.ignored) ?? files[0])?.rel
+}
+
 function AccountSwitcher({
   thread,
   profiles,
@@ -489,7 +504,7 @@ function App() {
   const toggleFiles = () => {
     if (!active) return
     if (!previewing) {
-      setPreviews((all) => ({ ...all, [active.id]: {} }))
+      setPreviews((all) => ({ ...all, [active.id]: { path: defaultFile(active) } }))
       showTree(true)
     } else if (!fileTree) showTree(true)
     else {
@@ -1339,7 +1354,7 @@ function App() {
               leading={
                 <>
                   <Button onPress={() => setOverlay('history')} testId="open-history" title={keys('Past notes (⌘Y) and recipes (⇧⌘Y)')}>
-                    <Icon name="library" size={14} />
+                    <Icon name="library" size={15} />
                   </Button>
                   <AccountSwitcher
                     thread={active}

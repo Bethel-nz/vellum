@@ -1,5 +1,5 @@
 // Self-check for "Open in", in the file pane's header (it left the strip): it lists this Mac's apps
-// with their icons, opens the note's folder in the one you pick while no file is open, remembers
+// with their icons, opens the file the pane opened on (or the note's folder) in the one you pick, remembers
 // it, and the button then opens there in one click. With a file open, an editor gets the file and
 // Finder shows it. Nothing is really opened: VELLUM_OPEN_LOG records what would be.
 //   bun scripts/check-open-in.ts
@@ -35,9 +35,13 @@ try {
   await wait(600)
   expect('the file pane has it', (await app.getByTestId('open-in').count()) === 1)
 
+  // The pane opens on the file the note changed last (the fixture's ui/theme.ts): an editor gets
+  // that file, Finder shows it, anything else the note's folder.
+  const changed = path.join(workspace, 'ui/theme.ts')
+  const gets = (t: (typeof targets)[number], o?: { dir?: string; reveal?: string }) => (t.kind === 'files' ? o?.reveal === changed : o?.dir === (t.kind === 'editor' ? changed : workspace))
   await app.getByTestId('open-in').click()
   await wait(400)
-  expect('one click opens the note’s folder in the first app', opened().at(-1)?.target === targets[0]!.id && opened().at(-1)?.dir === workspace, JSON.stringify(opened().at(-1)))
+  expect(`one click opens it in the first app, ${targets[0]!.name}`, (targets[0]!.kind === 'files' || opened().at(-1)?.target === targets[0]!.id) && gets(targets[0]!, opened().at(-1)), JSON.stringify(opened().at(-1)))
 
   await app.getByTestId('open-in-menu-button').click()
   await app.getByTestId('open-in-menu').waitFor({ timeoutMs: 5_000 })

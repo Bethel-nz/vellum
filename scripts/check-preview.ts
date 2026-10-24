@@ -7,7 +7,8 @@
 // `#printed.ts:20-24` chip on the end of the draft, the tag keeping its path. The pane is a card of its own, its
 // header a path pill; "Show changes" swaps in the note's edit to the file; Open › Finder shows
 // that file; the tree opens on the file, marks what changed and opens another file; ⇧⌘E
-// hides it; and the strip's Files button opens the pane on the tree alone.
+// hides it; and the strip's Files button opens the pane on the tree and a file it picks: the
+// one the note changed last.
 // Shots: screenshots/preview-*.png.
 //   bun scripts/check-preview.ts
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -69,11 +70,20 @@ async function run(size: string, wide: boolean) {
     // A row's middle, from the gutter's painted top: every row is 18 high.
     const g = await app.getByTestId('file-preview-gutter').bounds()
     const row = (n: number) => ({ x: g.x + g.width / 2, y: g.y + (n - 1) * 18 + 9 })
-    const picked = () => app.getByTestId('file-preview-picked').textContent()
+    // The pick's label, once it says `want` (or after a second, whatever it says).
+    const picked = async (want?: string) => {
+      let text = ''
+      for (let i = 0; i < 10; i++) {
+        text = await app.getByTestId('file-preview-picked').textContent().catch(() => '')
+        if (!want || text === want) break
+        await wait(100)
+      }
+      return text
+    }
     // Off to the right of the numbers on the way: the pick still follows.
     await app.mouse.drag(row(20), { x: g.x + 200, y: row(24).y })
     await wait(400)
-    expect('dragging down the line numbers picks lines', (await picked()) === 'Lines 20–24' && (await count('file-preview-pick')) === 1, await picked())
+    expect('dragging down the line numbers picks lines', (await picked('Lines 20–24')) === 'Lines 20–24' && (await count('file-preview-pick')) === 1, await picked())
     await shot('4-pick')
     await app.getByTestId('file-preview-mention').click()
     await wait(500)
@@ -95,7 +105,7 @@ async function run(size: string, wide: boolean) {
     await wait(300)
     await app.mouse.click(row(19), { modifiers: 'shift' })
     await wait(300)
-    expect('⇧-click stretches the pick, up too', (await picked()) === 'Lines 19–22', await picked())
+    expect('⇧-click stretches the pick, up too', (await picked('Lines 19–22')) === 'Lines 19–22', await picked())
     await app.getByTestId('file-preview').press('escape')
     await wait(300)
     expect('Esc clears a pick first', (await count('file-preview-mention-bar')) === 0 && (await count('file-preview')) === 1)
@@ -128,7 +138,15 @@ async function run(size: string, wide: boolean) {
     const withTree = await app.getByTestId('file-preview').bounds()
     expect('the tree opens on the file', (await count('file-tree')) === 1 && (await count('file-tree-row-core/printed.ts')) === 1)
     expect('…and the pane widens for it', withTree.width > pane.width + 100, `${Math.round(pane.width)} → ${Math.round(withTree.width)}`)
-    expect('git’s status marks a file, U for one it doesn’t track, and its folder', (await app.getByTestId('file-tree-mark-core/scratch-git.ts').textContent()) === 'U' && (await count('file-tree-mark-core')) === 1)
+    expect('git’s status marks a folder holding a change', (await count('file-tree-mark-core')) === 1)
+    // Rows are mounted a window at a time, so search brings the file in.
+    await app.getByTestId('file-tree-search').click()
+    await wait(300)
+    await app.getByTestId('file-tree-query').fill('scratch-git')
+    await wait(700)
+    expect('…and the file, U for one git doesn’t track', (await app.getByTestId('file-tree-mark-core/scratch-git.ts').textContent().catch(() => '')) === 'U')
+    await app.getByTestId('file-tree-query').press('escape')
+    await wait(300)
     const treeBox = await app.getByTestId('file-tree').bounds()
     expect('the tree runs down the pane’s left side', treeBox.x < withTree.x + 12, `${Math.round(treeBox.x)} vs ${Math.round(withTree.x)}`)
     expect('beside the tree the file is a tab', (await app.getByTestId('file-preview-path').textContent()).replace(/[^\x20-\x7e]/g, '') === 'printed.ts')
@@ -249,8 +267,12 @@ async function run(size: string, wide: boolean) {
     await wait(500)
     await app.getByTestId('open-files').click()
     await wait(700)
-    expect('Files on the strip opens the pane on the tree alone', (await count('file-tree')) === 1 && (await count('file-preview-empty')) === 1)
+    expect('Files on the strip opens the pane on the tree and the file the note changed last', (await count('file-tree')) === 1 && (await app.getByTestId('file-preview-name').textContent()) === 'printed.ts')
     await shot('8-files')
+    await app.getByTestId('file-tree-search').click()
+    await wait(300)
+    await app.getByTestId('file-tree-query').fill('NOTES.md')
+    await wait(700)
     await app.getByTestId('file-tree-row-NOTES.md').click()
     await wait(600)
     expect('…and a pick opens the file', (await app.getByTestId('file-preview-name').textContent()) === 'NOTES.md')

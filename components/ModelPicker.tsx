@@ -36,19 +36,23 @@ export function ModelPicker({ models, model, resolvedModel, efforts = fallbackEf
   const window = useWindowSize()
   const main = useRef<PublicInstance>(null)
   const child = useRef<PublicInstance>(null)
-  const [active, setActive] = useState(0)
+  // Both lists open on what's chosen now.
+  const [active, setActive] = useState(() => Math.max(0, models.findIndex((option) => option.value === (model ?? 'default'))))
+  const current = Math.max(0, efforts.findIndex((option) => option.value === think))
   const [sub, setSub] = useState<'effort' | null>(null)
-  const [subActive, setSubActive] = useState(0)
+  const [subActive, setSubActive] = useState(current)
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const count = models.length + 1
   const keep = () => clearTimeout(leaveTimer.current)
   const leave = () => { leaveTimer.current = setTimeout(() => setSub(null), duration.fast * 1000) }
   useEffect(() => () => clearTimeout(leaveTimer.current), [])
   const choose = (option: ModelOption) => { onClose(); onModel(option.value === 'default' ? undefined : option.value) }
+  // A level closes the picker as a model does: left open, the menu jumped as the pill's label changed width.
+  const chooseEffort = (option: EffortOption) => { onClose(); onThink(option.value) }
   const openSub = (focus = false) => {
     keep()
     setSub('effort')
-    setSubActive(0)
+    setSubActive(current)
     if (focus) setTimeout(() => { if (child.current) renderer.focusElement?.(child.current.id) }, 32)
   }
   const activate = (index: number) => {
@@ -65,7 +69,7 @@ export function ModelPicker({ models, model, resolvedModel, efforts = fallbackEf
     else if (event.key === 'enter' || event.key === 'space') {
       event.preventDefault()
       if (!nested) activate(index)
-      else if (efforts[index]) { onThink(efforts[index].value); setSub(null); if (main.current) renderer.focusElement?.(main.current.id) }
+      else if (efforts[index]) chooseEffort(efforts[index])
     } else if (!nested && event.key === 'right' && index === models.length) { event.preventDefault(); activate(index) }
     else if (nested && (event.key === 'left' || event.key === 'escape')) { event.preventDefault(); event.stopPropagation(); setSub(null); if (main.current) renderer.focusElement?.(main.current.id) }
   }
@@ -75,7 +79,7 @@ export function ModelPicker({ models, model, resolvedModel, efforts = fallbackEf
       <div ref={child} role="menu" tabIndex={0} onKeyDown={(event) => navigate(event, true)} onMouseEnter={keep} onMouseLeave={leave} testId="effort-menu" style={{ position: 'relative', keyboardFocusDim: false }}>
         <Surface />
         <div style={{ position: 'relative', padding: 6, display: 'flex', flexDirection: 'column' }}>
-          {efforts.map((option, index) => <PickerRow key={option.value} label={option.displayName} description={option.description ?? effortHints[option.value]} checked={think === option.value} selected={subActive === index} onHover={() => setSubActive(index)} onPress={() => { onThink(option.value); setSub(null) }} testId={`effort-${option.value}`} />)}
+          {efforts.map((option, index) => <PickerRow key={option.value} label={option.displayName} description={option.description ?? effortHints[option.value]} checked={think === option.value} selected={subActive === index} onHover={() => setSubActive(index)} onPress={() => chooseEffort(option)} testId={`effort-${option.value}`} />)}
         </div>
       </div>
     </FloatingLayer>

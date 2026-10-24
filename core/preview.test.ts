@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { bytesLabel, hexDump, MAX_LINES, previewKind, readPreview } from './preview'
+import { bytesLabel, codeLanguage, hexDump, MAX_LINES, previewKind, readPreview } from './preview'
 
 test('how each file shows', () => {
   expect(previewKind('README.md')).toBe('markdown')
@@ -11,6 +11,21 @@ test('how each file shows', () => {
   expect(previewKind('Makefile')).toBe('code')
   expect(previewKind('notes.txt')).toBe('text')
   expect(previewKind('LICENSE')).toBe('text')
+})
+
+test('a type <code> has no grammar for borrows the nearest one', () => {
+  // Ones it has stay its pick.
+  expect(codeLanguage('app.tsx')).toBeUndefined()
+  expect(codeLanguage('Cargo.toml')).toBeUndefined()
+  expect(codeLanguage('a/Makefile')).toBe('bash')
+  expect(codeLanguage('Dockerfile.dev')).toBe('bash')
+  expect(codeLanguage('.env.local')).toBe('bash')
+  expect(codeLanguage('.gitignore')).toBe('bash')
+  expect(codeLanguage('Info.plist')).toBe('html')
+  expect(codeLanguage('View.swift')).toBe('typescript')
+  expect(codeLanguage('Main.java')).toBe('c')
+  // Nothing near: plain.
+  expect(codeLanguage('schema.sql')).toBeUndefined()
 })
 
 test('reading a file, and the reasons one can’t be shown', () => {

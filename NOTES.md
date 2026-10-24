@@ -1154,3 +1154,27 @@ goes in blocks of 100 lines, each its own `<code>`, with line numbers drawn besi
 on; a block highlights alone, so a comment that crosses into the next can lose its colour there.
 Long markdown goes in pages split at a blank line before a heading or paragraph, outside fences.
 The tree's rows are windowed the same way, for node_modules.
+
+## 2026-10-24 — the pane opens on a file, more types highlight, effort closes the picker
+
+The files button opens the pane on a file, never on an empty side: the one this note changed
+last (newest change group first, and in it the file edited last), else the folder's README,
+else its first file (app.tsx `defaultFile`). History's icon is the books drawing supplied for it.
+
+Tried and taken back: an action bar over the file (staged/unstaged, chunk arrows, find, diff,
+word wrap) and a full view with the agent docked beside it. Both were more than the pane needs;
+the file only scrolls sideways, as code does.
+
+Fenced code in markdown and the markdown source already highlight. GPUIX's `<code>` has grammars
+for bash, c, css, go, html, js/ts, json, markdown, python, rust, toml and yaml only; the
+binary names more (Swift, SQL, Dockerfile…) but `language` doesn't reach them, checked one by
+one. So a type without a grammar borrows the nearest (core/preview.ts `codeLanguage`): XML,
+SVG and plist read as html; .env, Dockerfile, Makefile, .gitignore and shell rc files as bash;
+C++, Objective-C, Java and C# as c; Swift, Kotlin, Scala and Dart as typescript; Ruby as python.
+That's enough for comments, strings and keywords. SQL and Lua have nothing near and stay plain.
+
+Effort: picking a level left the model menu open, and the menu jumped sideways as the pill's
+label changed width under it ("Default" to "Max"), since it hangs from the pill's end. A level
+now closes the picker as a model does, and both lists open on what's chosen, not the first row.
+In a background automation window the menus' fade-ins don't advance on their own; checks that
+look at them pause the clock and fast-forward it (`app.clock`).

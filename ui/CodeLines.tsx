@@ -12,7 +12,7 @@
 
 import { useEffect, useMemo } from 'react'
 import { useGpuixRequired, type EventPayload } from '@gpuix/react'
-import type { Preview } from '../core/preview'
+import { codeLanguage, type Preview } from '../core/preview'
 import { useM } from './kit'
 import { font, nativeTheme, replyText, replyTheme, type } from './theme'
 import { useWindowed } from './windowed'
@@ -64,7 +64,7 @@ export function CodeLines({ preview, line, wash, picked, dragging, onPress, onDr
     return first + Math.min(count - 1, Math.max(0, Math.floor((e.y - b.y) / ROW)))
   }
   const theme = nativeTheme(m)
-  const language = preview.kind === 'text' ? 'text' : undefined
+  const language = preview.kind === 'text' ? 'text' : codeLanguage(preview.abs)
 
   return (
     <virtual-list {...win.props} testId="file-preview-scroll" alignment="top" estimatedItemHeight={BLOCK * ROW} overdraw={800} style={{ flexGrow: 1, minHeight: 0, width: '100%', scrollbarColor: m.scrollbar, scrollbarWidth: 6 }}>
