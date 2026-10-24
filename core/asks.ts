@@ -5,6 +5,7 @@
 
 import path from 'node:path'
 import { relPath } from './threads'
+import type { UserQuestion } from './questions'
 
 /** Claude Code's permission modes, as `--permission-mode` lists them. */
 export type PermissionMode = 'manual' | 'acceptEdits' | 'plan' | 'auto' | 'dontAsk' | 'bypassPermissions'
@@ -32,6 +33,8 @@ export type Ask = {
   /** The command, path or URL, in mono. */
   detail: string
   input: Record<string, unknown>
+  /** An ACP form elicitation, answered with values rather than permission options. */
+  questions?: UserQuestion[]
   /** For edits: the change itself, as a unified diff against the file on disk. */
   patch?: string
   /** The one allow-rule suggestion the card names; only this is sent on "always allow". */
