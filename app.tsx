@@ -1527,6 +1527,7 @@ function App() {
             setOverlay(null)
             setTimeout(focusComposer, 50)
           }}
+          onDelete={deleteNote}
           onRecipesChanged={() => setRecipesSaved((n) => n + 1)}
         />
         {overlay === 'switcher' ? (

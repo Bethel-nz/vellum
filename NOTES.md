@@ -1037,7 +1037,7 @@ stay in images/, so a restored note still finds its images.
 In Past notes, the hovered or selected row shows a trash button, and ⇧⌘⌫ deletes it. The shortcut
 isn't ⌘⌫ because the search field keeps ⌘⌫ and ⌘⌦ for itself (delete to the start of the line),
 and they never reach its onKeyDown. ⇧⌘⌫ does. The trash button sits beside the row rather than
-inside it, so pressing it doesn't open the note. Both sides of the panel are 720 wide, so switching
+inside it, so pressing it doesn't open the note. Both sides of the panel are 480 wide, the width Recipes always had, so switching
 between them doesn't resize it under the slide. These History changes are built on the search view
 (ui/SearchResults.tsx), which wasn't committed yet when the trash was. scripts/check-trash.ts covers
 the whole flow.
