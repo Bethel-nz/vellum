@@ -2,7 +2,8 @@
 // written, and the hover slice. Hovering a `#path:42` chip opens that one line beneath the
 // paragraph (gutter, source, blue line wash); a plain file chip opens the head of the file.
 // A line chip's slice carries "Read whole file", which widens the tag for this note. A hunk is a
-// ± pill; hovering it opens the hunk itself and your comments on its lines.
+// ± pill; hovering it opens the hunk itself and your comments on its lines. Pressing a file chip
+// opens the file beside the note, at its line (ui/FilePreview.tsx).
 //
 // GPUIX has no inline spans (nested <text> breaks onto its own line, see
 // spikes/inline-chips.tsx), so a read paragraph is a wrapping row of words and chip boxes.
@@ -28,9 +29,18 @@ export type TokenContext = {
   scopes: Record<string, 'file'>
   /** Absent for read-only chips (Claude's replies). */
   onWiden?: (key: string) => void
+  /** Opens a file chip's file beside the note. */
+  onOpen?: (file: string, line?: number) => void
 }
 
 const keyOf = (t: Tag) => `${t.type}:${tagText(t)}`
+
+/**
+ * When a chip last opened its file. A click bubbles from the chip to its paragraph, and GPUIX has
+ * no stopPropagation for mouse events, so the paragraph skips a click a chip just took.
+ */
+let chipPressedAt = 0
+const chipTookClick = () => Date.now() - chipPressedAt < 100
 const chipKind = (t: Exclude<Tag, { type: 'hunk' }>) => (t.type === 'file' ? (t.line ? 'line' : 'file') : t.type)
 
 /** Slices for every file tag in a paragraph, read once per text. */
@@ -107,15 +117,17 @@ function SlicePanel({ tag, slice, ctx, onEnter, onLeave }: { tag: Extract<Tag, {
   )
 }
 
-function TokenChip({ token, hover, testId }: { token: Extract<Token, { kind: 'tag' }>; hover: ReturnType<typeof useHover>; testId?: string }) {
+function TokenChip({ token, hover, ctx, testId }: { token: Extract<Token, { kind: 'tag' }>; hover: ReturnType<typeof useHover>; ctx: TokenContext; testId?: string }) {
   const key = keyOf(token.tag)
   if (token.tag.type === 'hunk') {
     const h = token.tag
     return <HunkPill path={h.path} added={h.added} removed={h.removed} notes={h.notes?.length} line={h.comments ? h.notes?.[0]?.line : undefined} testId={testId} onHover={(inside) => (inside ? hover.enter(key) : hover.leave())} />
   }
   const label = token.tag.type === 'skill' ? token.tag.value : token.text.replace(/^[#@]/, '')
+  const file = token.tag.type === 'file' ? token.tag : undefined
+  const open = file && ctx.onOpen ? () => ((chipPressedAt = Date.now()), hover.close(), ctx.onOpen!(file.value, file.line)) : undefined
   return (
-    <Chip kind={chipKind(token.tag)} path={token.tag.type === 'file' ? token.tag.value : undefined} testId={testId} onHover={token.tag.type === 'file' ? (inside) => (inside ? hover.enter(key) : hover.leave()) : undefined}>
+    <Chip kind={chipKind(token.tag)} path={file?.value} testId={testId} onPress={open} onHover={file ? (inside) => (inside ? hover.enter(key) : hover.leave()) : undefined}>
       {label}
     </Chip>
   )
@@ -179,12 +191,12 @@ export function TokenText({ text, tags, ctx, onPress, color, testId }: { text: s
   }
   let chip = 0
   return (
-    <div testId={testId} onClick={onPress} style={{ display: 'flex', flexDirection: 'column', cursor: 'text' }}>
+    <div testId={testId} onClick={() => chipTookClick() || onPress()} style={{ display: 'flex', flexDirection: 'column', cursor: 'text' }}>
       {lines.map((line, li) => (
         <div key={li} style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 4, minHeight: type.user.lineHeight }}>
           {line.flatMap((t, ti) =>
             t.kind === 'tag'
-              ? [<TokenChip key={`${ti}`} token={t} hover={hover} testId={`chip-${chip++}`} />]
+              ? [<TokenChip key={`${ti}`} token={t} hover={hover} ctx={ctx} testId={`chip-${chip++}`} />]
               : t.text
                   .split(/\s+/)
                   .filter(Boolean)
@@ -210,7 +222,7 @@ export function TokenRow({ tags, ctx, testId }: { tags: Tag[]; ctx: TokenContext
     <div testId={testId} style={{ display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
         {tags.map((t, i) => (
-          <TokenChip key={keyOf(t)} token={{ kind: 'tag', tag: t, text: tagText(t) }} hover={hover} testId={testId ? `${testId}-${i}` : undefined} />
+          <TokenChip key={keyOf(t)} token={{ kind: 'tag', tag: t, text: tagText(t) }} hover={hover} ctx={ctx} testId={testId ? `${testId}-${i}` : undefined} />
         ))}
       </div>
       <OpenSlice tags={tags} slices={slices} hover={hover} ctx={ctx} />

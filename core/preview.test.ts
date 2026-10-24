@@ -1,0 +1,30 @@
+import { expect, test } from 'bun:test'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { MAX_LINES, previewKind, readPreview } from './preview'
+
+test('how each file shows', () => {
+  expect(previewKind('README.md')).toBe('markdown')
+  expect(previewKind('package.json')).toBe('json')
+  expect(previewKind('app.tsx')).toBe('code')
+  expect(previewKind('Makefile')).toBe('code')
+  expect(previewKind('notes.txt')).toBe('text')
+  expect(previewKind('LICENSE')).toBe('text')
+})
+
+test('reading a file, and the reasons one can’t be shown', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'vellum-preview-'))
+  writeFileSync(path.join(dir, 'a.ts'), 'const a = 1\nconst b = 2\n')
+  writeFileSync(path.join(dir, 'big.txt'), Array.from({ length: MAX_LINES + 10 }, (_, i) => `line ${i + 1}`).join('\n'))
+  writeFileSync(path.join(dir, 'bin.dat'), Buffer.from([1, 2, 0, 3]))
+  mkdirSync(path.join(dir, 'sub'))
+  const a = readPreview(dir, 'a.ts')
+  expect(a.ok && a.kind === 'code' && a.lines === 2 && a.text === 'const a = 1\nconst b = 2').toBe(true)
+  const big = readPreview(dir, 'big.txt')
+  expect(big.ok && big.lines === MAX_LINES + 10 && big.shown === MAX_LINES && big.text.split('\n').length === MAX_LINES).toBe(true)
+  expect(readPreview(dir, 'bin.dat')).toMatchObject({ ok: false, reason: expect.stringContaining('binary') })
+  expect(readPreview(dir, 'sub')).toMatchObject({ ok: false, reason: expect.stringContaining('folder') })
+  expect(readPreview(dir, 'gone.ts')).toMatchObject({ ok: false, reason: expect.stringContaining('exist') })
+  expect(readPreview(dir, '../outside.ts')).toMatchObject({ ok: false })
+})

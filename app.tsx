@@ -32,6 +32,7 @@ import { notify } from './core/notify'
 import { FONTS } from './assets/fonts'
 import { OpenIn } from './ui/OpenIn'
 import { ImageViewer, type Viewing } from './ui/ImageViewer'
+import { FilePreview, previewLayout, type Previewing } from './ui/FilePreview'
 import { purgeTrash, trashNote } from './core/trash'
 import { claudeBin, compiled, hasPty, isMac, keys, openConsole, pasteImage, primary, revealFolder, revealLabel, shellArgv, tabStep } from './core/platform'
 import {
@@ -383,6 +384,14 @@ function App() {
   const [drafts, setDrafts] = useState<Record<string, Draft>>(() => readJson(paths.drafts, {}))
   // Settings › New notes › At launch: "New note" opens its dialog over the last note.
   const [overlay, setOverlay] = useState<null | 'new' | 'switcher' | 'settings' | 'history' | 'changes'>(() => (readSettings().atLaunch === 'new' ? 'new' : null))
+  /** Each note's file open beside it (ui/FilePreview.tsx); pressing the same chip again closes it. */
+  const [previews, setPreviews] = useState<Record<string, Previewing>>({})
+  const togglePreview = useCallback((noteId: string, file: Previewing) => {
+    setPreviews((all) => {
+      const { [noteId]: open, ...rest } = all
+      return open?.path === file.path && open.line === file.line ? rest : { ...rest, [noteId]: file }
+    })
+  }, [])
   /** A pasted image open full size over everything (ui/ImageViewer.tsx). */
   const [viewing, setViewing] = useState<Viewing>()
   // The History panel's two sides: past notes, or recipes.
@@ -425,6 +434,8 @@ function App() {
   activeRef.current = activeId
 
   const active = threads.find((t) => t.id === activeId)
+  const previewing = active ? previews[active.id] : undefined
+  const previewSize = previewLayout(windowSize.width)
   const activeProfile = profiles.find((p) => p.id === active?.profileId)
   // The folder's own uncommitted changes, so the strip offers Changes in a project with edits
   // nobody made in this note. Read again when the note's changes move and when Changes closes.
@@ -1080,8 +1091,9 @@ function App() {
       workspace: active?.workspace ?? homedir(),
       scopes: active?.tagScopes ?? {},
       onWiden: (key: string) => active && record(active.id, { type: 'vellum/tag-scope', key, scope: 'file' }),
+      onOpen: (file: string, line?: number) => active && togglePreview(active.id, { path: file, line }),
     }),
-    [active?.id, active?.workspace, active?.tagScopes, record],
+    [active?.id, active?.workspace, active?.tagScopes, record, togglePreview],
   )
 
   const me = useMemo(() => identityFor(activeProfile, MACHINE_ME), [activeProfile?.avatarImage])
@@ -1336,7 +1348,7 @@ function App() {
           ) : active ? (
             <>
               {/* Text scrolls under the strip through a short fade instead of a hard edge. */}
-              <div testId="page" style={{ position: 'relative', flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+              <div testId="page" style={{ position: 'relative', flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column', marginRight: previewing && previewSize.split ? previewSize.width : 0 }}>
               <Document
                 thread={active}
                 actions={actions}
@@ -1415,6 +1427,19 @@ function App() {
                 </div>
               </div>
               </div>
+              {previewing ? (
+                <FilePreview
+                  workspace={active.workspace}
+                  file={previewing}
+                  version={active.updatedAt}
+                  width={previewSize.width}
+                  split={previewSize.split}
+                  onClose={() => {
+                    setPreviews(({ [active.id]: _, ...rest }) => rest)
+                    setTimeout(focusComposer, 30)
+                  }}
+                />
+              ) : null}
             </>
           ) : (
             <EmptyState onNew={() => setOverlay('new')} />

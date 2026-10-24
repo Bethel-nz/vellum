@@ -1041,3 +1041,28 @@ inside it, so pressing it doesn't open the note. Both sides of the panel are 480
 between them doesn't resize it under the slide. These History changes are built on the search view
 (ui/SearchResults.tsx), which wasn't committed yet when the trash was. scripts/check-trash.ts covers
 the whole flow.
+
+## 2026-10-24 — a file chip opens the file beside the note
+
+Pressing a file chip opens that file in a pane beside the note (ui/FilePreview.tsx). This works
+in your paragraphs and in the draft's chip row. A line chip opens the file at its line, with the
+line washed blue. Markdown renders, with a Source toggle; code is highlighted with line numbers
+(`<code path=…>` picks the language); plain text reads as it is. When the window has room
+(`previewLayout`: the pane is 44% of the window, 440–720 wide, and the note keeps at least 560),
+the note narrows beside the pane. Otherwise the pane slides over the note's right side. Pressing
+the same chip again closes it, and so do the ✕ and Esc. Each note remembers its own open file.
+The file is read again whenever the note changes, so an edit Claude makes shows up.
+
+core/preview.ts reads a file under the same rules as diffs: only inside the note's folder, and
+never anything that looks like credentials. When a file can't be shown, it says why (outside the
+folder, missing, a folder, binary, over 4 MB). Past 5,000 lines it shows the first 5,000, since
+`<code>` builds a row per line. JSON has a slot of its own: a view in `previewViews.json` takes
+over from the code view.
+
+GPUIX mouse events have no stopPropagation, so a chip's click also reaches its paragraph, which
+would open the paragraph for editing. The paragraph skips a click that a chip took in the last
+100ms (`chipTookClick`). Each file and mode gets a new scroll box, so it starts at the top
+instead of keeping the last file's scroll position.
+
+Not yet: selecting lines in the pane to mention them in the draft, comments on lines, and
+opening file paths from Claude's tool calls.

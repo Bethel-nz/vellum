@@ -10,7 +10,7 @@ import { relPath } from './threads'
 const MAX_DIFF_BYTES = 2 * 1024 * 1024
 
 /** The real path of `file` if it lies inside the workspace, else undefined. */
-function insideWorkspace(workspace: string, file: string): string | undefined {
+export function insideWorkspace(workspace: string, file: string): string | undefined {
   const abs = path.isAbsolute(file) ? file : path.join(workspace, file)
   let root: string
   let target: string
