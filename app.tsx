@@ -9,7 +9,7 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, render, useGpuixRequired, useWindowSize, type EventPayload, type KeyEvent, type PublicInstance } from '@gpuix/react'
-import { ApprovalCard, Button, closedByOutsidePress, Field, Label, Menu, stripHeight, TabStrip, useToast, type MenuItem as MenuEntry } from './components'
+import { ApprovalCard, Button, closedByOutsidePress, Field, Label, Menu, stripHeight, TabStrip, useToast, type MenuItem as MenuEntry, type StripTab } from './components'
 import { FloatingLayer } from '@gpuix/react/floating'
 import { StreamChunk, useStreamChunks } from './components/StreamChunk'
 import { ConfirmMorph } from './components/ConfirmMorph'
@@ -29,6 +29,8 @@ import { promptFor, relabel, tagsIn, tagText } from './core/tags'
 import { heldTerms, holdTerm, killAllTerms, startTerm, type TermSession } from './core/term'
 import { setDockIcon } from './core/dock'
 import { notify } from './core/notify'
+import { HELP_ID } from './core/help'
+import { HelpNote } from './ui/Help'
 import { FONTS } from './assets/fonts'
 import { ImageViewer, type Viewing } from './ui/ImageViewer'
 import { fitFile, FILE_MIN, FilePreview, previewLayout, TREE_MAX, TREE_MIN, TREE_WIDTH, type Previewing } from './ui/FilePreview'
@@ -380,12 +382,14 @@ function App() {
   const [profiles, setProfiles] = useState<Profile[]>(loadProfiles)
   const [threads, setThreadsState] = useState<Thread[]>(loadThreads)
   const [activeId, setActiveId] = useState<string | undefined>(() => {
-    const last = readSettings().lastThreadId
-    return threads.some((t) => t.id === last) ? last : threads[0]?.id
+    const { lastThreadId: last, helpShown } = readSettings()
+    // A first launch, with no notes yet, opens on the Help note (core/help.ts).
+    if (!threads.length && !helpShown) return HELP_ID
+    return threads.some((t) => t.id === last) || last === HELP_ID ? last : threads[0]?.id
   })
   // Open notes, in tab order. The active note is always one of them.
   const [tabs, setTabs] = useState<string[]>(() => {
-    const open = (readSettings().openTabs ?? []).filter((id) => threads.some((t) => t.id === id))
+    const open = (readSettings().openTabs ?? []).filter((id) => id === HELP_ID || threads.some((t) => t.id === id))
     return activeId && !open.includes(activeId) ? [...open, activeId] : open
   })
   // Replies that finished while their tab was in the background.
@@ -883,8 +887,10 @@ function App() {
   const openNote = useCallback((id: string) => {
     setTabs((t) => {
       if (t.includes(id)) return t
-      if (t.length < MAX_TABS) return [...t, id]
-      const drop = t.find((x) => !threadsRef.current.find((th) => th.id === x)?.running) ?? t[0]!
+      // The Help note doesn't count toward the nine, and never makes room.
+      const notes = t.filter((x) => x !== HELP_ID)
+      if (notes.length < MAX_TABS) return [...t, id]
+      const drop = notes.find((x) => !threadsRef.current.find((th) => th.id === x)?.running) ?? notes[0]!
       const title = threadsRef.current.find((th) => th.id === drop)?.title ?? 'a note'
       setTimeout(() => showToast(keys(`Closed “${title}” to keep nine tabs · ⌘Y has it`)), 0)
       return [...t.filter((x) => x !== drop), id]
@@ -933,6 +939,10 @@ function App() {
     if (active) runners.current.get(active.id)?.interrupt()
   }, [active])
 
+  /** What you started writing in the Help note, on its way to the note it starts… */
+  const fromHelp = useRef('')
+  /** …and that note, once it exists, for the keys that still land in Help. */
+  const helpNote = useRef<string | undefined>(undefined)
   const createThread = useCallback(
     (profileId: string, folder: string) => {
       const meta = { id: newThreadId(), title: 'Untitled', profileId, workspace: folder, createdAt: new Date().toISOString() }
@@ -945,10 +955,13 @@ function App() {
       setThreads((prev) => [thread, ...prev])
       setProfiles(rememberWorkspace(profileId, folder))
       openNote(meta.id)
+      if (fromHelp.current) setDraft(meta.id, fromHelp.current, [])
+      fromHelp.current = ''
       setOverlay(null)
       setTimeout(focusComposer, 50)
+      return meta.id
     },
-    [focusComposer, openNote, setThreads],
+    [focusComposer, openNote, setDraft, setThreads],
   )
 
   // ---- terminals: their own view, one tab each
@@ -1354,6 +1367,36 @@ function App() {
     return [...seen]
   }, [threads, profiles])
 
+  // ---- the Help note (core/help.ts): a tab of its own, from the strip's Help button
+
+  const openHelp = useCallback(() => {
+    setTabs((t) => (t.includes(HELP_ID) ? t : [...t, HELP_ID]))
+    setActiveId(HELP_ID)
+    setView('notes')
+    setOverlay(null)
+  }, [])
+  // It opens by itself once: the first launch, before there are notes.
+  useEffect(() => {
+    if (activeId === HELP_ID && !readSettings().helpShown) updateSettings({ helpShown: true })
+  }, [activeId])
+  /** Nothing in Help can be changed: writing in it starts a note, in the latest folder, with what you wrote. */
+  const writeFromHelp = useCallback(
+    (text: string, first: boolean) => {
+      if (!first) {
+        if (helpNote.current) setDraft(helpNote.current, text, [])
+        else fromHelp.current = text
+        return
+      }
+      helpNote.current = undefined
+      fromHelp.current = text
+      const folder = recentFolders[0]
+      const profileId = folder ? (profileForWorkspace(profiles, folder)?.id ?? profiles.find((p) => p.id === readSettings().newNoteProfile)?.id ?? profiles[0]?.id) : undefined
+      if (folder && profileId) helpNote.current = createThread(profileId, folder)
+      else setOverlay('new')
+    },
+    [createThread, profiles, recentFolders, setDraft],
+  )
+
   const typing = writing && Boolean(draft.text.trim())
   const stripVisible = confirmClose !== null || (tabMode === 'pinned' ? !stripToggled : tabMode === 'auto' ? stripToggled || stripHover || !typing : stripToggled)
   const m = material
@@ -1392,16 +1435,20 @@ function App() {
             style={{ minHeight: 0, flexShrink: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
           >
             <TabStrip
-              tabs={tabThreads.map((t) => ({
-                id: t.id,
-                title: t.title,
-                time: clock(t.updatedAt),
-                running: t.running,
-                unread: (unread[t.id] ?? 0) > 0,
-                needsYou: (asks[t.id]?.length ?? 0) > 0,
-                attention: asks[t.id]?.[0]?.title,
-                dot: accentFor(m, profiles, t.profileId),
-              }))}
+              tabs={tabs.flatMap((id): StripTab[] =>
+                id === HELP_ID
+                  ? [{ id, title: 'Help', time: '', running: false, unread: false, needsYou: false, dot: m.textFaint }]
+                  : tabThreads.filter((t) => t.id === id).map((t) => ({
+                    id: t.id,
+                    title: t.title,
+                    time: clock(t.updatedAt),
+                    running: t.running,
+                    unread: (unread[t.id] ?? 0) > 0,
+                    needsYou: (asks[t.id]?.length ?? 0) > 0,
+                    attention: asks[t.id]?.[0]?.title,
+                    dot: accentFor(m, profiles, t.profileId),
+                  })),
+              )}
               activeId={activeId}
               confirmation={confirmClose ? {
                 tabId: confirmClose,
@@ -1421,6 +1468,9 @@ function App() {
                 <>
                   <Button onPress={() => setOverlay('history')} testId="open-history" title={keys('Past notes (⌘Y) and recipes (⇧⌘Y)')}>
                     <Icon name="library" size={15} />
+                  </Button>
+                  <Button onPress={openHelp} testId="open-help" title="Help: how Vellum works, and its keys">
+                    <Icon name="info" size={15} />
                   </Button>
                   <AccountSwitcher
                     thread={active}
@@ -1505,6 +1555,8 @@ function App() {
           >
           {term ? (
             <TerminalView term={term} onLeave={showNotes} />
+          ) : activeId === HELP_ID ? (
+            <HelpNote onWrite={writeFromHelp} />
           ) : active ? (
             <>
               {/* Text scrolls under the strip through a short fade instead of a hard edge. */}
@@ -1682,7 +1734,11 @@ function App() {
         {overlay === 'new' ? (
           <NewThreadDialog
             open
-            onClose={() => setOverlay(null)}
+            onClose={() => {
+              // Closed without making a note: what was written in Help doesn't wait for the next one.
+              fromHelp.current = ''
+              setOverlay(null)
+            }}
             profiles={profiles}
             recentFolders={recentFolders}
             initialProfileId={profiles.find((p) => p.id === readSettings().newNoteProfile)?.id ?? active?.profileId}

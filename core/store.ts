@@ -63,6 +63,8 @@ export type Settings = {
   newNoteProfile?: string
   /** At launch: the note you had open, or a new one. */
   atLaunch?: 'last' | 'new'
+  /** The Help note has opened once, at the first launch (core/help.ts). */
+  helpShown?: boolean
   /** Your own words for Claude, after what Vellum tells it (core/prompt.ts). */
   instructions?: string
   /** macOS notifications while Vellum is in the background: none, when Claude needs you, or also when it's done. */
