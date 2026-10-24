@@ -4,7 +4,19 @@
 const svg = (body: string) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`
 
+/** Drawn for Vellum at stroke 1.5: kept as given, not redrawn on the Lucide grid. */
+const own = (body: string) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`
+
 export const icons = {
+  /** The notes view: two leaning pages. */
+  notes: own(
+    '<path d="M10.625 7.17745L10.855 4.98904C10.9705 3.89053 11.9546 3.0936 13.0531 3.20906L19.0202 3.83623C20.1188 3.95169 20.9157 4.93581 20.8002 6.03433L19.8595 14.985C19.744 16.0835 18.7599 16.8805 17.6614 16.765L14.0021 16.3804"/><path d="M3.16218 10.0343C3.04672 8.93581 3.84365 7.95169 4.94217 7.83623L10.9093 7.20906C12.0078 7.0936 12.9919 7.89053 13.1074 8.98904L14.0482 17.9397C14.1636 19.0383 13.3667 20.0224 12.2682 20.1378L6.30104 20.765C5.20252 20.8805 4.2184 20.0835 4.10294 18.985L3.16218 10.0343Z"/>',
+  ),
+  /** The terminal view: a prompt in a window. */
+  terminalBox: own(
+    '<path d="M7.25 7.75L9 9.5L7.25 11.25M10.75 11.25H12.75M5.75 20.25H18.25C19.3546 20.25 20.25 19.3546 20.25 18.25V5.75C20.25 4.64543 19.3546 3.75 18.25 3.75H5.75C4.64543 3.75 3.75 4.64543 3.75 5.75V18.25C3.75 19.3546 4.64543 20.25 5.75 20.25Z"/>',
+  ),
   chevronRight: svg('<path d="m9 18 6-6-6-6"/>'),
   chevronDown: svg('<path d="m6 9 6 6 6-6"/>'),
   plus: svg('<path d="M12 5v14"/><path d="M5 12h14"/>'),

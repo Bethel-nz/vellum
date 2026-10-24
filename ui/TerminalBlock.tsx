@@ -6,7 +6,7 @@ import { useGpuixRequired, type KeyEvent, type PublicInstance } from '@gpuix/rea
 import type { CellColor, Grid, Run } from '../core/ghostty'
 import { isTerminalLeave, keys, pasteText, terminalPrimary } from '../core/platform'
 import type { TermSession } from '../core/term'
-import { Meta, Quiet, useM } from './kit'
+import { Icon, Meta, Quiet, useM } from './kit'
 import { concentric, font, radiusBase, type Material } from './theme'
 
 const FONT_SIZE = 12
@@ -126,9 +126,18 @@ export function TerminalBlock({
   onSendOutput,
   frozen,
   testId,
+  hint,
+  onClose,
+  bare,
 }: {
   session?: TermSession
   title: string
+  /** Shown instead of "running · click to type" (e.g. what to do in a login). */
+  hint?: string
+  /** A ✕ on the header that ends the program and closes the terminal. */
+  onClose?: () => void
+  /** No header at all: the terminal view, whose tab already names it and closes it. */
+  bare?: boolean
   mode?: 'inline' | 'full'
   autoFocus?: boolean
   onReturnFocus?: () => void
@@ -213,6 +222,7 @@ export function TerminalBlock({
         overflow: 'hidden',
       }}
     >
+      {bare ? null : (
       <div
         style={{
           display: 'flex',
@@ -231,7 +241,7 @@ export function TerminalBlock({
           {title}
         </text>
         {running ? (
-          <Meta>{focused ? keys('running · ⌘Esc to leave') : 'running · click to type'}</Meta>
+          <Meta>{hint ?? (focused ? keys('running · ⌘Esc to leave') : 'running · click to type')}</Meta>
         ) : exitCode !== undefined ? (
           <Meta color={exitCode === 0 ? m.textFaint : m.danger}>{`exit ${exitCode}`}</Meta>
         ) : null}
@@ -240,12 +250,17 @@ export function TerminalBlock({
             <Meta color={m.textMuted}>Send output to Claude</Meta>
           </Quiet>
         ) : null}
-        {running ? (
+        {onClose ? (
+          <Quiet testId={testId ? `${testId}-close` : undefined} onPress={onClose} title={running ? 'End it and close' : 'Close'}>
+            <Icon name="x" size={12} />
+          </Quiet>
+        ) : running ? (
           <Quiet testId={testId ? `${testId}-kill` : undefined} onPress={() => session?.kill()}>
             <Meta color={m.textMuted}>Kill</Meta>
           </Quiet>
         ) : null}
       </div>
+      )}
       <div
         ref={ref}
         testId={running ? 'term-running' : undefined}
