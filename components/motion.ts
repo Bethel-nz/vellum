@@ -8,6 +8,7 @@
 // Every animation goes through `tween()`, which collapses to duration 0 under reduced motion.
 
 import type { MotionTransition } from '@gpuix/react'
+import { useSyncExternalStore } from 'react'
 import { systemReduceMotion } from '../core/platform'
 
 type Bezier = [number, number, number, number]
@@ -38,6 +39,11 @@ export const stagger = { item: 0.035, maxItems: 4 }
 export const offset = { menu: 5, tooltip: 3, dialog: 8, toast: 16 }
 
 let reduced = systemReduceMotion()
+const listeners = new Set<() => void>()
+const subscribe = (listener: () => void) => {
+  listeners.add(listener)
+  return () => { listeners.delete(listener) }
+}
 
 /** The system's "Reduce motion", unless the settings sheet overrides it. */
 export function reducedMotion() {
@@ -45,8 +51,14 @@ export function reducedMotion() {
 }
 
 export function setReducedMotion(value: boolean | undefined) {
-  reduced = value ?? systemReduceMotion()
+  const next = value ?? systemReduceMotion()
+  if (next === reduced) return
+  reduced = next
+  for (const listener of listeners) listener()
 }
+
+/** Repaint mounted controls too when the settings override changes. */
+export const useReducedMotion = () => useSyncExternalStore(subscribe, reducedMotion, reducedMotion)
 
 /** A transition that respects reduced motion. */
 export function tween(t: MotionTransition): MotionTransition {

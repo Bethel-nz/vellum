@@ -536,3 +536,52 @@ Agent SDK (`CLAUDE_CODE_EXECUTABLE`), with your login, per account through `CLAU
 - **Chunk-fade streaming** is the other session's (components/StreamChunk.tsx in its app.tsx
   refactor). This session's version was taken back out of ui/blocks.tsx so the two don't fight;
   core/stream.ts (settle points, tested) and scripts/check-stream.ts are left uncommitted for it.
+
+## 2026-10-24 — GPUIX motion reality
+
+The rules every animation here follows, and the renderer facts behind them. `scripts/check-motion.ts`
+checks them. It opens and closes each shadowed popup, toggles it ten times quickly, and shoots
+frames 0–260ms on a paused clock (`app.clock.pause()` / `fastForward()`) into
+`screenshots/motion-<full|reduce>-*`. Run it with `MOTION=reduce` for the reduced-motion pass.
+
+- **A box shadow ignores the node's opacity.** GPUI paints it at full strength while the node
+  fades, so a fading shadowed panel shows its shadow first, and through itself while translucent
+  (spikes/fade-square.tsx: box b at 30–150ms). The rules that follow from this:
+  - Shadowed surfaces never fade out. Menu, the context card and Toast unmount whole. Sheet and
+    SidePanel keep the frozen panel for one beat (`exit`, 0.18s) while only the shadowless scrim
+    fades, then unmount it (`useHoldOpen`). Reduced motion skips the hold.
+  - AnimatePresence is only for shadowless surfaces (the approval card's deny field).
+  - On entry, `components/Lifted.tsx` holds the shadow back until the enter tween completes
+    (`onMotionComplete`, with a 600ms fallback). Menu uses it. Toast, the context card, Alerts
+    and the Composer picker still fade in with their shadow. Frames of them on the dark theme
+    show no visible ghost, so they were left alone (they are another model's files in flight).
+    Lift them if one ever shows a halo.
+- **FloatingLayer paints a square `#1A1A1A` behind its content** (`@gpuix/react/floating`,
+  `floating.js:195`, the default `backgroundColor`, with no radius). Behind a rounded panel this
+  showed as a square pane around the corners, most visibly while the panel faded in. That was
+  the "dark pane" in the popup frames, not the shadow. Every FloatingLayer passes
+  `backgroundColor: '#00000000'`, except the Composer picker, which sets its own fill and radius.
+- **The outside-press guard answers once.** `closedByOutsidePress(key)` is a 250ms window after a
+  press outside closed a menu, so the trigger's own click doesn't reopen it. The window used to
+  stay open for every click in it, so ten quick clicks left a menu in the wrong state. It now
+  clears itself when it answers yes. Keys (`mode`, `model`, `context`) keep one menu closing
+  from eating the click that opens another.
+- **A motion.div keeps presses, again: Switch.** A click on the thumb (a motion.div inside the
+  native button) never reached the button. That covers the centre of an off switch, so the
+  translucency switch mostly did nothing. A transparent div above the thumb now takes the click.
+  A bare overlay with no handler is not enough: the press doesn't bubble up to the native
+  button. The rest of the checklist sweep:
+  - TabStrip tabs and Sheet's scrim already pass presses through (`pointerEvents: 'none'` on the
+    motion.div).
+  - Segmented's buttons are drawn above its thumb.
+  - The approval card's motion wrapper is `pointerEvents: 'none'`, with the card back on `auto`.
+  - Menu rows carry their handlers on the row's own motion.div, which receives them.
+- **Checks.**
+  - `check-motion` passes in full and reduced motion: 5 surfaces, plus 3 × 10 rapid toggles and
+    the toast. Under reduced motion every frame 0 is already the finished state.
+  - Regressions passed: check-approval, check-tabs (strip collapse), check-timeline,
+    check-new-note and check-changes. A probe also covered ⇧⇥ mode cycling, ⌘N, ⌘K, ⌃N/⌃P in
+    the picker, and the Switch knob.
+  - check-changes' "Add closes the sheet" now polls rather than sleeping 900ms. With the Sheet's
+    hold and the composer re-render, the panel goes at about 750ms.
+  - The scroll keeper (components/Scroll.tsx) went in earlier, in e1cd85f.

@@ -247,7 +247,7 @@ function NoteMenu({
         }
       />
       {renaming ? (
-        <FloatingLayer side="bottom" align="start" sideOffset={6} style={{ width: 320 }}>
+        <FloatingLayer side="bottom" align="start" sideOffset={6} style={{ width: 320, backgroundColor: '#00000000' }}>
           <div onMouseDownOutside={finishRename} style={{ display: 'flex', padding: 5, backgroundColor: m.popup, borderRadius: concentric(radiusBase + 5, 0), borderWidth: 1, borderColor: m.border, boxShadow: { offsetX: 0, offsetY: 12, blurRadius: 32, spreadRadius: 0, color: m.shadow } }}>
             <Field
               testId="title-input"

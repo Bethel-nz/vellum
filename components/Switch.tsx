@@ -2,7 +2,7 @@
 
 import { motion } from '@gpuix/react'
 import { Button as Base } from '@gpuix/react/button'
-import { spring, tween } from './motion'
+import { spring, tween, useReducedMotion } from './motion'
 import { useM } from './theme'
 
 const W = 30
@@ -11,6 +11,7 @@ const THUMB = 14
 
 export function Switch({ checked, onChange, testId, label }: { checked: boolean; onChange: (next: boolean) => void; testId?: string; label?: string }) {
   const m = useM()
+  useReducedMotion()
   return (
     <Base
       testId={testId}
@@ -34,6 +35,8 @@ export function Switch({ checked, onChange, testId, label }: { checked: boolean;
         transition={tween(spring.snappy)}
         style={{ position: 'absolute', top: (H - THUMB) / 2, width: THUMB, height: THUMB, borderRadius: THUMB / 2, backgroundColor: '#ffffff' }}
       />
+      {/* A motion.div keeps presses to itself: the click is taken by this layer above the thumb. */}
+      <div onClick={() => onChange(!checked)} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
     </Base>
   )
 }

@@ -79,7 +79,8 @@ try {
   await shot('2-comment')
 
   await app.getByTestId('changes-add').click()
-  await wait(900)
+  // The panel holds a beat for its scrim, and adding the pills re-renders the composer: poll.
+  for (let t = 0; t < 2000 && (await app.getByTestId('changes').count()); t += 100) await wait(100)
   expect('Add closes the sheet', (await app.getByTestId('changes').count()) === 0)
   // drafts.json is written a moment after the draft changes.
   let drafts: Record<string, any> = {}

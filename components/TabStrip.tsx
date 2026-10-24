@@ -156,7 +156,7 @@ function Tab({ tab, active, menuOpen, anchor, onPick, onClose }: { tab: StripTab
       {box}
       {/* Its own hover label: the shared Tooltip's trigger eats the click a box needs. */}
       {hover && !active ? (
-        <FloatingLayer side="bottom" align="center" sideOffset={4}>
+        <FloatingLayer side="bottom" align="center" sideOffset={4} style={{ backgroundColor: '#00000000' }}>
           <motion.div
             initial={{ opacity: 0, top: -offset.tooltip }}
             animate={{ opacity: 1, top: 0 }}

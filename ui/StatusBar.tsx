@@ -67,7 +67,7 @@ export function StatusBar({
   const [menu, setMenu] = useState<'mode' | 'model' | 'context' | null>(null)
   const close = () => setMenu(null)
   // A press on an open menu's own trigger closes it (closedByOutsidePress), rather than reopening.
-  const toggle = (k: 'mode' | 'model' | 'context') => setMenu((cur) => (cur === k || closedByOutsidePress() ? null : k))
+  const toggle = (k: 'mode' | 'model' | 'context') => setMenu((cur) => (cur === k || closedByOutsidePress(k) ? null : k))
   const list = models ?? fallbackModels
   const picked = list.find((x) => x.value === (model ?? 'default'))
   const risky = mode === 'bypassPermissions'
@@ -88,6 +88,7 @@ export function StatusBar({
           align="end"
           width={360}
           testId="mode-menu"
+          closeKey="mode"
           items={modes.map((x) => ({ label: x.label, hint: x.hint, icon: modeIcon[x.id], checked: x.id === mode, destructive: x.id === 'bypassPermissions', testId: `mode-${x.id}`, onSelect: () => onMode(x.id) }))}
         />
       </div>
@@ -112,6 +113,7 @@ export function StatusBar({
           align="end"
           width={320}
           testId="model-menu"
+          closeKey="model"
           items={[
             { kind: 'label' as const, label: models ? 'Model for this note' : 'Model for this note · more after the first reply' },
             ...list.map((x) => ({
@@ -187,9 +189,9 @@ function ContextCard({ context, running, onClose, onCompact }: { context?: Conte
   const pad = 12
   return (
     <DismissableLayer onEscapeKeyDown={onClose} initialFocus={() => panel.current?.id ?? null}>
-      <FloatingLayer side="top" align="end" sideOffset={6} style={{ width: 280 }}>
+      <FloatingLayer side="top" align="end" sideOffset={6} style={{ width: 280, backgroundColor: '#00000000' }}>
         <div ref={panel} testId="context-card" tabIndex={0} onMouseDownOutside={() => {
-            markOutsideClose()
+            markOutsideClose('context')
             onClose()
           }} style={{ keyboardFocusDim: false }}>
           <motion.div

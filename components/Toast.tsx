@@ -1,11 +1,11 @@
 // A passing confirmation, after arc's toast: bottom-left, rises 16px on the enter curve, stays
-// 1.5s, fades out. One at a time; a new toast replaces the current one.
+// 1.5s, then unmounts whole: its elevation cannot fade with node opacity.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AnimatePresence, motion } from '@gpuix/react'
+import { motion } from '@gpuix/react'
 import { concentric, elevation, radiusBase } from '../ui/theme'
 import { Dot } from './Dot'
-import { duration, ease, offset, tween } from './motion'
+import { enter, offset, useReducedMotion } from './motion'
 import { useM } from './theme'
 
 export type ToastTone = 'neutral' | 'success' | 'danger'
@@ -28,16 +28,16 @@ export function useToast() {
 
 function Toast({ shown }: { shown: Shown | null }) {
   const m = useM()
+  const reduced = useReducedMotion()
   const dot = shown?.tone === 'success' ? m.success : shown?.tone === 'danger' ? m.danger : null
   return (
-    <AnimatePresence>
+    <>
       {shown ? (
         <motion.div
           key={shown.id}
-          initial={{ opacity: 0, bottom: 16 - offset.toast }}
+          initial={reduced ? false : { opacity: 0, bottom: 16 - offset.toast }}
           animate={{ opacity: 1, bottom: 16 }}
-          exit={{ opacity: 0, bottom: 16 }}
-          transition={tween({ duration: duration.standard, ease: ease.enter })}
+          transition={enter()}
           style={{
             position: 'absolute',
             // Bottom-left: the bottom-right corner belongs to the status bar and the approval card.
@@ -60,6 +60,6 @@ function Toast({ shown }: { shown: Shown | null }) {
           </div>
         </motion.div>
       ) : null}
-    </AnimatePresence>
+    </>
   )
 }

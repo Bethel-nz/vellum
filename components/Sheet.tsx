@@ -3,26 +3,50 @@
 //   Sheet     — centred, 14px radius, opaque popup fill; the scrim fades in over `fast` and the
 //               panel rises 8px on the enter curve (`standard`).
 //   SidePanel — a 560px panel against the right edge (the diff review); slides in 24px from the
-//               side it lives on, over `considered` / 2 on the standard curve.
+//               side it lives on, on the converted smooth tween.
 //
-// GPUIX's Dialog unmounts on close, so both have enter motion only; the close is instant.
+// Close: GPUIX's Dialog unmounts on close — and it must. An opacity-tween exit can't fade the
+// elevation shadow with the panel, so animated exits leave a dark ghost (same reason menus close
+// instantly). Instead the panel freezes and unmounts whole, while a one-beat hold keeps the
+// Dialog alive for the scrim to lift over `exit`. Reduced motion skips the hold.
 
-import { useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Dialog, DialogBackdrop, DialogPopup, DialogPortal, motion, type PublicInstance } from '@gpuix/react'
 import { radiusXl } from '../ui/theme'
 import { Button } from './Button'
 import { Icon } from './Icon'
-import { duration, ease, offset, tween } from './motion'
+import { duration, ease, leave, offset, spring, tween, useReducedMotion } from './motion'
 import { useM } from './theme'
 
-function Scrim() {
+/**
+ * Hold a Dialog mounted one beat past `open → false` so the scrim can lift; then unmount whole.
+ * The panel stays frozen the whole time — its shadow can't fade with node opacity (menus quit at
+ * this), so the graceful part of the exit is the scrim, never the popup.
+ */
+function useHoldOpen(open: boolean): boolean {
+  const reduced = useReducedMotion()
+  const [hold, setHold] = useState(open)
+  useEffect(() => {
+    if (open) {
+      setHold(true)
+      return
+    }
+    if (reduced) { setHold(false); return }
+    if (!hold) return
+    const timer = setTimeout(() => setHold(false), duration.exit * 1000)
+    return () => clearTimeout(timer)
+  }, [open, reduced, hold])
+  return open || (!reduced && hold)
+}
+
+function Scrim({ exiting }: { exiting: boolean }) {
   const m = useM()
   return (
     <DialogBackdrop style={{ backgroundColor: '#00000000' }}>
       <motion.div
         initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={tween({ duration: duration.fast, ease: ease.standard })}
+        animate={{ opacity: exiting ? 0 : 1 }}
+        transition={exiting ? leave() : tween({ duration: duration.fast, ease: ease.standard })}
         // A motion.div keeps presses to itself: let the click reach the backdrop, which closes.
         style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: m.scrim, pointerEvents: 'none' }}
       />
@@ -46,10 +70,11 @@ export function Sheet({
   testId?: string
 }) {
   const m = useM()
+  const hold = useHoldOpen(open)
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    <Dialog open={open || hold} onOpenChange={(next) => !next && onClose()}>
       <DialogPortal>
-        <Scrim />
+        <Scrim exiting={!open} />
         <DialogPopup
           testId={testId}
           initialFocus={initialFocus}
@@ -137,13 +162,14 @@ export function SidePanel({
   testId?: string
 }) {
   const m = useM()
+  const hold = useHoldOpen(open)
   const from = side === 'right' ? 24 : -24
   // A panel with nothing focusable still takes esc: its own body holds focus.
   const body = useRef<PublicInstance>(null)
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    <Dialog open={open || hold} onOpenChange={(next) => !next && onClose()}>
       <DialogPortal>
-        <Scrim />
+        <Scrim exiting={!open} />
         <DialogPopup
           testId={testId}
           initialFocus={initialFocus ?? body}
@@ -165,7 +191,7 @@ export function SidePanel({
           <motion.div
             initial={{ opacity: 0, left: from }}
             animate={{ opacity: 1, left: 0 }}
-            transition={tween({ duration: duration.considered / 2 + 0.06, ease: ease.standard })}
+            transition={tween(spring.smooth)}
             style={{ position: 'relative', display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, height: '100%' }}
           >
             <div

@@ -2,14 +2,19 @@
 //
 // Motion (arc): the panel arrives from the trigger side (opacity + 5px offset, `fast` on the enter
 // curve), rows follow with a 35ms stagger capped at four, and one highlight glides between rows on
-// the snappy curve. The keyboard moves the highlight instantly. Exit is a 130ms fade.
+// the snappy curve. The keyboard moves the highlight instantly.
+//
+// Close is instant: no AnimatePresence exit. An exit phase keeps the panel mounted for a fade,
+// and the elevation shadow outlives the background fade — a dark pane ghosting over the desktop
+// (the reason the context card removes itself straight out; macOS closes menus instantly too).
 //
 // Render it inside a `position: relative` wrapper next to its trigger; it anchors to that wrapper.
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { AnimatePresence, DismissableLayer, motion, type KeyEvent, type PublicInstance } from '@gpuix/react'
+import { DismissableLayer, motion, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { FloatingLayer } from '@gpuix/react/floating'
 import { concentric, elevation, radiusBase } from '../ui/theme'
+import { Lifted } from './Lifted'
 import type { IconName } from '../ui/icons'
 import { Icon } from './Icon'
 import { Kbd } from './Kbd'
@@ -43,14 +48,25 @@ const heightOf = (it: MenuItem) => (it.kind === 'separator' ? SEPARATOR : it.kin
 const selectable = (it: MenuItem) => (it.kind ?? 'item') === 'item' && !(it as { disabled?: boolean }).disabled
 
 let outsideCloseAt = 0
+let outsideCloseKey: string | null = null
 /**
  * True right after a menu closed on a press outside it. A press on the menu's own trigger is
  * outside it too: the menu closes on mouse-down, then the trigger's click would open it again.
- * Triggers check this so a second click closes the menu.
+ * Triggers check their own key so a second click closes the menu — and one menu closing doesn't
+ * eat the click that opens another trigger (that used to need a second click).
  */
-export const closedByOutsidePress = () => Date.now() - outsideCloseAt < 250
+export const closedByOutsidePress = (key?: string) => {
+  const hit = Date.now() - outsideCloseAt < 250 && (outsideCloseKey === null || key === undefined || key === outsideCloseKey)
+  // It answers once, for the press that closed the menu: a quick click after that opens it
+  // again (ten rapid clicks used to leave it in the wrong state; scripts/check-motion.ts).
+  if (hit) outsideCloseAt = 0
+  return hit
+}
 /** For popovers that aren't a Menu but close the same way (the context card). */
-export const markOutsideClose = () => void (outsideCloseAt = Date.now())
+export const markOutsideClose = (key?: string) => {
+  outsideCloseAt = Date.now()
+  outsideCloseKey = key ?? null
+}
 
 export function Menu({
   open,
@@ -61,6 +77,7 @@ export function Menu({
   side = 'bottom',
   align = 'start',
   testId,
+  closeKey,
 }: {
   open: boolean
   onClose: () => void
@@ -70,15 +87,14 @@ export function Menu({
   side?: 'top' | 'bottom'
   align?: 'start' | 'end'
   testId?: string
+  /** Identifies this menu in the outside-press guard (Status bar keys: mode / model). */
+  closeKey?: string
 }) {
-  return (
-    <AnimatePresence>
-      {open ? <MenuPanel key="menu" onClose={onClose} items={items} header={header} width={width} side={side} align={align} testId={testId} /> : null}
-    </AnimatePresence>
-  )
+  if (!open) return null
+  return <MenuPanel key="menu" onClose={onClose} items={items} header={header} width={width} side={side} align={align} testId={testId} closeKey={closeKey} />
 }
 
-function MenuPanel({ onClose, items, header, width, side, align, testId }: { onClose: () => void; items: MenuItem[]; header?: ReactNode; width: number; side: 'top' | 'bottom'; align: 'start' | 'end'; testId?: string }) {
+function MenuPanel({ onClose, items, header, width, side, align, testId, closeKey }: { onClose: () => void; items: MenuItem[]; header?: ReactNode; width: number; side: 'top' | 'bottom'; align: 'start' | 'end'; testId?: string; closeKey?: string }) {
   const m = useM()
   const panel = useRef<PublicInstance>(null)
   const [active, setActive] = useState(-1)
@@ -129,18 +145,19 @@ function MenuPanel({ onClose, items, header, width, side, align, testId }: { onC
   let row = 0
   return (
     <DismissableLayer onEscapeKeyDown={onClose} initialFocus={() => panel.current?.id ?? null}>
-      <FloatingLayer side={side} align={align} sideOffset={6} style={{ width }}>
+      {/* FloatingLayer paints a square #1A1A1A behind its content unless told otherwise. */}
+      <FloatingLayer side={side} align={align} sideOffset={6} style={{ width, backgroundColor: '#00000000' }}>
         {/* The plain div owns focus, keys and outside clicks; motion.div only animates. */}
         <div ref={panel} testId={testId} tabIndex={0} onKeyDown={onKeyDown} onMouseDownOutside={() => {
-            outsideCloseAt = Date.now()
+            markOutsideClose(closeKey)
             onClose()
           }} style={{ keyboardFocusDim: false }}>
-        <motion.div
+        <Lifted
           onMouseLeave={() => setActive(-1)}
           initial={{ opacity: 0, top: from }}
           animate={{ opacity: 1, top: 0 }}
-          exit={{ opacity: 0, top: from / 2 }}
           transition={tween({ duration: duration.fast, ease: ease.enter })}
+          shadow={elevation(m, 'popover')}
           style={{
             position: 'relative',
             display: 'flex',
@@ -150,14 +167,13 @@ function MenuPanel({ onClose, items, header, width, side, align, testId }: { onC
             borderRadius: concentric(radiusBase + PAD, 0),
             borderWidth: 1,
             borderColor: m.border,
-            boxShadow: elevation(m, 'popover'),
           }}
         >
           {/* One highlight for every row: glides for the pointer, jumps for the keyboard. */}
           <motion.div
             initial={false}
             animate={{ top: tops[active] ?? tops[0] ?? PAD, opacity: active >= 0 ? 1 : 0 }}
-            transition={glide ? tween(spring.snappy) : { duration: 0 }}
+            transition={tween(glide ? spring.snappy : { duration: 0 })}
             style={{ position: 'absolute', left: PAD, right: PAD, height: ROW, borderRadius: concentric(radiusBase + PAD, PAD), backgroundColor: danger ? m.dangerBg : m.popupHover }}
           />
           {header ? (
@@ -187,7 +203,7 @@ function MenuPanel({ onClose, items, header, width, side, align, testId }: { onC
                 initial={{ opacity: 0, top: from * 0.4 }}
                 animate={{ opacity: 1, top: 0 }}
                 // Rows arrive from the trigger outward: top-down below it, bottom-up above it.
-                transition={tween({ duration: duration.standard, ease: ease.enter, delay: Math.min(side === 'top' ? rows - 1 - n : n, stagger.maxItems) * stagger.item })}
+                transition={tween({ duration: duration.standard, ease: ease.enter, delay: Math.min(side === 'top' ? rows - 1 - n : n, stagger.maxItems - 1) * stagger.item })}
                 style={{ position: 'relative', height: ROW }}
               >
                 <div testId={it.testId} style={{ height: ROW, display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 9, paddingLeft: 9, paddingRight: 8, cursor: it.disabled ? 'default' : 'pointer' }}>
@@ -206,7 +222,7 @@ function MenuPanel({ onClose, items, header, width, side, align, testId }: { onC
               </motion.div>
             )
           })}
-        </motion.div>
+        </Lifted>
         </div>
       </FloatingLayer>
     </DismissableLayer>
