@@ -61,6 +61,12 @@ type Listener = {
   notice?(text: string): void
 }
 
+/** A message as ACP content: pasted images ahead of the text. */
+function promptBlocks(text: string, images: string[]) {
+  const pictures = images.filter((f) => existsSync(f)).map((f) => ({ type: 'image', mimeType: imageMime(f), data: readFileSync(f).toString('base64') }))
+  return [...pictures, ...(text ? [{ type: 'text', text }] : [])]
+}
+
 /** Vellum's mode names → the adapter's mode ids. */
 const toAgentMode = (m: PermissionMode) => (m === 'manual' ? 'default' : m)
 const fromAgentMode = (id: string): PermissionMode => (id === 'default' ? 'manual' : (id as PermissionMode))
@@ -102,6 +108,8 @@ export class AgentRunner {
   #asks = new Map<string, Pending>()
   #turn = false
   #stopping = false
+  /** The agent takes a message into the turn it's running (`_session/steering`). */
+  #steering = false
   /** The working tree as your latest message went out; undefined outside a repo. */
   #base?: Promise<Snapshot | undefined>
   #locked: string | undefined
@@ -180,9 +188,7 @@ export class AgentRunner {
         // and the snapshot carries on warming git's cache for the next one.
         const before = await Promise.race([base, Bun.sleep(SNAPSHOT_WAIT_MS).then(() => 'late' as const)])
         if (before === 'late' && this.#base === base) this.#base = Promise.resolve(undefined)
-        const pictures = images.filter((f) => existsSync(f)).map((f) => ({ type: 'image', mimeType: imageMime(f), data: readFileSync(f).toString('base64') }))
-        const prompt = [...pictures, ...(text ? [{ type: 'text', text }] : [])]
-        const res: any = await this.#conn!.request('session/prompt', { sessionId, prompt })
+        const res: any = await this.#conn!.request('session/prompt', { sessionId, prompt: promptBlocks(text, images) })
         if (before && before !== 'late') {
           const after = await snapshot(workspace).catch(() => undefined)
           const files = after ? await changedFiles(before, after, workspace).catch(() => []) : []
@@ -191,6 +197,33 @@ export class AgentRunner {
         this.#end({ type: 'acp/end', stopReason: res?.stopReason ?? 'end_turn' })
       })
       .catch((e) => this.#fail(e))
+  }
+
+  /** Whether a message now could go into the running turn rather than wait for the next one. */
+  get canSteer() {
+    return this.#steering && this.#turn && !this.#stopping && this.#session !== undefined && this.#conn !== undefined && !this.#conn.closed
+  }
+
+  /**
+   * Your message into the turn Claude is running: it reads it as soon as it can (mid-reply, or
+   * when the tool it's in returns; a question or approval card waits for your answer first), and
+   * the turn ends once it has answered it. `promptRequired`: the turn had ended by the time it
+   * arrived, so nothing was sent and the caller sends it as a turn of its own. `unavailable`: this
+   * agent can't steer, or there's no turn.
+   */
+  async steer(text: string, images: string[] = []): Promise<'injected' | 'promptRequired' | 'unavailable'> {
+    if (!this.canSteer) return 'unavailable'
+    try {
+      const res: any = await this.#conn!.request('_session/steering', {
+        sessionId: this.#session,
+        prompt: promptBlocks(text, images),
+        // An idle session says so instead of starting a turn Vellum didn't open.
+        _meta: { steering: { idleBehavior: 'promptRequired' } },
+      })
+      return res?.outcome === 'injected' ? 'injected' : 'promptRequired'
+    } catch {
+      return 'unavailable'
+    }
   }
 
   /** Stop the current turn. The session stays; the next message continues it. */
@@ -268,6 +301,8 @@ export class AgentRunner {
       clientInfo: { name: 'vellum', title: 'Vellum', version: '0.1.0' },
     })
     const canResume = Boolean(init?.agentCapabilities?.sessionCapabilities?.resume)
+    // Steering is an extension: advertised in the response's top-level `_meta`, beside the capabilities.
+    this.#steering = init?._meta?.steering?.supported === true
     // What Vellum draws for the agent's tools, after its own prompt, for agents that take one.
     const systemPrompt = init?.agentCapabilities?.sessionCapabilities?.systemPrompt ? { mode: 'append', content: [{ type: 'text', text: systemPromptText() }] } : undefined
     const params = { cwd: workspace, mcpServers: [], ...(systemPrompt ? { systemPrompt } : {}) }

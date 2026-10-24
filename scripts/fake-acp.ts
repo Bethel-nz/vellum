@@ -6,7 +6,9 @@
 // pretend `bun run codegen` that really writes src/generated.ts, a change no edit tool shows. A
 // prompt that says "stream" gets a reply in ~100 small deltas, 25ms apart, and no tool call. A prompt within a second of a "no" is the
 // note that came with it, and gets a plain answer. `/compact` answers with a compaction. Every message it
-// receives is appended to $FAKE_ACP_LOG as {in: msg}.
+// receives is appended to $FAKE_ACP_LOG as {in: msg}. It steers like the adapter: `_session/steering`
+// during a turn is taken in ("injected") and answered before the turn ends; while idle it's
+// "promptRequired" and nothing happens.
 //
 // With `--cli auth login|logout|status` it plays the account side (scripts/check-login.ts puts a
 // `claude` shim on PATH that runs this file with --cli): a marker file in the account's config dir
@@ -85,6 +87,9 @@ const ask = (params: unknown) =>
 
 
 let turn = 0
+/** A turn is running; messages steered into it wait here for their answer. */
+let inTurn = false
+const steered: string[] = []
 /** When the last ask was answered no: a note sent with that no follows within moments. */
 let rejectedAt = 0
 
@@ -156,6 +161,7 @@ async function handle(msg: any) {
         protocolVersion: 1,
         agentCapabilities: { loadSession: true, sessionCapabilities: { resume: {}, systemPrompt: {} }, promptCapabilities: { image: true } },
         agentInfo: { name: 'fake-acp', version: '0' },
+        _meta: { steering: { supported: true } },
         authMethods: msg.params?.clientCapabilities?.auth?.terminal
           ? [{ id: 'claude-ai-login', name: 'Claude Subscription', type: 'terminal', args: ['--cli', 'auth', 'login', '--claudeai'] }]
           : [],
@@ -172,7 +178,21 @@ async function handle(msg: any) {
     }
     case 'session/prompt': {
       const text = (msg.params.prompt ?? []).map((c: any) => c.text ?? '').join('')
-      return reply(await prompt(msg.params.sessionId, text))
+      inTurn = true
+      try {
+        const res = await prompt(msg.params.sessionId, text)
+        // What was steered in is answered before the turn ends, like the adapter's steered echoes.
+        for (const s of steered.splice(0)) update(msg.params.sessionId, { sessionUpdate: 'agent_message_chunk', messageId: `s${turn}`, content: { type: 'text', text: `\n\nSteered: ${s}` } })
+        return reply(res)
+      } finally {
+        inTurn = false
+      }
+    }
+    case '_session/steering': {
+      const text = (msg.params.prompt ?? []).map((c: any) => c.text ?? '').join('')
+      if (!inTurn) return reply({ outcome: 'promptRequired', reason: 'noRunningTurn' })
+      steered.push(text)
+      return reply({ outcome: 'injected' })
     }
     case 'session/cancel':
       for (const [, resolve] of waiting) resolve({ outcome: { outcome: 'cancelled' } })
