@@ -1,6 +1,7 @@
-// Self-check for "Open in" on the strip: it lists this Mac's apps with their icons, opens the note's
-// folder in the one you pick, remembers it, and the button then opens there in one click. Nothing
-// is really opened: VELLUM_OPEN_LOG records what would be.
+// Self-check for "Open in", in the file pane's header (it left the strip): it lists this Mac's apps
+// with their icons, opens the note's folder in the one you pick while no file is open, remembers
+// it, and the button then opens there in one click. With a file open, an editor gets the file and
+// Finder shows it. Nothing is really opened: VELLUM_OPEN_LOG records what would be.
 //   bun scripts/check-open-in.ts
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -28,7 +29,11 @@ const other = targets.find((t) => t.id !== targets[0]!.id)
 try {
   await app.getByTestId('composer').waitFor({ timeoutMs: 60_000 })
   await wait(1500)
-  expect('the strip has Open in', (await app.getByTestId('open-in').count()) === 1)
+  expect('the strip has no Open in', (await app.getByTestId('open-in').count()) === 0)
+  await app.getByTestId('open-files').click()
+  await app.getByTestId('file-tree').waitFor({ timeoutMs: 5_000 })
+  await wait(600)
+  expect('the file pane has it', (await app.getByTestId('open-in').count()) === 1)
 
   await app.getByTestId('open-in').click()
   await wait(400)
@@ -48,6 +53,26 @@ try {
     await app.getByTestId('open-in').click()
     await wait(400)
     expect('the button now opens there in one click', opened().at(-1)?.target === other.id && opened().length === 3, String(opened().length))
+  }
+  await app.getByTestId('file-tree-row-NOTES.md').click()
+  await wait(600)
+  const editor = targets.find((t) => t.kind === 'editor')
+  if (editor) {
+    await app.getByTestId('open-in-menu-button').click()
+    await app.getByTestId('open-in-menu').waitFor({ timeoutMs: 5_000 })
+    await wait(500)
+    await app.getByTestId(`open-in-${editor.id}`).click()
+    await wait(400)
+    expect(`with a file open, ${editor.name} gets the file`, opened().at(-1)?.dir === path.join(workspace, 'NOTES.md'), JSON.stringify(opened().at(-1)))
+  }
+  const finder = targets.find((t) => t.kind === 'files')
+  if (finder) {
+    await app.getByTestId('open-in-menu-button').click()
+    await app.getByTestId('open-in-menu').waitFor({ timeoutMs: 5_000 })
+    await wait(500)
+    await app.getByTestId(`open-in-${finder.id}`).click()
+    await wait(400)
+    expect(`…and ${finder.name} shows it`, opened().at(-1)?.reveal === path.join(workspace, 'NOTES.md'), JSON.stringify(opened().at(-1)))
   }
 } finally {
   await app.close()

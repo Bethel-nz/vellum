@@ -30,7 +30,6 @@ import { heldTerms, holdTerm, killAllTerms, startTerm, type TermSession } from '
 import { setDockIcon } from './core/dock'
 import { notify } from './core/notify'
 import { FONTS } from './assets/fonts'
-import { OpenIn } from './ui/OpenIn'
 import { ImageViewer, type Viewing } from './ui/ImageViewer'
 import { FilePreview, previewLayout, type Previewing } from './ui/FilePreview'
 import { purgeTrash, trashNote } from './core/trash'
@@ -1360,7 +1359,6 @@ function App() {
               changes={stripChanges ? { summary: stripChanges, onPress: () => setOverlay('changes') } : undefined}
               trailing={
                 <>
-                  <OpenIn folder={active?.workspace} />
                   <Button onPress={() => setOverlay('switcher')} testId="open-switcher" title="Find a note (⌘K)">
                     <Icon name="search" size={13} />
                     <Kbd>⌘K</Kbd>

@@ -9,7 +9,7 @@
 //
 // The header is a row of pills: where the file is, as a path from the note's folder (a folder in
 // it opens the tree there); "Show changes" when this note edited the file, which swaps the file
-// for those edits; and copy path, show in Finder, and Open in an editor. The tree (⇧⌘E, or the
+// for those edits; and copy path and Open (an editor, Finder, a terminal). The tree (⇧⌘E, or the
 // button at the header's left) runs down the pane's left side (ui/FileTree.tsx); the Files button
 // on the strip opens the pane on the tree alone.
 //
@@ -24,7 +24,7 @@ import { Button, Icon, Label, Segmented } from '../components'
 import { duration, ease, offset, tween, useReducedMotion } from '../components/motion'
 import type { Hunk } from '../core/changes'
 import { ancestors } from '../core/filetree'
-import { copyText, keys, revealFile } from '../core/platform'
+import { copyText, keys } from '../core/platform'
 import { readPreview, type Preview, type PreviewKind } from '../core/preview'
 import { FileTree } from './FileTree'
 import { FileIcon, useM } from './kit'
@@ -170,7 +170,7 @@ export function FilePreview({ workspace, file, version, width, split, radius, tr
     }
   }
   // What the path pill has left once the header's buttons and pills are in.
-  const pathRoom = width - 16 - PILL * 2 - 6 * 5 - (markdown && !showDiff ? 140 : 0) - (hunks?.length ? (width >= 600 ? 130 : 34) : 0) - (shown ? 124 : 0)
+  const pathRoom = width - 16 - PILL * 2 - 6 * 5 - (markdown && !showDiff ? 140 : 0) - (hunks?.length ? (width >= 600 ? 130 : 34) : 0) - (shown ? 98 : 70)
   /** A folder in the path: the tree opens, down to it. */
   const revealIn = (dir: string) => {
     onTree(true)
@@ -214,7 +214,7 @@ export function FilePreview({ workspace, file, version, width, split, radius, tr
               {width >= 600 ? <Label>{showDiff ? 'Show file' : 'Show changes'}</Label> : null}
             </Button>
           ) : null}
-          {shown ? <FileActions rel={shown.rel} abs={shown.abs} /> : null}
+          <FileActions folder={workspace} rel={shown?.rel} abs={shown?.abs} />
           <Button testId="file-preview-close" title="Close (esc)" onPress={onClose} style={{ width: PILL, height: PILL, minHeight: PILL, paddingLeft: 0, paddingRight: 0 }}>
             <Icon name="x" size={13} />
           </Button>
@@ -336,8 +336,8 @@ function PathPill({ folder, rel, room, onFolder }: { folder: string; rel: string
   )
 }
 
-/** Copy the path, show the file in Finder, open it in an editor: one pill. */
-function FileActions({ rel, abs }: { rel: string; abs: string }) {
+/** Copy the path and Open in (the file, or the folder with none open): one pill. */
+function FileActions({ folder, rel, abs }: { folder: string; rel?: string; abs?: string }) {
   const m = useM()
   const [copied, setCopied] = useState(false)
   useEffect(() => {
@@ -348,13 +348,12 @@ function FileActions({ rel, abs }: { rel: string; abs: string }) {
   const icon = { width: 26, height: 24, minHeight: 24, borderRadius: 12, paddingLeft: 0, paddingRight: 0 }
   return (
     <div style={{ ...pill(m), display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 0, paddingLeft: 1, paddingRight: 1, flexShrink: 0 }}>
-      <Button testId="file-preview-copy" title={copied ? 'Copied' : 'Copy the path'} onPress={() => setCopied(copyText(rel))} style={icon}>
-        <Icon name={copied ? 'check' : 'copy'} size={13} />
-      </Button>
-      <Button testId="file-preview-reveal" title="Show in Finder" onPress={() => revealFile(abs)} style={icon}>
-        <Icon name="folder" size={13} />
-      </Button>
-      <OpenIn file={abs} />
+      {rel ? (
+        <Button testId="file-preview-copy" title={copied ? 'Copied' : 'Copy the path'} onPress={() => setCopied(copyText(rel))} style={icon}>
+          <Icon name={copied ? 'check' : 'copy'} size={13} />
+        </Button>
+      ) : null}
+      <OpenIn folder={folder} file={abs} />
     </div>
   )
 }

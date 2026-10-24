@@ -1087,8 +1087,9 @@ folder to the file, and pressing a folder in it opens the tree there; when there
 outer folders fold into one "…", estimated from mono character widths, since GPUIX can't measure
 text before layout. "Show changes" appears when this note edited the file: it swaps the file for
 the note's hunks to it, oldest first, the same hunks as the Changes sheet. One pill holds copy
-path, Show in Finder (`open -R`), and Open, the strip's Open in narrowed to editors, which opens
-the file.
+path and Open in, which moved here from the strip: the same menu of Finder, editors, terminals
+and git clients. With a file open, an editor gets the file and Finder shows it selected
+(`open -R`); terminals, git clients, and everything when no file is open, get the note's folder.
 
 The tree (core/filetree.ts, ui/FileTree.tsx) is read a folder at a time as folders open, cached
 until the note changes. `.git` and anything that looks like credentials are left out; what git

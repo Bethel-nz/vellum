@@ -5,8 +5,8 @@
 // Esc closes. In a narrow window it slides over the note instead. Dragging down the line numbers
 // picks lines, ⇧-click stretches the pick, Esc clears it, and "Add to note" (or ↵) puts a
 // `#core/printed.ts:20-24` chip on the end of the draft. The pane is a card of its own, its
-// header a path pill; "Show changes" swaps in the note's edit to the file; Show in Finder asks
-// for that file; the tree opens on the file, marks what changed and opens another file; ⇧⌘E
+// header a path pill; "Show changes" swaps in the note's edit to the file; Open › Finder shows
+// that file; the tree opens on the file, marks what changed and opens another file; ⇧⌘E
 // hides it; and the strip's Files button opens the pane on the tree alone.
 // Shots: screenshots/preview-*.png.
 //   bun scripts/check-preview.ts
@@ -114,9 +114,12 @@ async function run(size: string, wide: boolean) {
     await app.getByTestId('file-preview-changes').click()
     await wait(400)
     expect('…and back to the file', (await count('file-preview-code')) === 1)
-    await app.getByTestId('file-preview-reveal').click()
+    await app.getByTestId('open-in-menu-button').click()
+    await app.getByTestId('open-in-menu').waitFor({ timeoutMs: 5_000 })
+    await wait(500)
+    await app.getByTestId('open-in-finder').click()
     await wait(300)
-    expect('Show in Finder asks for that file', readFileSync(opened, 'utf8').includes('core/printed.ts'))
+    expect('Open › Finder shows that file', readFileSync(opened, 'utf8').includes('"reveal"') && readFileSync(opened, 'utf8').includes('core/printed.ts'))
 
     await app.getByTestId('file-preview-tree').click()
     await wait(700)
