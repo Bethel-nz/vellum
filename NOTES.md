@@ -1024,3 +1024,20 @@ scripts/check-viewer.ts writes a note with two images straight to disk, because 
 a window running in the background (GPUIX_BACKGROUND=1). For the same reason
 scripts/check-images.ts fails at its first paste on this machine, back to the commit that added
 it. That's the environment, not the code.
+
+## 2026-10-24 — deleted notes wait 30 days in Settings › Trash
+
+Deleting a note moves its records from threads/ to trash/, next to a small JSON file saying what
+the note was and when it was deleted (core/trash.ts). Its tab closes and its agent ends first.
+Settings › Trash lists deleted notes with the days left. Restore puts a note back in Past notes as
+it was. Delete asks first, then removes the note for good, and Empty Trash does the same for all of
+them. Anything 30 days old is deleted for good at launch and whenever the tab opens. Pasted images
+stay in images/, so a restored note still finds its images.
+
+In Past notes, the hovered or selected row shows a trash button, and ⇧⌘⌫ deletes it. The shortcut
+isn't ⌘⌫ because the search field keeps ⌘⌫ and ⌘⌦ for itself (delete to the start of the line),
+and they never reach its onKeyDown. ⇧⌘⌫ does. The trash button sits beside the row rather than
+inside it, so pressing it doesn't open the note. Both sides of the panel are 720 wide, so switching
+between them doesn't resize it under the slide. These History changes are built on the search view
+(ui/SearchResults.tsx), which wasn't committed yet when the trash was. scripts/check-trash.ts covers
+the whole flow.
