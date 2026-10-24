@@ -18,11 +18,13 @@ import { effortLabel } from '../core/models'
 import { font } from './theme'
 import type { MaterialName } from './theme'
 import { keys } from '../core/platform'
+import { TrashSettings } from './Trash'
+import type { Thread } from '../core/threads'
 
 export type TabMode = NonNullable<Settings['tabs']>
 export type MotionPref = 'system' | 'reduce' | 'full'
 
-const sections = ['Accounts', 'New notes', 'Instructions', 'Notifications', 'Appearance', 'Tabs', 'Motion'] as const
+const sections = ['Accounts', 'New notes', 'Instructions', 'Notifications', 'Appearance', 'Tabs', 'Motion', 'Trash'] as const
 type Section = (typeof sections)[number]
 const NAV = 176
 /** A section counts as the one you're in once its top is this close under the top edge. */
@@ -42,6 +44,7 @@ export function SettingsPage({
   onLogin,
   onLogout,
   onAddProfile,
+  onRestore,
 }: {
   /** Where the page starts: under the tab strip while it shows. */
   top: number
@@ -58,6 +61,8 @@ export function SettingsPage({
   onLogin: (profileId: string) => void
   onLogout: (profileId: string) => void
   onAddProfile: (name: string) => void
+  /** A note brought back from Trash, for Past notes. */
+  onRestore: (thread: Thread) => void
 }) {
   const m = useM()
   const renderer = useGpuixRequired()
@@ -180,6 +185,7 @@ export function SettingsPage({
                     </SheetRow>
                   </SheetSection>,
                 )}
+                {section('Trash', <TrashSettings profiles={profiles} onRestore={onRestore} />)}
               </div>
             </div>
           </div>

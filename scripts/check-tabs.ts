@@ -86,7 +86,9 @@ try {
   await app.getByTestId('open-history').click()
   await app.getByTestId('history-input').waitFor({ timeoutMs: 3000 })
   await wait(500)
-  await app.mouse.click({ x: 900, y: 400 })
+  // Just past the panel's edge, wherever that is.
+  const panel = await app.getByTestId('history').bounds()
+  await app.mouse.click({ x: Math.round(panel.x + panel.width + 60), y: 400 })
   await wait(400)
   expect('a click beside it closes History', await closed('history-input'))
 

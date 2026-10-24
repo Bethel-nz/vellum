@@ -32,6 +32,7 @@ import { notify } from './core/notify'
 import { FONTS } from './assets/fonts'
 import { OpenIn } from './ui/OpenIn'
 import { ImageViewer, type Viewing } from './ui/ImageViewer'
+import { purgeTrash, trashNote } from './core/trash'
 import { claudeBin, compiled, hasPty, isMac, keys, openConsole, pasteImage, primary, revealFolder, revealLabel, shellArgv, tabStep } from './core/platform'
 import {
   appendLine,
@@ -87,6 +88,8 @@ const MAX_TABS = 9
 const ASK_KEY_DELAY_MS = 400
 const motionPref = (p: MotionPref) => setReducedMotion(p === 'system' ? undefined : p === 'reduce')
 motionPref(readSettings().motion ?? 'system')
+// What has been in the trash 30 days goes for good at launch (core/trash.ts).
+purgeTrash()
 
 /**
  * A terminal of its own in the terminal view: a login, Claude Code on a note, or a shell.
@@ -739,6 +742,21 @@ function App() {
       if (id === activeId) setActiveId(next[Math.min(Math.max(i, 0), next.length - 1)])
     },
     [tabs, activeId],
+  )
+
+  /** A note to the trash (Settings › Trash keeps it 30 days): its tab closes and its agent ends. */
+  const deleteNote = useCallback(
+    (id: string) => {
+      const thread = threadsRef.current.find((t) => t.id === id)
+      if (!thread) return
+      if (tabs.includes(id)) closeTabNow(id)
+      void runners.current.get(id)?.dispose()
+      runners.current.delete(id)
+      if (!trashNote(thread)) return showToast(`Couldn’t move “${thread.title}” to Trash`, 'danger')
+      setThreads((prev) => prev.filter((t) => t.id !== id))
+      showToast(`Moved “${thread.title}” to Trash`)
+    },
+    [tabs, closeTabNow, setThreads, showToast],
   )
 
   /** Closing a tab ends its agent; mid-turn, it asks first. */
@@ -1428,6 +1446,7 @@ function App() {
               onLogin={openLogin}
               onLogout={logOut}
               onAddProfile={addAccount}
+              onRestore={(thread) => setThreads((prev) => [thread, ...prev.filter((t) => t.id !== thread.id)].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)))}
             />
           ) : null}
           {/* Auto mode: touching the top edge brings the strip back, no click needed. */}

@@ -741,29 +741,33 @@ export function loadThreads(): Thread[] {
   const out: Thread[] = []
   for (const file of readdirSync(paths.threads)) {
     if (!file.endsWith('.jsonl')) continue
-    const lines = readFileSync(path.join(paths.threads, file), 'utf8').split('\n')
-    let thread: Thread | undefined
-    for (const line of lines) {
-      if (!line.trim()) continue
-      let ev: any
-      try {
-        ev = JSON.parse(line)
-      } catch {
-        continue
-      }
-      if (!thread) {
-        if (ev.type !== 'vellum/meta') break
-        thread = newThread(ev.meta)
-      }
-      thread = reduce(thread, ev)
-    }
-    if (thread) {
-      // A process that died mid-turn left no result; the thread is idle now.
-      if (thread.running) thread = reduce(thread, { type: 'vellum/stopped' })
-      out.push(thread)
-    }
+    const thread = readThread(path.join(paths.threads, file))
+    if (thread) out.push(thread)
   }
   return out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+}
+
+/** One note from its records; undefined when the file doesn't start with its meta. */
+export function readThread(file: string): Thread | undefined {
+  const lines = readFileSync(file, 'utf8').split('\n')
+  let thread: Thread | undefined
+  for (const line of lines) {
+    if (!line.trim()) continue
+    let ev: any
+    try {
+      ev = JSON.parse(line)
+    } catch {
+      continue
+    }
+    if (!thread) {
+      if (ev.type !== 'vellum/meta') break
+      thread = newThread(ev.meta)
+    }
+    thread = reduce(thread, ev)
+  }
+  // A process that died mid-turn left no result; the thread is idle now.
+  if (thread?.running) thread = reduce(thread, { type: 'vellum/stopped' })
+  return thread
 }
 
 function yaml(v: unknown) {
