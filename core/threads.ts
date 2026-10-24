@@ -67,6 +67,8 @@ export type Block =
   | { kind: 'error'; id: string; text: string; login?: boolean }
   /** The CLI summarized the conversation so far to free up context (/compact, or on its own when full). */
   | { kind: 'compact'; id: string; trigger: 'manual' | 'auto'; preTokens?: number; at: string }
+  /** You moved the note to another account: Claude carries on there in a new session. */
+  | { kind: 'moved'; id: string; from: string; to: string; at: string }
   /** An ask you answered: kept in the note as one quiet line. */
   | { kind: 'approval'; id: string; tool: string; title: string; detail: string; decision: Decision; message?: string; at: string }
   /**
@@ -85,6 +87,8 @@ export type ThreadMeta = {
 
 export type Thread = ThreadMeta & {
   claudeSessionId?: string
+  /** Moved to another account and not sent from since: the next turn carries the note so far. */
+  handoff?: boolean
   /** The model the CLI reported at init (a resolved id, e.g. claude-opus-5-5). */
   model?: string
   /** The model you picked in the switcher (a `--model` value); undefined is the account default. */
@@ -138,6 +142,8 @@ export type VellumRecord =
   | { type: 'vellum/mode'; mode: PermissionMode }
   | { type: 'vellum/think'; think: Think }
   | { type: 'vellum/model'; model?: string }
+  /** The note moves to another account; `from` and `to` are the names as they were then. */
+  | { type: 'vellum/profile'; profileId: string; from: string; to: string; at: string }
   /** You asked Claude to compact; the line itself comes with the CLI's compact_boundary. */
   | { type: 'vellum/compact'; at: string }
   /** The turn's files as git saw them, between snapshots taken as it started and ended. */
@@ -358,6 +364,7 @@ export function reduce(thread: Thread, ev: any): Thread {
       t.running = true
       r.activityId = undefined
       t.updatedAt = ev.at
+      t.handoff = undefined
       break
     case 'vellum/edit': {
       const b = blocks[indexOf(ev.blockId)]
@@ -380,6 +387,17 @@ export function reduce(thread: Thread, ev: any): Thread {
       break
     case 'vellum/model':
       t.modelPick = ev.model
+      break
+    case 'vellum/profile':
+      if (ev.profileId === t.profileId) break
+      push({ kind: 'moved', id: bid('mv'), from: ev.from, to: ev.to, at: ev.at })
+      // The session belongs to the old login: the new account starts its own.
+      t.profileId = ev.profileId
+      t.claudeSessionId = undefined
+      t.model = undefined
+      t.context = undefined
+      t.handoff = true
+      t.updatedAt = ev.at
       break
     case 'vellum/compact':
       t.running = true
@@ -775,6 +793,9 @@ export function toMarkdown(t: Thread): string {
       case 'compact':
         out.push('---', '', `*${b.trigger === 'auto' ? 'Context was full; Claude summarized everything above.' : 'Claude summarized everything above.'}*`, '')
         break
+      case 'moved':
+        out.push('---', '', `*Moved from ${b.from} to ${b.to}.*`, '')
+        break
       case 'git':
         if (b.also.length) out.push(`*Also changed: ${b.also.map((p) => `\`${p}\``).join(', ')}*`, '')
         break
@@ -784,6 +805,26 @@ export function toMarkdown(t: Thread): string {
     }
   }
   return out.join('\n')
+}
+
+/** How much of a moved note the first turn on its new account carries: the latest part wins. */
+export const HANDOFF_MAX = 60_000
+
+/**
+ * The note so far, for the first turn after a move to another account. That session starts
+ * fresh, with none of the old one's history, so this is what Claude knows about the note.
+ */
+export function handoffContext(t: Thread, max = HANDOFF_MAX): string {
+  const body = toMarkdown(t).replace(/^---\n[\s\S]*?\n---\n\n/, '').trim()
+  const kept = body.length > max ? `(The start of the note is left out; it was longer than this.)\n\n${body.slice(-max)}` : body
+  return [
+    'This note was moved here from another account, so this is a new session.',
+    'Here is the note so far, your earlier replies included, as context for what I write next:',
+    '',
+    '<note>',
+    kept,
+    '</note>',
+  ].join('\n')
 }
 
 export function writeMarkdown(t: Thread) {

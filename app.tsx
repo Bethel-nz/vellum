@@ -31,6 +31,7 @@ import {
   newThread,
   newThreadId,
   describeEdits,
+  handoffContext,
   pendingEdits,
   reduce,
   titleFrom,
@@ -172,13 +173,50 @@ const clock = (iso: string) => {
 }
 
 /** The account a note runs on. The account menu hangs off it. */
-function AccountPill({ profile, color, onPress, testId = 'account-pill' }: { profile?: Profile; color: string; onPress: () => void; testId?: string }) {
-  if (!profile) return null
+/**
+ * The note's account, on the strip: a menu of your accounts that moves the note to the one you
+ * pick (Claude carries on there in a new session, with the note so far), and the way to Settings.
+ */
+function AccountSwitcher({
+  thread,
+  profiles,
+  colorOf,
+  onMove,
+  onSettings,
+}: {
+  thread?: Thread
+  profiles: Profile[]
+  colorOf: (id: string) => string
+  onMove: (profileId: string) => void
+  onSettings: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const profile = profiles.find((p) => p.id === thread?.profileId)
+  if (!thread || !profile) return null
+  const items: MenuEntry[] = [
+    { kind: 'label', label: thread.running ? 'Move this note once Claude is done' : 'Move this note to' },
+    ...profiles.map((p) => ({
+      label: p.name,
+      dot: colorOf(p.id),
+      // No email here: the name is enough to pick by, and Settings has the details.
+      hint: p.id === profile.id ? 'This note' : p.loggedIn === false ? 'Not logged in' : undefined,
+      checked: p.id === profile.id,
+      disabled: p.id !== profile.id && (thread.running || p.loggedIn === false),
+      testId: `move-${p.id}`,
+      onSelect: () => p.id !== profile.id && onMove(p.id),
+    })),
+    { kind: 'separator' },
+    { label: 'Accounts…', icon: 'settings', testId: 'account-settings', onSelect: onSettings },
+  ]
   return (
-    <Button onPress={onPress} testId={testId} title="Account">
-      <Dot color={color} size={7} />
-      <Label muted>{profile.name}</Label>
-    </Button>
+    <div style={{ position: 'relative' }}>
+      <Button onPress={() => setOpen((v) => !v && !closedByOutsidePress('account'))} selected={open} testId="account-pill" title="This note's account">
+        <Dot color={colorOf(profile.id)} size={7} />
+        <Label muted>{profile.name}</Label>
+        <Icon name="chevronDown" size={11} />
+      </Button>
+      <Menu open={open} onClose={() => setOpen(false)} side="bottom" align="end" width={280} testId="account-menu" closeKey="account" items={items} />
+    </div>
   )
 }
 
@@ -568,6 +606,24 @@ function App() {
   const draftsRef = useRef(drafts)
   draftsRef.current = drafts
 
+  /**
+   * Moves a note to another account. Its agent lets go of the old session (that login keeps its
+   * history); the next message starts a session on the new account, with the note as context.
+   */
+  const moveNote = useCallback(
+    (thread: Thread, profileId: string) => {
+      const to = profilesRef.current.find((p) => p.id === profileId)
+      const from = profilesRef.current.find((p) => p.id === thread.profileId)
+      if (!to || thread.running || profileId === thread.profileId) return
+      void runners.current.get(thread.id)?.dispose()
+      runners.current.delete(thread.id)
+      setAsks((all) => ({ ...all, [thread.id]: [] }))
+      record(thread.id, { type: 'vellum/profile', profileId, from: from?.name ?? thread.profileId, to: to.name, at: new Date().toISOString() })
+      showToast(`Moved to ${to.name}; Claude picks up from the note`)
+    },
+    [record, showToast],
+  )
+
   /** ⌘↵: send what was written at the end, plus any edits made to earlier text. */
   const send = useCallback(() => {
     const thread = threadsRef.current.find((t) => t.id === activeRef.current)
@@ -581,6 +637,8 @@ function App() {
       return
     }
     const edits = describeEdits(thread)
+    // The first turn after a move to another account starts a session there: give it the note.
+    const handoff = thread.handoff ? handoffContext(thread) : ''
     const images = d.images ?? []
     if (!text && !edits && !images.length) return
     if (thread.running) return
@@ -594,7 +652,7 @@ function App() {
       provisional.current.set(thread.id, cut)
     }
     const prompt = text ? promptFor(text, tags, { workspace: thread.workspace, scopes: thread.tagScopes }) : ''
-    runnerFor(thread).send([edits, prompt].filter(Boolean).join('\n\n'), images)
+    runnerFor(thread).send([handoff, edits, prompt].filter(Boolean).join('\n\n'), images)
     setDraft(thread.id, '', [], [])
   }, [pane, record, runShell, runnerFor, setDraft])
   const sendRef = useRef(send)
@@ -1075,7 +1133,13 @@ function App() {
                     <Icon name="search" size={13} />
                     <Kbd>⌘K</Kbd>
                   </Button>
-                  <AccountPill profile={activeProfile} color={accentFor(m, profiles, activeProfile?.id)} onPress={() => setOverlay('settings')} />
+                  <AccountSwitcher
+                    thread={active}
+                    profiles={profiles}
+                    colorOf={(id) => accentFor(m, profiles, id)}
+                    onMove={(id) => active && moveNote(active, id)}
+                    onSettings={() => setOverlay('settings')}
+                  />
                 </>
               }
             />

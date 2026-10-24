@@ -635,3 +635,27 @@ frames 0–260ms on a paused clock (`app.clock.pause()` / `fastForward()`) into
   pane, so the two can't collide, and it can become a view later without changing what you see.
 - **Checks.** `scripts/check-settings.ts` covers: opens under the strip, a section jump, scrolling
   back, esc, Done, and a tab. check-tabs (settings → tab mode) and check-login also pass.
+
+## 2026-10-24 — moving a note to another account
+
+- **What.** The account marker on the strip (the dot and name, top right) opens a menu of your
+  accounts. Picking one moves the note there, and **Accounts…** opens Settings.
+  - The menu shows no emails: the name is enough to pick by.
+  - A logged-out account is disabled and says so.
+  - While Claude is working, the others are disabled and the menu's heading says the move can
+    wait until Claude is done.
+- **How.**
+  - A `vellum/profile` record changes the note's account. It drops the session id (that session
+    belongs to the old login, which keeps its history) and puts a quiet "Moved from Default to
+    Work" line in the note.
+  - The note's agent is disposed, so it lets go of the old session's lock.
+  - The next message starts a session on the new account. It carries the note so far
+    (`handoffContext`: the note's markdown without its header, the latest 60k characters).
+  - The flag that asks for this clears on that message, so only one turn carries it.
+- **Checks.**
+  - `core/move.test.ts` covers the reducer, the handoff text and the cap.
+  - `scripts/check-move.ts` covers, against the fake agent: the menu, the recorded move, the line
+    in the note, a `session/new` (not a resume) on Work carrying the note, the next turn
+    carrying only itself, and Accounts… opening Settings.
+  - check-login now reaches Settings through the menu.
+  - check-approval's two failures ("keeps an Allowed/Denied line") are HEAD's own, as before.

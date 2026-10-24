@@ -456,6 +456,8 @@ export const BlockView = memo(function BlockView({ block, actions }: { block: Bl
       return <ApprovalLine block={block} />
     case 'compact':
       return <CompactLine block={block} />
+    case 'moved':
+      return <MovedLine block={block} />
     case 'git':
       return block.also.length ? <AlsoChanged block={block} /> : null
   }
@@ -490,6 +492,21 @@ function CompactLine({ block }: { block: Extract<Block, { kind: 'compact' }> }) 
       <div style={{ flexGrow: 1, height: 1, backgroundColor: m.border }} />
       <Icon name="fold" size={12} color={m.textFaint} />
       <text style={{ ...type.meta, color: m.textMuted, flexShrink: 0 }}>{`${what}${from}${time}`}</text>
+      <div style={{ flexGrow: 1, height: 1, backgroundColor: m.border }} />
+    </div>
+  )
+}
+
+/** Where the note moved to another account: Claude carries on there in a new session. */
+function MovedLine({ block }: { block: Extract<Block, { kind: 'moved' }> }) {
+  const m = useM()
+  const at = new Date(block.at)
+  const time = Number.isNaN(at.getTime()) ? '' : ` · ${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+  return (
+    <div testId={`moved-${block.id}`} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 6, paddingBottom: 6 }}>
+      <div style={{ flexGrow: 1, height: 1, backgroundColor: m.border }} />
+      <Icon name="user" size={12} color={m.textFaint} />
+      <text style={{ ...type.meta, color: m.textMuted, flexShrink: 0 }}>{`Moved from ${block.from} to ${block.to}; Claude reads the note above${time}`}</text>
       <div style={{ flexGrow: 1, height: 1, backgroundColor: m.border }} />
     </div>
   )
