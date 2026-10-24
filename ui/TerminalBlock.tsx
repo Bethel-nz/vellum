@@ -182,6 +182,20 @@ export function TerminalBlock({
     session.resize(cols, rows)
   }
 
+  // The wheel reads back through the scrollback; a trackpad's pixels add up to whole rows. A
+  // full-screen program (vim, less) has no scrollback, so it gets arrow keys, as other terminals do.
+  const wheelRows = useRef(0)
+  const onScroll = (e: { deltaY?: number; precise?: boolean }) => {
+    if (!session || !running || mode !== 'full' || !grid) return
+    // GPUI's sign: positive is toward earlier output.
+    wheelRows.current += e.precise ? (e.deltaY ?? 0) / LINE : (e.deltaY ?? 0)
+    const rows = Math.trunc(wheelRows.current)
+    if (!rows) return
+    wheelRows.current -= rows
+    if (grid.alternate) for (let i = 0; i < Math.abs(rows); i++) session.key({ key: rows > 0 ? 'up' : 'down' })
+    else session.scroll(-rows)
+  }
+
   const onKeyDown = (e: KeyEvent) => {
     if (!session || !running) return
     const mods = e.modifiers
@@ -269,6 +283,7 @@ export function TerminalBlock({
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         onLayout={onLayout}
+        onScroll={onScroll}
         onClick={focusSelf}
         style={{
           flexGrow: mode === 'full' ? 1 : 0,

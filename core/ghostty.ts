@@ -130,6 +130,7 @@ export class VtTerminal {
   #cpBuf = 0
   #rgbBuf = 0
   #modeBuf = 0
+  #scrollBuf = 0
   cols: number
   rowsCount: number
 
@@ -158,6 +159,8 @@ export class VtTerminal {
     this.#cpBuf = m.alloc(MAX_GRAPHEME * 4)
     this.#rgbBuf = m.alloc(Math.max(4, m.type('GhosttyColorRgb').size))
     this.#modeBuf = m.alloc(m.type('GhosttyTerminalModeConfig').size)
+    // Both the scroll request and the scrollbar answer fit here (24 bytes each).
+    this.#scrollBuf = m.alloc(Math.max(m.type('GhosttyTerminalScrollViewport').size, m.type('GhosttyTerminalScrollbar').size))
 
     writePtyHandlers.set(this.#userdata, onReply)
     const opt = (name: string) => m.enumValue('GhosttyTerminalOption', name)
@@ -182,6 +185,37 @@ export class VtTerminal {
     this.#m.check(this.#m.exports.ghostty_terminal_resize(this.#term, cols, rows, 0, 0), 'resize')
     this.cols = cols
     this.rowsCount = rows
+  }
+
+  /** Move the viewport `delta` rows into the scrollback (negative, up) or back toward the bottom. */
+  scroll(delta: number) {
+    if (delta) this.#scrollTo('DELTA', Math.trunc(delta))
+  }
+
+  scrollToBottom() {
+    this.#scrollTo('BOTTOM')
+  }
+
+  // The struct is passed by value, which wasm32 lowers to a pointer.
+  #scrollTo(tag: 'DELTA' | 'BOTTOM', delta = 0) {
+    const m = this.#m
+    const type = m.type('GhosttyTerminalScrollViewport')
+    m.bytes().fill(0, this.#scrollBuf, this.#scrollBuf + type.size)
+    m.view().setInt32(this.#scrollBuf + m.field('GhosttyTerminalScrollViewport', 'tag').offset, m.enumValue('GhosttyTerminalScrollViewportTag', tag), true)
+    const value = this.#scrollBuf + m.field('GhosttyTerminalScrollViewport', 'value').offset
+    m.view().setInt32(value + m.field('GhosttyTerminalScrollViewportValue', 'delta').offset, delta, true)
+    m.exports.ghostty_terminal_scroll_viewport(this.#term, this.#scrollBuf)
+  }
+
+  /** Rows in all (scrollback and screen), where the viewport starts, and how many it shows. */
+  scrollbar(): { total: number; offset: number; len: number; atBottom: boolean } {
+    const m = this.#m
+    const f = (name: string) => this.#scrollBuf + m.field('GhosttyTerminalScrollbar', name).offset
+    m.check(m.exports.ghostty_terminal_get(this.#term, m.enumValue('GhosttyTerminalData', 'SCROLLBAR'), this.#scrollBuf), 'scrollbar')
+    const total = Number(m.view().getBigUint64(f('total'), true))
+    const offset = Number(m.view().getBigUint64(f('offset'), true))
+    const len = Number(m.view().getBigUint64(f('len'), true))
+    return { total, offset, len, atBottom: offset + len >= total }
   }
 
   /** Bytes to write to the PTY for one key press, encoded by libghostty for the terminal's current modes. */
@@ -420,6 +454,7 @@ export class VtTerminal {
     m.free(this.#cpBuf, MAX_GRAPHEME * 4)
     m.free(this.#rgbBuf, Math.max(4, m.type('GhosttyColorRgb').size))
     m.free(this.#modeBuf, m.type('GhosttyTerminalModeConfig').size)
+    m.free(this.#scrollBuf, Math.max(m.type('GhosttyTerminalScrollViewport').size, m.type('GhosttyTerminalScrollbar').size))
     this.#term = 0
   }
 }

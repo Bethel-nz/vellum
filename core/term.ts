@@ -23,6 +23,10 @@ export type TermSession = {
   /** Paste text the way a terminal does (bracketed when the program asks, control bytes stripped). */
   paste(text: string): void
   resize(cols: number, rows: number): void
+  /** Move the view `lines` rows into the scrollback (negative, up) or back down. */
+  scroll(lines: number): void
+  /** Back to the newest output; typing and pasting do this first. */
+  scrollToBottom(): void
   snapshot(): Grid
   /** Plain text of screen and scrollback, from libghostty's formatter. */
   text(): string
@@ -72,11 +76,13 @@ function makeSession(id: string, argv: string[], cols: number, rows: number, io:
       if (session.exitCode === undefined) io.write(bytes)
     },
     key(input) {
+      session.scrollToBottom()
       const bytes = vt.encodeKey(input)
       if (bytes.length) session.write(bytes)
     },
     paste(text) {
       if (disposed) return
+      session.scrollToBottom()
       const bytes = vt.encodePaste(text)
       if (bytes.length) session.write(bytes)
     },
@@ -86,6 +92,16 @@ function makeSession(id: string, argv: string[], cols: number, rows: number, io:
       if (disposed || (cols === vt.cols && rows === vt.rowsCount)) return
       vt.resize(cols, rows)
       if (session.exitCode === undefined) io.resize(cols, rows)
+      changed()
+    },
+    scroll(lines) {
+      if (disposed || !lines) return
+      vt.scroll(lines)
+      changed()
+    },
+    scrollToBottom() {
+      if (disposed || vt.scrollbar().atBottom) return
+      vt.scrollToBottom()
       changed()
     },
     snapshot() {
