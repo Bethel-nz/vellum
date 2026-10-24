@@ -31,7 +31,7 @@ const LIMIT_MS = 5000
 const MAX_PATCH = 200_000
 
 /** Config the repo can't override: nothing it names gets run. */
-const SAFE = ['-c', 'core.quotePath=false', '-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null']
+export const SAFE = ['-c', 'core.quotePath=false', '-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null']
 
 async function git(cwd: string, args: string[], env?: Record<string, string>, limit = LIMIT_MS) {
   const proc = Bun.spawn(['git', ...SAFE, ...args], { cwd, env: { ...process.env, ...env }, stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' })
@@ -64,7 +64,7 @@ export async function snapshot(cwd: string): Promise<Snapshot | undefined> {
 }
 
 /** `-c` overrides that blank every filter driver the repo's config defines (a .gitattributes names them). */
-async function noFilters(root: string): Promise<string[]> {
+export async function noFilters(root: string): Promise<string[]> {
   const keys = (await git(root, ['config', '--name-only', '--get-regexp', '^filter\\.'])).out ?? ''
   const drivers = new Set(keys.split('\n').filter(Boolean).map((k) => k.slice('filter.'.length, k.lastIndexOf('.'))))
   return [...drivers].flatMap((d) => ['clean', 'smudge', 'process'].flatMap((k) => ['-c', `filter.${d}.${k}=`]).concat('-c', `filter.${d}.required=false`))

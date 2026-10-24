@@ -77,3 +77,31 @@ test('rename keeps a thing in its folder and never replaces another', () => {
   expect(renameEntry(dir, 'src/y.ts', '../b.ts')).toMatchObject({ error: expect.any(String) })
   expect(renameEntry(dir, 'a2.ts', 'b.ts')).toEqual({ error: 'b.ts is already there.' })
 })
+
+test("a repo's own config can't make the tree's git status run a command", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'vellum-tree-evil-'))
+  const out = mkdtempSync(path.join(tmpdir(), 'vellum-tree-marks-'))
+  const sh = (...args: string[]) => Bun.spawnSync(args, { cwd: dir, stdout: 'ignore', stderr: 'ignore' })
+  const marker = (n: string) => path.join(out, `ran-${n}`)
+  const script = (n: string) => {
+    const f = path.join(out, `${n}.sh`)
+    writeFileSync(f, `#!/bin/sh\ntouch '${marker(n)}'\ncat\n`, { mode: 0o755 })
+    return f
+  }
+  sh('git', 'init', '-q')
+  writeFileSync(path.join(dir, '.gitattributes'), '*.txt filter=x\n*.md filter=y\n')
+  writeFileSync(path.join(dir, 'a.txt'), 'one\n')
+  writeFileSync(path.join(dir, 'b.md'), 'two\n')
+  sh('git', 'add', '-A')
+  sh('git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'one')
+  sh('git', 'config', 'core.fsmonitor', script('fsmonitor'))
+  sh('git', 'config', 'filter.x.clean', script('clean'))
+  sh('git', 'config', 'filter.y.process', script('process'))
+  sh('git', 'config', 'core.hooksPath', out)
+  // Same size, new content: status has to read the files to tell, through their filters.
+  writeFileSync(path.join(dir, 'a.txt'), 'two\n')
+  writeFileSync(path.join(dir, 'b.md'), 'one\n')
+  expect([...((await gitStatus(dir)) ?? [])]).toEqual([['a.txt', 'M'], ['b.md', 'M']])
+  listDir(dir)
+  expect(['fsmonitor', 'clean', 'process'].filter((n) => existsSync(marker(n)))).toEqual([])
+})

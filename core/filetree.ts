@@ -10,6 +10,7 @@
 import { existsSync, mkdirSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { insideWorkspace } from './files'
+import { noFilters, SAFE } from './gitsnap'
 
 export type TreeEntry = { name: string; rel: string; dir: boolean; ignored: boolean }
 
@@ -44,7 +45,7 @@ export function listDir(workspace: string, rel = ''): TreeEntry[] {
 function gitIgnored(workspace: string, entries: TreeEntry[]): Set<string> {
   if (!entries.length) return new Set()
   try {
-    const out = Bun.spawnSync(['git', '-C', workspace, 'check-ignore', '--stdin'], {
+    const out = Bun.spawnSync(['git', ...SAFE, '-C', workspace, 'check-ignore', '--stdin'], {
       stdin: Buffer.from(entries.map((e) => (e.dir ? `${e.rel}/` : e.rel)).join('\n') + '\n'),
       stdout: 'pipe',
       stderr: 'ignore',
@@ -104,13 +105,15 @@ export type GitMark = 'M' | 'A' | 'U' | 'R' | 'D'
 /** Every changed file's status, by path from the note's folder; undefined outside a git repo. */
 export async function gitStatus(workspace: string): Promise<Map<string, GitMark> | undefined> {
   const git = async (...args: string[]) => {
-    // The repo's config may name an fsmonitor to run; Vellum isn't sandboxed, so it never runs one.
-    const proc = Bun.spawn(['git', '-c', 'core.fsmonitor=false', '-C', workspace, ...args], { stdout: 'pipe', stderr: 'ignore' })
+    // The repo's config can name programs for git to run (an fsmonitor, hooks, the filter
+    // drivers `status` runs to compare a file); Vellum isn't sandboxed, so none of them run
+    // (core/gitsnap.ts). Nor does it write the repo's index while it only looks.
+    const proc = Bun.spawn(['git', ...SAFE, '--no-optional-locks', '-C', workspace, ...args], { stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' })
     const out = await new Response(proc.stdout).text()
     return (await proc.exited) === 0 ? out : undefined
   }
   const root = (await git('rev-parse', '--show-toplevel'))?.trim()
-  const out = root ? await git('status', '--porcelain=v1', '-z', '--untracked-files=all') : undefined
+  const out = root ? await git(...(await noFilters(root)), 'status', '--porcelain=v1', '-z', '--untracked-files=all') : undefined
   if (!root || out === undefined) return undefined
   // git names the top by its real path; /tmp and the like are links.
   let base = workspace
