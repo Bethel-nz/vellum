@@ -608,6 +608,28 @@ Agent SDK (`CLAUDE_CODE_EXECUTABLE`), with your login, per account through `CLAU
   missing: Button, dialogs, Menu rows, ButtonGroup's HoverWash, ExpandingButtonGroup, Switch,
   Segmented, and TabStrip all round themselves.
 
+## 2026-10-24 — an incident with the link check, and the guards it left behind
+
+- **What happened.** At 02:22 the app was started by `scripts/check-pane.ts` with no argument.
+  That script passed `VELLUM_CLAUDE_HOME: ${argv[2]}/claude-home` = "undefined/claude-home" (a
+  relative path) and no VELLUM_HOME, so the app used the real ~/.vellum. The link check then took
+  the real `work` account's links to ~/.claude as "pointing elsewhere": it copied ~876 MB of
+  ~/.claude into ./undefined/claude-home and ~872 MB of backups into ~/.vellum/backups/work, and
+  relinked `work` there. A later normal launch linked it back. ~/.claude itself was only ever read
+  (copies, never moves), and ./undefined was deleted once that was checked.
+- **Also found:** unit tests wrote their backups into the real ~/.vellum/backups/work, because
+  another test file had imported store.ts (which fixes its paths on first import) before the
+  accounts test set VELLUM_HOME. And ~/.claude/settings.json was re-saved at 00:41 (12,100 → 12,104
+  bytes, valid, 19 keys) in the same second as the real `work` relink, most likely by a `bun --hot`
+  app that reloaded accounts.ts before its no-needless-rewrite fix. The merge it did added nothing.
+- **Guards now:** `bunfig.toml` preloads core/test-setup.ts, so every test has a scratch
+  VELLUM_HOME and VELLUM_CLAUDE_HOME before anything is imported (checked: the real backup folder
+  is untouched by a test run). `claudeHome()` throws on a relative VELLUM_CLAUDE_HOME. `linkAccount`
+  does nothing when the hub doesn't exist, rather than building one. check-pane exits with usage
+  without its argument and resolves both paths.
+- **Lesson for `bun --hot`:** saving a half-written module reruns launch effects against real
+  data. Code that writes to ~/.claude or ~/.vellum at launch has to be safe at every save.
+
 ## 2026-10-24 — GPUIX motion reality
 
 The rules every animation here follows, and the renderer facts behind them. `scripts/check-motion.ts`
@@ -656,6 +678,30 @@ frames 0–260ms on a paused clock (`app.clock.pause()` / `fastForward()`) into
   - check-changes' "Add closes the sheet" now polls rather than sleeping 900ms. With the Sheet's
     hold and the composer re-render, the panel goes at about 750ms.
   - The scroll keeper (components/Scroll.tsx) went in earlier, in e1cd85f.
+
+## Terminals outlive Vellum (4006bf6)
+
+- **The holder.** `core/termd.ts` is a small Bun process that owns the PTYs. It runs detached
+  (its own session, so a quit or a Ctrl-C doesn't reach it) and listens on
+  `<VELLUM_HOME>/run/termd.sock`. Whoever can connect runs commands as you, so `run/` is 0700
+  (owner and mode checked at start) and the socket is made under umask 077, then 0600. Its pid
+  is beside it in `termd.sock.pid`; output goes to `termd.log`.
+  - It keeps each terminal's last 1 MB of raw output and has no emulator of its own.
+  - A returning Vellum replays that output into a fresh libghostty terminal, then resizes.
+  - It quits 10 s after it holds nothing and nobody is connected. Checks that fail kill it, so a
+    scratch home never keeps a shell.
+- **What's held.** Only shells and "Open in Claude Code" (`keepTerm` in app.tsx) are held; they
+  come back at launch as tabs without leaving the note. ! commands and logins still end with
+  Vellum, since their output is recorded or they're over in a minute.
+- **A held Claude Code still holds its session.** After a restart the note's agent sees the live
+  `claude` and won't drive it until that tab ends; the one-writer lock already covers this.
+- **Version.** The hello carries `TERMD_VERSION`. A Vellum that finds an older holder uses plain
+  terminals instead of guessing at its protocol; bump it with any message change.
+- **Socket writes can be partial.** A 1 MB replay is over a socket buffer. `Wire` queues the rest
+  for the drain handler and joins UTF-8 split across reads.
+- **Checks.** `check-termd` (no UI): a shell from one process is back in the next, takes typing
+  and a resize, and the holder leaves when empty. `check-terminals` now quits and relaunches the
+  app: the shell is back as a tab, with `vellum42` on screen, and still takes typing.
 
 ## 2026-10-24 — the note glides back to the composer
 
