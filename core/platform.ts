@@ -8,7 +8,7 @@
 //   shell      $SHELL -lc · %ComSpec% /d /s /c
 //   PTY        Bun's PTY is POSIX only, so on Windows interactive `claude` opens in a console
 
-import { closeSync, copyFileSync, existsSync, linkSync, mkdirSync, openSync, readFileSync, statSync, symlinkSync } from 'node:fs'
+import { appendFileSync, closeSync, copyFileSync, existsSync, linkSync, mkdirSync, openSync, readFileSync, statSync, symlinkSync } from 'node:fs'
 import { homedir, userInfo } from 'node:os'
 import path from 'node:path'
 
@@ -122,6 +122,16 @@ export function revealFolder(dir: string) {
   const argv = os === 'mac' ? ['open', dir] : os === 'windows' ? ['explorer', dir] : ['xdg-open', dir]
   try {
     Bun.spawn(argv, { stdout: 'ignore', stderr: 'ignore' })
+  } catch {}
+}
+
+/** Shows a file selected in Finder (elsewhere, its folder). Checks set VELLUM_OPEN_LOG to see it instead. */
+export function revealFile(file: string) {
+  const log = process.env.VELLUM_OPEN_LOG
+  if (log) return appendFileSync(log, JSON.stringify({ reveal: file }) + '\n')
+  if (os !== 'mac') return revealFolder(path.dirname(file))
+  try {
+    Bun.spawn(['open', '-R', file], { stdout: 'ignore', stderr: 'ignore' })
   } catch {}
 }
 

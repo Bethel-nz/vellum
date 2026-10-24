@@ -51,6 +51,8 @@ export type Settings = {
   motion?: 'system' | 'reduce' | 'full'
   /** The app "Open in" opens a note's folder in by default (core/openin.ts ids). */
   openIn?: string
+  /** The file pane shows the folder's tree beside the file (⇧⌘E). */
+  fileTree?: boolean
   /** What a new note starts with; unset is Edits and the agent's own effort. */
   newNoteMode?: PermissionMode
   newNoteThink?: Think

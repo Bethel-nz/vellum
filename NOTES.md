@@ -1077,3 +1077,23 @@ job, at the chip's lines. "Read whole file" went with it. Older notes that widen
 widening (`vellum/tag-scope`), and prompts still honor it. A hunk pill still opens its diff on hover.
 
 Not yet: comments on lines, and opening file paths from Claude's tool calls.
+
+## 2026-10-24 — the file pane is a card of its own, with a path pill and the folder's tree
+
+The pane is no longer a slab inside the note's card. It's a second card beside it, with the
+same corner and the window's 4pt gap; in a narrow window it still slides over the note. The
+header is pills, the strip's kind (26–28pt, `chipBg`, a hairline). The path runs from the note's
+folder to the file, and pressing a folder in it opens the tree there; when there's no room the
+outer folders fold into one "…", estimated from mono character widths, since GPUIX can't measure
+text before layout. "Show changes" appears when this note edited the file: it swaps the file for
+the note's hunks to it, oldest first, the same hunks as the Changes sheet. One pill holds copy
+path, Show in Finder (`open -R`), and Open, the strip's Open in narrowed to editors, which opens
+the file.
+
+The tree (core/filetree.ts, ui/FileTree.tsx) is read a folder at a time as folders open, cached
+until the note changes. `.git` and anything that looks like credentials are left out; what git
+ignores (`git check-ignore --stdin` per folder) is dimmed, not hidden; files the note changed,
+and the folders they're in, carry a dot. It opens on the file's folders. Its keys are ↑↓←→ and ↵.
+⇧⌘E or the header's left button shows and hides it, and the choice is kept
+(`fileTree` in settings). The Files button beside History opens the pane on the tree alone.
+With the tree, the pane widens by up to 220 while the note keeps 560; past that it goes over.

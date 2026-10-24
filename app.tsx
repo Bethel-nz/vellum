@@ -60,7 +60,7 @@ import { expandRecipe, gitBranch, loadRecipes, recipeCall } from './core/recipes
 import { Changes } from './ui/Changes'
 import { revealEnd } from './ui/glide'
 import { Timeline, watchRows } from './ui/Timeline'
-import { changeSummary, commentTags, hunkTags } from './core/changes'
+import { changeSummary, collectChanges, commentTags, hunkTags, type Hunk } from './core/changes'
 import { uncommittedFiles } from './core/gitsnap'
 import type { ChangeSummary } from './components/ChangesSummary'
 import { Dot, Icon, Kbd, MaterialContext, Meta, Quiet, useM } from './ui/kit'
@@ -392,6 +392,12 @@ function App() {
       return open?.path === file.path && open.line === file.line && open.endLine === file.endLine ? rest : { ...rest, [noteId]: file }
     })
   }, [])
+  /** Whether the file pane shows the folder's tree (⇧⌘E); one choice for every note. */
+  const [fileTree, setFileTree] = useState(() => readSettings().fileTree ?? false)
+  const showTree = useCallback((open: boolean) => {
+    setFileTree(open)
+    updateSettings({ fileTree: open })
+  }, [])
   /** A pasted image open full size over everything (ui/ImageViewer.tsx). */
   const [viewing, setViewing] = useState<Viewing>()
   // The History panel's two sides: past notes, or recipes.
@@ -435,7 +441,33 @@ function App() {
 
   const active = threads.find((t) => t.id === activeId)
   const previewing = active ? previews[active.id] : undefined
-  const previewSize = previewLayout(windowSize.width)
+  const previewSize = previewLayout(windowSize.width, fileTree)
+  // The note's edits by file, from its folder, oldest first: the pane's "Show changes".
+  const fileChanges = useMemo(() => {
+    const byFile = new Map<string, Hunk[]>()
+    if (!active) return byFile
+    for (const group of collectChanges(active).reverse())
+      for (const f of group.files) {
+        const rel = path.relative(active.workspace, path.resolve(active.workspace, f.path))
+        byFile.set(rel, [...(byFile.get(rel) ?? []), ...f.hunks])
+      }
+    return byFile
+  }, [active?.blocks, active?.workspace])
+  /**
+   * Files on the strip and ⇧⌘E: opens the pane on the tree, or shows the tree in an open pane;
+   * with the tree showing, hides it, and closes a pane that has no file open.
+   */
+  const toggleFiles = () => {
+    if (!active) return
+    if (!previewing) {
+      setPreviews((all) => ({ ...all, [active.id]: {} }))
+      showTree(true)
+    } else if (!fileTree) showTree(true)
+    else {
+      showTree(false)
+      if (!previewing.path) setPreviews(({ [active.id]: _, ...rest }) => rest)
+    }
+  }
   const activeProfile = profiles.find((p) => p.id === active?.profileId)
   // The folder's own uncommitted changes, so the strip offers Changes in a project with edits
   // nobody made in this note. Read again when the note's changes move and when Changes closes.
@@ -1171,6 +1203,9 @@ function App() {
     } else if (key === 'd' && mods.shift) {
       e.preventDefault()
       setOverlay((o) => (o === 'changes' ? null : 'changes'))
+    } else if (key === 'e' && mods.shift) {
+      e.preventDefault()
+      toggleFiles()
     } else if (key === '.') {
       e.preventDefault()
       interrupt()
@@ -1274,9 +1309,16 @@ function App() {
                 />,
               } : undefined}
               leading={
-                <Button onPress={() => setOverlay('history')} testId="open-history" title={keys('Past notes (⌘Y) and recipes (⇧⌘Y)')}>
-                  <Icon name="library" size={14} />
-                </Button>
+                <>
+                  <Button onPress={() => setOverlay('history')} testId="open-history" title={keys('Past notes (⌘Y) and recipes (⇧⌘Y)')}>
+                    <Icon name="library" size={14} />
+                  </Button>
+                  {active && !term ? (
+                    <Button onPress={toggleFiles} selected={Boolean(previewing) && fileTree} testId="open-files" title={keys('Files in this folder (⇧⌘E)')}>
+                      <Icon name="folder" size={14} />
+                    </Button>
+                  ) : null}
+                </>
               }
               menuOpen={noteMenu}
               activeAnchor={
@@ -1335,10 +1377,12 @@ function App() {
             />
           </motion.div>
           {/* The page: the note (or a terminal, or Settings) on a card of its own, rounded all round. */}
+          <div style={{ flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'row', gap: shellInset, position: 'relative' }}>
           <div
             style={{
               flexGrow: 1,
               minHeight: 0,
+              minWidth: 0,
               display: 'flex',
               flexDirection: 'column',
               backgroundColor: m.pane,
@@ -1355,7 +1399,7 @@ function App() {
           ) : active ? (
             <>
               {/* Text scrolls under the strip through a short fade instead of a hard edge. */}
-              <div testId="page" style={{ position: 'relative', flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column', marginRight: previewing && previewSize.split ? previewSize.width : 0 }}>
+              <div testId="page" style={{ position: 'relative', flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
               <Document
                 thread={active}
                 actions={actions}
@@ -1434,20 +1478,6 @@ function App() {
                 </div>
               </div>
               </div>
-              {previewing ? (
-                <FilePreview
-                  workspace={active.workspace}
-                  file={previewing}
-                  version={active.updatedAt}
-                  width={previewSize.width}
-                  split={previewSize.split}
-                  onMention={(file, line, endLine) => mentionLines(active.id, file, line, endLine)}
-                  onClose={() => {
-                    setPreviews(({ [active.id]: _, ...rest }) => rest)
-                    setTimeout(focusComposer, 30)
-                  }}
-                />
-              ) : null}
             </>
           ) : (
             <EmptyState onNew={() => setOverlay('new')} />
@@ -1503,6 +1533,27 @@ function App() {
             preview={pendingAsks[0]?.patch ? <DiffCard patch={pendingAsks[0].patch} /> : undefined}
           />
           <AskUserQuestions ask={term ? undefined : pendingAsks[0]} onAnswer={answerQuestions} />
+          </div>
+          {/* A file open beside the note: a card of its own, or over the note's right side when the window is narrow. */}
+          {active && previewing && !term && overlay !== 'settings' ? (
+            <FilePreview
+              workspace={active.workspace}
+              file={previewing}
+              version={active.updatedAt}
+              width={previewSize.width}
+              split={previewSize.split}
+              radius={paneRadius}
+              tree={fileTree}
+              changes={fileChanges}
+              onTree={showTree}
+              onOpenFile={(file) => setPreviews((all) => ({ ...all, [active.id]: { path: file } }))}
+              onMention={(file, line, endLine) => mentionLines(active.id, file, line, endLine)}
+              onClose={() => {
+                setPreviews(({ [active.id]: _, ...rest }) => rest)
+                setTimeout(focusComposer, 30)
+              }}
+            />
+          ) : null}
           </div>
         </div>
         {overlay === 'new' ? (
