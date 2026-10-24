@@ -47,7 +47,7 @@ export type ToolCall = {
 }
 
 export type Block =
-  | { kind: 'user'; id: string; text: string; tags: Tag[]; at: string; seen?: string }
+  | { kind: 'user'; id: string; text: string; tags: Tag[]; at: string; seen?: string; images?: string[] }
   | { kind: 'assistant'; id: string; markdown: string; at: string; streaming: boolean; seen?: string }
   | { kind: 'activity'; id: string; summary: string; thoughts: number; items: ToolCall[] }
   | { kind: 'edit'; id: string; path: string; patch: string; added: number; removed: number; status: 'running' | 'ok' | 'error'; error?: string }
@@ -114,7 +114,8 @@ export type VellumRecord =
   | { type: 'vellum/meta'; meta: ThreadMeta }
   | { type: 'vellum/title'; title: string }
   /** A turn. `text` is what was newly written; it may be empty when only earlier text was edited. */
-  | { type: 'vellum/user'; text: string; tags: Tag[]; at: string }
+  /** `images` are files under ~/.vellum/images, pasted into the draft. */
+  | { type: 'vellum/user'; text: string; tags: Tag[]; at: string; images?: string[] }
   /** You changed a paragraph of yours or a reply of Claude's. */
   | { type: 'vellum/edit'; blockId: string; text: string }
   /** Claude has been told about every edit so far. */
@@ -345,7 +346,7 @@ export function reduce(thread: Thread, ev: any): Thread {
       t.title = ev.title
       break
     case 'vellum/user':
-      if (ev.text) push({ kind: 'user', id: bid('u'), text: ev.text, tags: ev.tags ?? [], at: ev.at })
+      if (ev.text || ev.images?.length) push({ kind: 'user', id: bid('u'), text: ev.text, tags: ev.tags ?? [], at: ev.at, ...(ev.images?.length ? { images: ev.images } : {}) })
       t.running = true
       r.activityId = undefined
       t.updatedAt = ev.at

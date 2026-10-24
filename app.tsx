@@ -23,7 +23,7 @@ import { createProfile, loadProfiles, profileEnv, profileForWorkspace, rememberW
 import { paths, readJson, readSettings, updateSettings, writeJson } from './core/store'
 import { promptFor, tagsIn, tagText } from './core/tags'
 import { killAllTerms, startTerm, type TermSession } from './core/term'
-import { claudeBin, hasPty, isMac, keys, openConsole, primary, revealFolder, revealLabel, shellArgv, tabStep } from './core/platform'
+import { claudeBin, hasPty, isMac, keys, openConsole, pasteImage, primary, revealFolder, revealLabel, shellArgv, tabStep } from './core/platform'
 import {
   appendLine,
   appendRecord,
@@ -91,7 +91,7 @@ type Pane =
   | { kind: 'login'; profileId: string; session: TermSession; label: string }
   | { kind: 'claude'; threadId: string; session: TermSession }
 
-type Draft = { text: string; tags: Tag[] }
+type Draft = { text: string; tags: Tag[]; images?: string[] }
 
 // Window-level shortcuts are registered once in render(); App swaps the handler in.
 const shortcuts: { current?: (e: KeyEvent) => void } = {}
@@ -409,7 +409,7 @@ function App() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      const kept = Object.fromEntries(Object.entries(drafts).filter(([, d]) => d.text))
+      const kept = Object.fromEntries(Object.entries(drafts).filter(([, d]) => d.text || d.images?.length))
       writeJson(paths.drafts, kept)
     }, 300)
     return () => clearTimeout(timer)
@@ -530,8 +530,15 @@ function App() {
     [record, terminalCols],
   )
 
-  const setDraft = useCallback((threadId: string, text: string, tags: Tag[]) => {
-    setDrafts((d) => ({ ...d, [threadId]: { text, tags } }))
+  /** Text and tags; pasted images stay unless `images` is given. */
+  const setDraft = useCallback((threadId: string, text: string, tags: Tag[], images?: string[]) => {
+    setDrafts((d) => ({ ...d, [threadId]: { text, tags, images: images ?? d[threadId]?.images } }))
+  }, [])
+  const setDraftImages = useCallback((threadId: string, update: (images: string[]) => string[]) => {
+    setDrafts((d) => {
+      const cur = d[threadId] ?? { text: '', tags: [] }
+      return { ...d, [threadId]: { ...cur, images: update(cur.images ?? []) } }
+    })
   }, [])
 
   const draftsRef = useRef(drafts)
@@ -550,11 +557,12 @@ function App() {
       return
     }
     const edits = describeEdits(thread)
-    if (!text && !edits) return
+    const images = d.images ?? []
+    if (!text && !edits && !images.length) return
     if (thread.running) return
     if (pane?.kind === 'claude' && pane.threadId === thread.id) return
     const tags = tagsIn(text, d.tags)
-    record(thread.id, { type: 'vellum/user', text, tags, at: new Date().toISOString() })
+    record(thread.id, { type: 'vellum/user', text, tags, at: new Date().toISOString(), ...(images.length ? { images } : {}) })
     if (edits) record(thread.id, { type: 'vellum/synced' })
     if (text && !thread.blocks.some((b) => b.kind === 'user') && (thread.title === 'Untitled' || thread.title === 'New thread')) {
       const cut = titleFrom(text)
@@ -562,8 +570,8 @@ function App() {
       provisional.current.set(thread.id, cut)
     }
     const prompt = text ? promptFor(text, tags, { workspace: thread.workspace, scopes: thread.tagScopes }) : ''
-    runnerFor(thread).send([edits, prompt].filter(Boolean).join('\n\n'))
-    setDraft(thread.id, '', [])
+    runnerFor(thread).send([edits, prompt].filter(Boolean).join('\n\n'), images)
+    setDraft(thread.id, '', [], [])
   }, [pane, record, runShell, runnerFor, setDraft])
   const sendRef = useRef(send)
   sendRef.current = send
@@ -1066,6 +1074,12 @@ function App() {
                   <Composer
                     value={draft.text}
                     tags={draft.tags}
+                    images={draft.images}
+                    onPaste={() => {
+                      const id = active.id
+                      pasteImage(paths.images).then((file) => file && setDraftImages(id, (all) => [...all, file]))
+                    }}
+                    onRemoveImage={(i) => setDraftImages(active.id, (all) => all.filter((_, j) => j !== i))}
                     onChange={(text, tags) => {
                       setDraft(active.id, text, tags)
                       // An autofocused textarea never reports focus, so typing counts as writing too.

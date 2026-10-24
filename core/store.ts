@@ -22,6 +22,8 @@ export const paths = {
   threads: path.join(home, 'threads'),
   /** Unsent writing at the end of each note, so a quit (⌘Q, ⌘W) loses nothing. */
   drafts: path.join(home, 'drafts.json'),
+  /** Images pasted into notes; a note's records point at them. */
+  images: path.join(home, 'images'),
 }
 
 for (const dir of [home, paths.threads]) mkdirSync(dir, { recursive: true })

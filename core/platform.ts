@@ -8,7 +8,7 @@
 //   shell      $SHELL -lc · %ComSpec% /d /s /c
 //   PTY        Bun's PTY is POSIX only, so on Windows interactive `claude` opens in a console
 
-import { existsSync, linkSync, readFileSync, statSync, symlinkSync } from 'node:fs'
+import { closeSync, copyFileSync, existsSync, linkSync, mkdirSync, openSync, readFileSync, statSync, symlinkSync } from 'node:fs'
 import { homedir, userInfo } from 'node:os'
 import path from 'node:path'
 
@@ -232,4 +232,83 @@ export function accountPicture(): { bytes: Buffer } | { file: string } | undefin
 
 function isImage(head: Buffer) {
   return (head[0] === 0xff && head[1] === 0xd8) || head.toString('latin1', 1, 4) === 'PNG'
+}
+
+// ---------------------------------------------------------------- images on the clipboard
+
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp)$/i
+
+/**
+ * The image on the clipboard, saved as a file in `dir`; undefined when there is none. A copied
+ * image file (Finder, Explorer) is copied as is; image data is written as PNG. macOS asks
+ * AppleScript, Linux wl-paste or xclip, Windows PowerShell's clipboard.
+ */
+export async function pasteImage(dir: string): Promise<string | undefined> {
+  mkdirSync(dir, { recursive: true })
+  // Self-checks paste a known file instead of touching the real clipboard.
+  if (process.env.VELLUM_PASTE_IMAGE) return existsSync(process.env.VELLUM_PASTE_IMAGE) ? copyInto(process.env.VELLUM_PASTE_IMAGE, dir) : undefined
+  const out = path.join(dir, `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}.png`)
+  const run = async (argv: string[], stdout: 'pipe' | number = 'pipe') => {
+    try {
+      const p = Bun.spawn(argv, { stdout, stderr: 'ignore' })
+      const text = stdout === 'pipe' ? await new Response(p.stdout as ReadableStream).text() : ''
+      return { ok: (await p.exited) === 0, text: text.trim() }
+    } catch {
+      return { ok: false, text: '' }
+    }
+  }
+  const saved = () => existsSync(out) && statSync(out).size > 0 ? out : undefined
+
+  if (os === 'mac') {
+    const r = await run([
+      'osascript',
+      '-e', 'try',
+      '-e', 'return POSIX path of (the clipboard as «class furl»)',
+      '-e', 'end try',
+      '-e', 'try',
+      '-e', 'set d to (the clipboard as «class PNGf»)',
+      '-e', 'on error',
+      '-e', 'return ""',
+      '-e', 'end try',
+      '-e', `set f to open for access (POSIX file "${out}") with write permission`,
+      '-e', 'set eof f to 0',
+      '-e', 'write d to f',
+      '-e', 'close access f',
+      '-e', 'return "png"',
+    ])
+    if (r.text && r.text !== 'png') return IMAGE_EXT.test(r.text) && existsSync(r.text) ? copyInto(r.text, dir) : undefined
+    return saved()
+  }
+  if (os === 'linux') {
+    const wayland = Boolean(process.env.WAYLAND_DISPLAY) && Bun.which('wl-paste')
+    const types = wayland ? await run(['wl-paste', '--list-types']) : Bun.which('xclip') ? await run(['xclip', '-selection', 'clipboard', '-t', 'TARGETS', '-o']) : { ok: false, text: '' }
+    if (!types.ok) return
+    if (types.text.split('\n').includes('image/png')) {
+      const fd = openSync(out, 'w')
+      await run(wayland ? ['wl-paste', '--type', 'image/png'] : ['xclip', '-selection', 'clipboard', '-t', 'image/png', '-o'], fd)
+      closeSync(fd)
+      return saved()
+    }
+    const uri = types.text.split('\n').includes('text/uri-list') ? (await run(wayland ? ['wl-paste', '--type', 'text/uri-list'] : ['xclip', '-selection', 'clipboard', '-t', 'text/uri-list', '-o'])).text.split('\n')[0] : ''
+    const file = uri?.startsWith('file://') ? decodeURIComponent(uri.slice(7)) : ''
+    return IMAGE_EXT.test(file) && existsSync(file) ? copyInto(file, dir) : undefined
+  }
+  const r = await run([
+    'powershell', '-NoProfile', '-NonInteractive', '-STA', '-Command',
+    `Add-Type -AssemblyName System.Windows.Forms; $f = [System.Windows.Forms.Clipboard]::GetFileDropList(); if ($f.Count -gt 0) { $f[0] } else { $i = [System.Windows.Forms.Clipboard]::GetImage(); if ($i) { $i.Save('${out}', [System.Drawing.Imaging.ImageFormat]::Png); 'png' } }`,
+  ])
+  if (r.text && r.text !== 'png') return IMAGE_EXT.test(r.text) && existsSync(r.text) ? copyInto(r.text, dir) : undefined
+  return saved()
+}
+
+function copyInto(file: string, dir: string): string {
+  const to = path.join(dir, `${Date.now().toString(36)}-${path.basename(file)}`)
+  copyFileSync(file, to)
+  return to
+}
+
+/** The MIME type the agent needs for an image file. */
+export function imageMime(file: string): string {
+  const ext = path.extname(file).slice(1).toLowerCase()
+  return ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/png'
 }

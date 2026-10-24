@@ -489,3 +489,10 @@ Agent SDK (`CLAUDE_CODE_EXECUTABLE`), with your login, per account through `CLAU
   on 2026-10-24 you decided Vellum keeps the ACP layer (core/acp.ts, core/agent.ts), which also
   opens the door to other ACP agents.
 - Run the project's core tests as `bun test ./core/`.
+- **Image paste.** ⌘V in the composer reads the clipboard for an image: a copied file (Finder)
+  or raw PNG data (a screenshot) on macOS via osascript, wl-paste/xclip on Linux, PowerShell on
+  Windows. The image is copied into ~/.vellum/images, shown as a thumbnail on the draft, and
+  sent to the agent as an ACP image block before the text (the adapter says `image: true`).
+  The note keeps the paths, so the picture shows under your paragraph. Text paste is untouched:
+  with no image on the clipboard nothing happens. `VELLUM_PASTE_IMAGE` stands in for the
+  clipboard in scripts/check-images.ts, so checks never touch yours.

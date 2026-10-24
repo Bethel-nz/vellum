@@ -2,6 +2,7 @@
 // bubbles, no avatars, no timestamps. Your text and Claude's replies are both
 // editable in place; tool work renders as quiet embeds between them.
 
+import { existsSync } from 'node:fs'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyEvent } from '@gpuix/react'
 import { forDiff, type Block, type Tag, type ToolCall } from '../core/threads'
@@ -131,7 +132,28 @@ function UserBlock({ block, actions }: { block: Extract<Block, { kind: 'user' }>
   return (
     <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} style={{ position: 'relative' }}>
       <Author me={actions.me} at={block.at} hover={hover} />
-      <UserText block={block} actions={actions} />
+      {block.text ? <UserText block={block} actions={actions} /> : null}
+      {block.images?.length ? <PastedImages images={block.images} /> : null}
+    </div>
+  )
+}
+
+/** Images you pasted with a paragraph, under it like photos clipped to a page. */
+function PastedImages({ images }: { images: string[] }) {
+  const m = useM()
+  return (
+    <div testId="user-images" style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 8 }}>
+      {images.map((src) =>
+        existsSync(src) ? (
+          <div key={src} style={{ width: 160, height: 120, borderRadius: 10, borderWidth: 1, borderColor: m.border }}>
+            <img src={src} objectFit="cover" style={{ width: 158, height: 118, borderRadius: 9 }} />
+          </div>
+        ) : (
+          <div key={src} style={{ width: 160, height: 120, borderRadius: 10, borderWidth: 1, borderColor: m.border, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Meta>Image missing</Meta>
+          </div>
+        ),
+      )}
     </div>
   )
 }

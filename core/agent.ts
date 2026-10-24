@@ -10,7 +10,7 @@
 //
 // Before a session is resumed, nothing else may have it open (core/locks.ts).
 
-import { existsSync, realpathSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { RequestPermissionRequest, SessionConfigOption, SessionNotification } from '@agentclientprotocol/sdk'
@@ -20,7 +20,7 @@ import { defaultMode, describe, type Ask, type PermissionMode, type Think } from
 import { filePatch } from './files'
 import { acquire, liveHolder, release } from './locks'
 import type { ModelOption } from './models'
-import { claudeBin } from './platform'
+import { claudeBin, imageMime } from './platform'
 import type { Profile } from './profiles'
 import { profileEnv } from './profiles'
 import { patchFromInput, type AcpRecord, type VellumRecord } from './threads'
@@ -135,12 +135,15 @@ export class AgentRunner {
     if (!decision.allow && decision.message?.trim()) this.send(decision.message.trim())
   }
 
-  send(text: string) {
+  /** A turn: your text, and any pasted images as ACP image blocks ahead of it. */
+  send(text: string, images: string[] = []) {
     this.#turn = true
     this.#start()
       .then(async (sessionId) => {
         if (!sessionId) return
-        const res: any = await this.#conn!.request('session/prompt', { sessionId, prompt: [{ type: 'text', text }] })
+        const pictures = images.filter((f) => existsSync(f)).map((f) => ({ type: 'image', mimeType: imageMime(f), data: readFileSync(f).toString('base64') }))
+        const prompt = [...pictures, ...(text ? [{ type: 'text', text }] : [])]
+        const res: any = await this.#conn!.request('session/prompt', { sessionId, prompt })
         this.#end({ type: 'acp/end', stopReason: res?.stopReason ?? 'end_turn' })
       })
       .catch((e) => this.#fail(e))

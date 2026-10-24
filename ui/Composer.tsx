@@ -110,6 +110,9 @@ export function Composer({
   onMode,
   asking,
   onAskKey,
+  images = [],
+  onPaste,
+  onRemoveImage,
 }: {
   value: string
   tags: Tag[]
@@ -128,6 +131,11 @@ export function Composer({
   /** Claude is waiting on an approval in this note. */
   asking?: boolean
   onAskKey?: (key: 'allow' | 'always' | 'deny') => void
+  /** Images pasted into this draft, as files. */
+  images?: string[]
+  /** ⌘V: text pastes as usual; the owner checks the clipboard for an image too. */
+  onPaste?: () => void
+  onRemoveImage?: (index: number) => void
 }) {
   const m = useM()
   const [items, setItems] = useState<Suggestion[]>([])
@@ -159,6 +167,7 @@ export function Composer({
 
   const onKeyDown = (e: KeyEvent) => {
     const mods = e.modifiers
+    if (primary(mods) && e.key === 'v') onPaste?.()
     if (e.key === 'tab' && mods?.shift && !open) {
       e.preventDefault()
       const i = cycleModes.indexOf(mode)
@@ -236,7 +245,28 @@ export function Composer({
       />
       {shell ? <Meta>{keys(`⌘↵ runs this in ${folder ?? 'the folder'}`)}</Meta> : null}
       {asking && !value.trim() ? <Meta color={m.blue}>{keys('Claude is waiting on you · ↵ allow · ⌘↵ always · esc deny')}</Meta> : null}
+      {images.length ? <ImageRow images={images} onRemove={onRemoveImage} /> : null}
       {tokenCtx && !shell ? <TokenRow tags={tagsIn(value, tags)} ctx={tokenCtx} testId="draft-chips" /> : null}
+    </div>
+  )
+}
+
+/** Pasted images waiting to go with the draft: small squares, × on hover to drop one. */
+function ImageRow({ images, onRemove }: { images: string[]; onRemove?: (index: number) => void }) {
+  const m = useM()
+  const [hover, setHover] = useState(-1)
+  return (
+    <div testId="draft-images" style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 2 }}>
+      {images.map((src, i) => (
+        <div key={src} testId={`draft-image-${i}`} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)} style={{ position: 'relative', width: 64, height: 64, borderRadius: 10, borderWidth: 1, borderColor: m.border }}>
+          <img src={src} objectFit="cover" style={{ width: 62, height: 62, borderRadius: 9 }} />
+          {hover === i && onRemove ? (
+            <Quiet onPress={() => onRemove(i)} testId={`remove-image-${i}`} title="Remove image" style={{ position: 'absolute', top: 3, right: 3, width: 20, height: 20, minHeight: 20, paddingLeft: 0, paddingRight: 0, borderRadius: 10, backgroundColor: m.popup }}>
+              <Icon name="x" size={11} color={m.text} />
+            </Quiet>
+          ) : null}
+        </div>
+      ))}
     </div>
   )
 }
