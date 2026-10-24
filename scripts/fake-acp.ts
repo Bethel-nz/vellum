@@ -3,7 +3,8 @@
 // initialize, session/new and session/resume, config options for mode, model and effort, and on
 // each prompt a session/request_permission for a Bash command (or an Edit, when the prompt says
 // "edit"), then a tool call, a reply, usage and end_turn. A prompt that says "codegen" runs a
-// pretend `bun run codegen` that really writes src/generated.ts, a change no edit tool shows. A prompt within a second of a "no" is the
+// pretend `bun run codegen` that really writes src/generated.ts, a change no edit tool shows. A
+// prompt that says "stream" gets a reply in ~100 small deltas, 25ms apart, and no tool call. A prompt within a second of a "no" is the
 // note that came with it, and gets a plain answer. `/compact` answers with a compaction. Every message it
 // receives is appended to $FAKE_ACP_LOG as {in: msg}.
 //
@@ -13,6 +14,7 @@
 // the email. A login takes `--email`, else the email in $FAKE_NEXT_LOGIN (a file, used once: the
 // browser was still signed in to that account), else one made from the account's folder.
 //   VELLUM_AGENT=scripts/fake-acp.ts (scripts/check-approval.ts sets it)
+import { STREAMED } from './fake-stream'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
@@ -81,6 +83,7 @@ const ask = (params: unknown) =>
     out({ id, method: 'session/request_permission', params })
   })
 
+
 let turn = 0
 /** When the last ask was answered no: a note sent with that no follows within moments. */
 let rejectedAt = 0
@@ -96,6 +99,14 @@ async function prompt(sessionId: string, text: string) {
   if (Date.now() - rejectedAt < 1000) {
     rejectedAt = 0
     update(sessionId, { sessionUpdate: 'agent_message_chunk', messageId: `m${turn}`, content: { type: 'text', text: `Okay: ${text}` } })
+    return { stopReason: 'end_turn' }
+  }
+  if (/\bstream\b/i.test(text)) {
+    for (const piece of STREAMED.match(/[\s\S]{1,6}/g)!) {
+      update(sessionId, { sessionUpdate: 'agent_message_chunk', messageId: `m${turn}`, content: { type: 'text', text: piece } })
+      await Bun.sleep(25)
+    }
+    update(sessionId, { sessionUpdate: 'usage_update', used: 24_350, size: 200_000, _meta: { '_claude/model': resolved() } })
     return { stopReason: 'end_turn' }
   }
   const edit = /\bedit\b/i.test(text)

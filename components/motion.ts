@@ -6,6 +6,7 @@
 // arc's enter curve, which settles the same way without overshooting.
 //
 // Every animation goes through `tween()`, which collapses to duration 0 under reduced motion.
+// Full renderer and hit-testing rules: ../MOTION-CONTRACT.md.
 
 import type { MotionTransition } from '@gpuix/react'
 import { useSyncExternalStore } from 'react'

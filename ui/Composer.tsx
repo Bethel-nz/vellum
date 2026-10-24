@@ -17,7 +17,8 @@ import { TokenRow, type TokenContext } from './Tokens'
 import type { Tag } from '../core/threads'
 import { FileIcon, Icon, Meta, Quiet, useM } from './kit'
 import { motion as m_ } from '@gpuix/react'
-import { concentric, elevation, font, motion, radiusBase, type } from './theme'
+import { concentric, elevation, font, radiusBase, type } from './theme'
+import { enter, offset, useReducedMotion } from '../components/motion'
 
 /** The "@query" or "#query" being typed at the end of the draft, trigger included. */
 function activeQuery(text: string): string | undefined {
@@ -38,6 +39,7 @@ function TagPopup({
   onHover: (i: number) => void
 }) {
   const m = useM()
+  const reduced = useReducedMotion()
   return (
     <FloatingLayer
       side="top"
@@ -54,9 +56,9 @@ function TagPopup({
       }}
     >
       <m_.div
-        initial={{ opacity: 0, top: motion.popoverRise }}
+        initial={reduced ? false : { opacity: 0, top: offset.menu }}
         animate={{ opacity: 1, top: 0 }}
-        transition={{ duration: motion.duration.sm, ease: motion.expoOut }}
+        transition={enter('fast')}
         style={{ display: 'flex', flexDirection: 'column', position: 'relative' }}
       >
         {items.map((s, i) => (
@@ -78,7 +80,7 @@ function TagPopup({
               cursor: 'pointer',
             }}
           >
-            {s.type === 'file' ? <FileIcon path={s.value} size={13} /> : <Icon name={s.type === 'skill' ? 'sparkle' : 'folder'} size={13} />}
+            {s.type === 'file' ? <FileIcon path={s.value} size={13} /> : s.type === 'skill' ? null : <Icon name="folder" size={13} />}
             <text style={{ flexGrow: 1, minWidth: 0, fontSize: 12.5, lineHeight: 16, color: m.text, fontFamily: s.type === 'skill' ? font.sans : font.mono, whiteSpace: 'nowrap', textOverflow: 'ellipsis-start' }}>
               {s.type === 'skill' ? s.value : s.label}
             </text>

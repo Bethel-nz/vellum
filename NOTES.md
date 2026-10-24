@@ -537,6 +537,77 @@ Agent SDK (`CLAUDE_CODE_EXECUTABLE`), with your login, per account through `CLAU
   refactor). This session's version was taken back out of ui/blocks.tsx so the two don't fight;
   core/stream.ts (settle points, tested) and scripts/check-stream.ts are left uncommitted for it.
 
+## 2026-10-24 — motion kit and agent surfaces
+
+- **Motion contract.** `components/motion.ts` is authoritative. The older §11 timing table is
+  superseded by the supplied enter/exit/duration tokens. Reduced motion now subscribes mounted
+  controls to the setting, including a running Dot; it becomes static without disappearing.
+  Menus, attention cards, approvals and toasts unmount whole. Sheets hold their panel for the
+  scrim's 180ms fade; reduced motion skips that hold. The deny field is the only remaining
+  AnimatePresence surface here, and has no elevation.
+- **Completed kit.** TabIndicator slides a selected wash behind the active strip pill;
+  HoverWash is reused by the status ButtonGroup. Alerts anchor to background tabs and show the
+  actual pending request or unread-note title. Their arrival leaves the composer focused.
+- **Agent surfaces.** The status controls share a joined surface, measured hover wash and
+  hairline dividers. The approval card shows the pending action with real
+  command, folder, model and agent-supplied rule, keeping the existing approval callbacks. Tool
+  groups expand into individual calls with copyable Input/Output panels, actual failures and
+  recorded elapsed times. Older notes without retained output say so. ACP records now retain
+  these details; no result counts, risk labels or outputs are invented.
+- **Streaming.** `useStreamChunks` commits immutable batches into separate virtual-list rows.
+  First content is eligible on the 120ms tick; later batches prefer markdown settle points,
+  bounded by 480ms. Each row fades once. A finished response uses the full original markdown.
+  The shared `core/stream.ts` settle helpers came from the concurrent streaming work.
+- **Native checks.** Full and reduced motion gallery checks passed for tool details, approvals,
+  toasts, tab attention and focus preservation. Seven popup types each opened/closed ten times
+  in both settings (140 cycles), including picker Ctrl-N/P. Streaming painted its first chunk
+  169ms after the first delta; five committed row heights stayed fixed and the final text was
+  complete. Approval/model/thinking/compaction and tab/History/strip regression scripts passed.
+  Existing smoke checks now wait for a painted input before Escape and for actual sheet removal
+  or compaction response instead of racing a fixed sleep. The app's existing Cmd-Enter send
+  binding is retained; §13's Ctrl-Enter reference predates it.
+- **Source validation.** Biome checked the eight new/rewritten kit files; 14 existing core ACP
+  and stream tests passed. No build or tsc invocation. Visual captures are under screenshots/
+  with motion-approval, motion-tools, motion-alert, and motion-stream names.
+
+## 2026-10-24 — expanding status pill
+
+- Replaced the status bar's joined buttons with an expanding group. The model stays
+  expanded at rest; pointer movement or keyboard focus reveals another label, and an open
+  menu keeps its trigger expanded. The existing 28px outer height is retained (22px inner
+  pills, a 3px surround) to keep the status bar's density and approval-card clearance.
+- Width uses the same converted morph tween as the tabs; label reveal uses left and opacity
+  with enter/leave tokens. Reduced motion makes those transitions instant. Labels are measured
+  natively; icons keep a fixed inset. Only real pointer travel changes hover intent, with a
+  4px boundary inset so moving neighbours don't exchange labels under a stationary pointer.
+- GPUIX motion children consume native clicks, so each animated visual has a transparent native
+  button above it. Native div buttons also miss focus/blur notifications for Tab and direct
+  focus calls: the group reads the focused id every 100ms without moving focus. Mouse presses
+  are tracked separately, so leaving the controls returns to the model after a mouse action.
+- Native checks passed for every hover reveal, stationary-pointer stability, Tab/Shift-Tab,
+  arrows, Home/End, Enter, and return to the resting model. Three popups each opened and closed
+  ten times in full and reduced motion (60 cycles), staying attached above their trigger.
+  The existing approval/settings/compaction regression passed. Compared native 1080×780
+  captures in groknight and frost. Biome passed for the three affected component/source files,
+  including an explicit undeclared-variable check. No build or new permanent tests.
+
+## 2026-10-24 — a hover wash paints square
+
+- Extends the `<img>` rule: GPUIX doesn't clip a node's own paint to a PARENT's radius either,
+  so a parent's `overflow: 'hidden'` + `borderRadius` does not round a child's hover or active
+  wash. A naked native `Button` (`@gpuix/react/button`) carrying `hover` styles paints its wash
+  square past the card's rounded corners — a square backdrop behind the pill, seen on the
+  tool-activity card in the notes.
+- Rule: every node painting a wash (hover, active, selected, or an animated background) carries
+  its own `borderRadius`, as `components/Button.tsx` already does. A node inset inside a
+  rounded, bordered parent uses `concentric(parentRadius, borderWidth)`. GPUIX has no
+  per-corner radii, so internal rows round all four corners; the soft pill a wash makes inside
+  a card is the same idiom Menu rows already use.
+- Fixed `components/ToolCall.tsx`: the group header row and each call row now carry
+  `borderRadius: concentric(radiusBase, 1)`. A sweep of the other wash-bearing nodes found none
+  missing: Button, dialogs, Menu rows, ButtonGroup's HoverWash, ExpandingButtonGroup, Switch,
+  Segmented, and TabStrip all round themselves.
+
 ## 2026-10-24 — GPUIX motion reality
 
 The rules every animation here follows, and the renderer facts behind them. `scripts/check-motion.ts`
@@ -618,6 +689,76 @@ frames 0–260ms on a paused clock (`app.clock.pause()` / `fastForward()`) into
   - ⌘Enter from far up lands at the end and keeps following.
   - Verified in a clean worktree of HEAD plus this change, which also passed check-motion,
     check-changes and check-timeline.
+
+## 2026-10-24 — alerts and Confirm Morph
+
+- Alerts group a tone icon, title, supporting copy and dismiss control.
+  Alert.tsx is now shared by persistent timeline errors
+  and the tab-anchored attention card. Errors still appear once and retain their red message.
+- The in-flow alert is flat so its measured height and opacity can tween on dismissal without
+  leaving an elevation shadow. Tab attention uses a separate Lifted wrapper and unmounts whole.
+  Title/copy/tone changes use legal opacity/top tweens; padding is 16px, gap 12px, icon 18px.
+- ConfirmMorph uses a measured width, question, pending state,
+  success/Undo and error/Retry. Callbacks determine the result. No fake spinner, success or Undo
+  is attached to the real close operation. A 280ms arming guard rejects reflexive answers.
+  Async completion leaves the composer focused when the user has moved there.
+- You chose Confirm Morph for Stop and close. It replaces that sheet with a question anchored
+  beside the requested tab. A hidden strip temporarily reveals the question. Cancel, Escape and
+  outside press leave the running note alone. Confirmed close stops the process and retains the
+  recorded note/session. Closing disposes of the agent immediately, so verification observes
+  its PID ending rather than assuming a cancellation RPC must reach a process before disposal.
+- Native full and reduced passes covered alert status/height changes, dismiss/reopen, question
+  cancellation, pending/resolved/rejected promises, Retry, real inverse Undo and composer focus.
+  The real close flow passed in both settings, including a hidden strip, process termination
+  and saved-note preservation. The reflexive-answer guard was observed in the full-motion
+  run; transport latency exceeded that guard in the reduced run. No build or permanent tests.
+
+## 2026-10-24 — model picker, History header and hit-testing contract
+
+- The model picker groups the provider mark, model title and actual
+  description, selection check, and an Effort submenu. The expanded model pill shows effort
+  as secondary text. Only the agent's own models and effort options appear; More models is
+  available when there are options beyond the first four. No sample GPT/Gemini entries are
+  added to a Claude-only account.
+- Effort options arrive from ACP's thought_level select. Legacy off/on/max map to low/default/
+  max as before; medium/high/xhigh are retained when the agent offers them. The native fixture
+  agent received High and Medium through session/set_config_option. The three old fallback
+  choices remain until the first session supplies its options.
+- History now has a rounded search field, clear action, Filters, real result
+  count and Best match/Newest/A to Z control. The left panel is 480px to fit those controls.
+  Best match prioritizes exact and prefix title matches; date order remains the fallback.
+  Filters use real open/running notes and accounts. No synthetic search duration is displayed.
+- MOTION-CONTRACT.md records the renderer limits and the new hit-testing/dismissal rules.
+  Tab hit areas and their close controls are plain overlays over their animated visuals.
+  Segmented buttons sit above the thumb; Switch has a plain knob overlay. Menu rows now use
+  plain click overlays too: a staggered row lost one press in the final popup check. Menu and
+  model-picker surfaces animate separately from the static click regions.
+- PopoverBackdrop is a plain target in the deferred popup layer, above sibling animations.
+  Outside presses dismiss the current popup. Sheet scrims have a plain dismissal overlay above
+  their animated wash. Confirm-close has the same dismissal plane. The legacy outside-press
+  guard is no longer required by these popup dismissal paths.
+- Native full/reduced passes covered search, clearing, sorting, open/account filters, model and
+  effort changes, nested keyboard navigation, backdrop dismissal while rows enter, and strip
+  collapse. Menu keyboard events now respect defaultPrevented so a submenu answer cannot also
+  activate its parent's selected row. Strip collapse needs minHeight:0 with the new tab hit
+  planes. The existing tab check waits for Settings removal before typing in auto mode.
+- With the native clock at frame 40, approval and Sheet close buttons still take presses,
+  ten Switch presses work while the knob moves, Segmented buttons work during a glide, and
+  tab switching/closing work during indicator motion. Full and reduced checks passed.
+  The popup regression (rapid toggles and the toast action) also passed in both settings.
+- Validation: 14 existing ACP/stream tests passed; Biome passed for the new/rewritten feedback,
+  picker, status and History components, plus scoped undeclared-variable checks on the wiring.
+  No tsc, build, commit or push.
+
+## 2026-10-24 — tool-call fidelity correction
+
+- Removed the invented leading tool glyphs and stars, the group outline, and the separator
+  border between its summary and rows. Input/Output now align with the tool title; their
+  inset fills, status, elapsed time, disclosure and copy controls remain functional.
+- Skill chips and suggestions also lose the decorative star. Claude's identity mark is the
+  exact five-path SVG supplied by the user, reused by approvals and model controls.
+- Native inspection expanded the skill call and its recorded result. Scoped Biome checks and
+  undeclared-variable checks passed. No build or new permanent tests.
 
 ## 2026-10-24 — Settings is a page
 

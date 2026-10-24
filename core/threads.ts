@@ -45,6 +45,11 @@ export type ToolCall = {
   detail: string
   status: 'running' | 'ok' | 'error'
   error?: string
+  title?: string
+  input?: Record<string, unknown>
+  output?: string
+  startedAt?: string
+  finishedAt?: string
 }
 
 export type Block =
@@ -152,7 +157,7 @@ export type VellumRecord =
 /** What an ACP agent said, as logged in the thread (core/agent.ts). */
 export type AcpRecord =
   | { type: 'acp/session'; sessionId: string; agent: string; profileId: string }
-  | { type: 'acp/update'; update: any }
+  | { type: 'acp/update'; update: any; at?: string }
   | { type: 'acp/end'; stopReason: string }
 
 export function newThread(meta: ThreadMeta): Thread {
@@ -427,10 +432,16 @@ export function reduce(thread: Thread, ev: any): Thread {
       }
       break
     }
-    case 'vellum/error':
-      push({ kind: 'error', id: bid('err'), text: ev.text, login: ev.login })
+    case 'vellum/error': {
+      const text = ev.text.trim().replace(/^Internal error:\s*(?=\S)/i, '')
+      const last = blocks[blocks.length - 1]
+      // The adapter may stream the failure as a reply before reporting the same error.
+      if (last?.kind === 'assistant' && last.streaming && last.markdown.trim() === text) mut().pop()
+      for (const b of blocks) if (b.kind === 'assistant' && b.streaming) patchBlock(b.id, (x) => ({ ...x, streaming: false }))
+      push({ kind: 'error', id: bid('err'), text, login: ev.login })
       t.running = false
       break
+    }
     case 'vellum/git-changes': {
       if (!ev.files?.length) break
       const turn = blocks.slice(blocks.map((b) => b.kind).lastIndexOf('user') + 1)
@@ -515,7 +526,7 @@ export function reduce(thread: Thread, ev: any): Thread {
           if (!r.toolNames?.[callId]) r.toolNames = { ...r.toolNames, [callId]: name }
           const input = u.rawInput && Object.keys(u.rawInput).length ? u.rawInput : undefined
           const status = u.status === 'completed' ? 'ok' : u.status === 'failed' ? 'error' : undefined
-          const output = typeof u.rawOutput === 'string' ? u.rawOutput : u.rawOutput != null ? JSON.stringify(u.rawOutput) : undefined
+          const output = typeof u.rawOutput === 'string' ? u.rawOutput : u.rawOutput != null ? JSON.stringify(u.rawOutput, null, 2) : (u.content ?? []).flatMap((c: any) => c.type === 'content' && c.content?.type === 'text' ? [c.content.text] : []).join('\n') || undefined
           let id = r.tools[callId]
           if (!id) {
             id = EDIT_TOOLS.has(name) ? bid('ed') : name === 'Bash' ? bid('sh') : activity()
@@ -527,7 +538,7 @@ export function reduce(thread: Thread, ev: any): Thread {
               push({ kind: 'shell', id, command: '', source: 'agent', termId: callId })
               r.activityId = undefined
             } else {
-              patchBlock(id, (b) => ({ ...b, items: [...b.items, { id: callId, name, detail: name, status: 'running' }] }))
+              patchBlock(id, (b) => ({ ...b, items: [...b.items, { id: callId, name, detail: name, status: 'running', startedAt: ev.at }] }))
               resummarize(id)
             }
           }
@@ -559,7 +570,7 @@ export function reduce(thread: Thread, ev: any): Thread {
               ...x,
               items: x.items.map((it: ToolCall) =>
                 it.id === callId
-                  ? { ...it, ...(input ? { detail: toolDetail(t.workspace, name, input) } : {}), ...(status ? { status, error: status === 'error' ? (output ?? '').slice(0, 400) : undefined } : {}) }
+                  ? { ...it, ...(u.title ? { title: String(u.title) } : {}), ...(input ? { detail: toolDetail(t.workspace, name, input), input } : {}), ...(output !== undefined ? { output } : {}), ...(status ? { status, finishedAt: ev.at, error: status === 'error' ? (output ?? '').slice(0, 400) : undefined } : {}) }
                   : it,
               ),
             }))
@@ -650,7 +661,7 @@ export function reduce(thread: Thread, ev: any): Thread {
             r.activityId = undefined
           } else {
             const id = activity()
-            const call: ToolCall = { id: c.id, name, detail: toolDetail(t.workspace, name, input), status: 'running' }
+            const call: ToolCall = { id: c.id, name, detail: toolDetail(t.workspace, name, input), input, status: 'running' }
             patchBlock(id, (b) => ({ ...b, items: [...b.items, call] }))
             resummarize(id)
             r.tools = { ...r.tools, [c.id]: id }
@@ -680,7 +691,7 @@ export function reduce(thread: Thread, ev: any): Thread {
           patchBlock(b.id, (x) => ({
             ...x,
             items: x.items.map((it: ToolCall) =>
-              it.id === c.tool_use_id ? { ...it, status: failed ? 'error' : 'ok', error: failed ? text.slice(0, 400) : undefined } : it,
+              it.id === c.tool_use_id ? { ...it, output: text, status: failed ? 'error' : 'ok', error: failed ? text.slice(0, 400) : undefined } : it,
             ),
           }))
           resummarize(b.id)

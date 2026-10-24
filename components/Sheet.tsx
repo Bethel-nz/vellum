@@ -39,7 +39,7 @@ function useHoldOpen(open: boolean): boolean {
   return open || (!reduced && hold)
 }
 
-function Scrim({ exiting }: { exiting: boolean }) {
+function Scrim({ exiting, onClose }: { exiting: boolean; onClose: () => void }) {
   const m = useM()
   return (
     <DialogBackdrop style={{ backgroundColor: '#00000000' }}>
@@ -50,6 +50,7 @@ function Scrim({ exiting }: { exiting: boolean }) {
         // A motion.div keeps presses to itself: let the click reach the backdrop, which closes.
         style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: m.scrim, pointerEvents: 'none' }}
       />
+      <div onMouseDown={onClose} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
     </DialogBackdrop>
   )
 }
@@ -74,7 +75,7 @@ export function Sheet({
   return (
     <Dialog open={open || hold} onOpenChange={(next) => !next && onClose()}>
       <DialogPortal>
-        <Scrim exiting={!open} />
+        <Scrim exiting={!open} onClose={onClose} />
         <DialogPopup
           testId={testId}
           initialFocus={initialFocus}
@@ -93,9 +94,9 @@ export function Sheet({
             initial={{ opacity: 0, top: offset.dialog }}
             animate={{ opacity: 1, top: 0 }}
             transition={tween({ duration: duration.standard, ease: ease.enter })}
-            style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}
+            style={{ position: 'relative', display: 'flex', flexDirection: 'column', pointerEvents: 'none' }}
           >
-            {children}
+            <div style={{ display: 'flex', flexDirection: 'column', pointerEvents: 'auto' }}>{children}</div>
           </motion.div>
         </DialogPopup>
       </DialogPortal>
@@ -169,7 +170,7 @@ export function SidePanel({
   return (
     <Dialog open={open || hold} onOpenChange={(next) => !next && onClose()}>
       <DialogPortal>
-        <Scrim exiting={!open} />
+        <Scrim exiting={!open} onClose={onClose} />
         <DialogPopup
           testId={testId}
           initialFocus={initialFocus ?? body}

@@ -3,11 +3,6 @@
 
 import { useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  Dialog,
-  DialogBackdrop,
-  DialogPopup,
-  DialogPortal,
-  motion,
   useGpuixRequired,
   type KeyEvent,
   type PublicInstance,
@@ -18,42 +13,9 @@ import path from 'node:path'
 import type { Profile } from '../core/profiles'
 import type { Thread } from '../core/threads'
 import { Dot, Icon, Kbd, Meta, Quiet, useM } from './kit'
-import { Scroll, Tooltip } from '../components'
+import { Scroll, Sheet, Tooltip } from '../components'
 import { keys } from '../core/platform'
-import { accentFor, concentric, font, motion as mo, radiusXl, shortPath } from './theme'
-
-function Sheet({ open, onClose, width, children, initialFocus }: { open: boolean; onClose: () => void; width: number; children: ReactNode; initialFocus?: React.RefObject<PublicInstance | null> }) {
-  const m = useM()
-  return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogPortal>
-        <DialogBackdrop style={{ backgroundColor: m.scrim }} />
-        <DialogPopup
-          initialFocus={initialFocus}
-          style={{
-            width,
-            maxWidth: '92%',
-            backgroundColor: m.popup,
-            borderRadius: radiusXl,
-            borderWidth: 1,
-            borderColor: m.border,
-            boxShadow: { offsetX: 0, offsetY: 18, blurRadius: 48, spreadRadius: 0, color: m.shadow },
-            overflow: 'hidden',
-          }}
-        >
-          <motion.div
-            initial={{ opacity: 0, top: mo.popoverRise }}
-            animate={{ opacity: 1, top: 0 }}
-            transition={{ duration: mo.duration.sm, ease: mo.expoOut }}
-            style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}
-          >
-            {children}
-          </motion.div>
-        </DialogPopup>
-      </DialogPortal>
-    </Dialog>
-  )
-}
+import { accentFor, concentric, font, radiusXl, shortPath } from './theme'
 
 function SectionLabel({ children }: { children: ReactNode }) {
   const m = useM()

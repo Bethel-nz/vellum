@@ -5,10 +5,13 @@
 import { existsSync } from 'node:fs'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useGpuixRequired, type KeyEvent, type PublicInstance } from '@gpuix/react'
-import { forDiff, type Block, type Tag, type ToolCall } from '../core/threads'
+import { forDiff, summarize, type Block, type Tag } from '../core/threads'
 import { printedFile } from '../core/printed'
 import { getTerm } from '../core/term'
 import { FileIcon, Icon, Meta, Quiet, useM } from './kit'
+import { ToolCallGroup } from '../components/ToolCall'
+import { isSubagentCall, SubagentTasks } from '../components/SubagentTasks'
+import { Alert } from '../components/Alert'
 import { TerminalBlock } from './TerminalBlock'
 import { TokenText, type TokenContext } from './Tokens'
 import { tokens } from '../core/tags'
@@ -281,46 +284,14 @@ function CodeCard({ code, language, testId }: { code: string; language: string; 
   )
 }
 
-function ToolLine({ call }: { call: ToolCall }) {
-  const m = useM()
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0 }}>
-        <text style={{ ...type.meta, color: m.textMuted, width: 64, flexShrink: 0 }}>{call.name}</text>
-        <text style={{ ...type.meta, color: call.status === 'error' ? m.danger : m.textFaint, fontFamily: font.mono, whiteSpace: 'nowrap', textOverflow: 'ellipsis', minWidth: 0, flexGrow: 1 }}>
-          {call.detail}
-        </text>
-      </div>
-      {call.error ? (
-        <text style={{ ...type.meta, color: m.danger, paddingLeft: 72, lineClamp: 3 }}>{call.error}</text>
-      ) : null}
-    </div>
-  )
-}
-
 function ActivityBlock({ block }: { block: Extract<Block, { kind: 'activity' }> }) {
-  const m = useM()
-  const [open, setOpen] = useState(false)
-  const failed = block.items.some((i) => i.status === 'error')
-  const running = block.items.some((i) => i.status === 'running')
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <Quiet onPress={() => setOpen((v) => !v)} style={{ alignSelf: 'start', marginLeft: -8 }} title={open ? 'Hide tool activity' : 'Show tool activity'}>
-        <Icon name={open ? 'chevronDown' : 'chevronRight'} size={12} color={m.textFaint} />
-        <text style={{ fontSize: 13, lineHeight: 18, color: failed ? m.danger : m.textMuted }}>
-          {block.summary}
-          {running ? '…' : ''}
-        </text>
-      </Quiet>
-      {open && block.items.length ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 12, borderLeftWidth: 1, borderColor: m.border, marginLeft: 2 }}>
-          {block.items.map((c) => (
-            <ToolLine key={c.id} call={c} />
-          ))}
-        </div>
-      ) : null}
-    </div>
-  )
+  const agents = block.items.filter(isSubagentCall)
+  if (!agents.length) return <ToolCallGroup summary={block.summary} items={block.items} />
+  const tools = block.items.filter((call) => !isSubagentCall(call))
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    {tools.length || block.thoughts ? <ToolCallGroup summary={summarize(block.thoughts, tools)} items={tools} /> : null}
+    <SubagentTasks items={agents} />
+  </div>
 }
 
 /**
@@ -414,15 +385,14 @@ function UserShell({ block, onSendOutput, onReturnFocus }: { block: Extract<Bloc
 function ErrorBlock({ block, onLogin }: { block: Extract<Block, { kind: 'error' }>; onLogin: () => void }) {
   const m = useM()
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10, borderRadius: concentric(radiusBase, 0), backgroundColor: m.dangerBg }}>
-      <text style={{ fontSize: 13, lineHeight: 19, color: m.danger }}>{block.text}</text>
+    <Alert tone="danger" title={block.text} testId={`error-${block.id}`}>
       {block.login ? (
         <Quiet onPress={onLogin} style={{ alignSelf: 'start', marginLeft: -8 }}>
           <Icon name="login" size={12} color={m.text} />
           <text style={{ fontSize: 12.5, lineHeight: 16, color: m.text }}>Log in to this account</text>
         </Quiet>
       ) : null}
-    </div>
+    </Alert>
   )
 }
 

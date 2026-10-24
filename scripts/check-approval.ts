@@ -96,7 +96,7 @@ try {
   await app.getByTestId('approval-deny-field').press('enter')
   await wait(800)
 
-  // ⇧⇥ switches the mode on the live process; Think off is live too
+  // ⇧⇥ switches the mode on the live process; effort is live too
   await c.click()
   await c.press('shift-tab')
   await wait(500)
@@ -117,13 +117,22 @@ try {
     await c.press('enter')
     await wait(1000)
   }
-  await app.getByTestId('think-pill').click() // on → max
-  await wait(300)
+  // Effort sits in the model menu: the model pill, then Effort, then a level.
+  const setEffort = async (value: string) => {
+    await app.getByTestId('model-pill').click()
+    await app.getByTestId('model-effort').waitFor({ timeoutMs: 3000 })
+    await app.getByTestId('model-effort').click()
+    await app.getByTestId(`effort-${value}`).waitFor({ timeoutMs: 3000 })
+    await app.getByTestId(`effort-${value}`).click()
+    await wait(300)
+    if (await app.getByTestId('model-menu').count()) await app.getByTestId('model-menu').press('escape')
+    await wait(300)
+  }
+  await setEffort('max')
   await turn('Think hard')
   expect('Think max sets effort max', configs().some((r) => r.configId === 'effort' && r.value === 'max'))
   expect('…on the same process', sent().filter((m) => m.method === 'initialize').length === 1)
-  await app.getByTestId('think-pill').click() // max → off
-  await wait(300)
+  await setEffort('off')
   await turn('No thinking')
   expect('Think off sets effort low', configs().some((r) => r.configId === 'effort' && r.value === 'low'))
   const records = readFileSync(path.join(home, 'threads', `${JSON.parse(readFileSync(path.join(home, 'settings.json'), 'utf8')).lastThreadId}.jsonl`), 'utf8')
@@ -148,7 +157,9 @@ try {
   expect('the card shows used of window', (await app.getByTestId('context-used').textContent()).includes('24k / 200k'))
   await shot('7-context')
   await app.getByTestId('compact').click()
-  await wait(1500)
+  // The agent may first wait for its git snapshot; the completed usage update is authoritative.
+  const compactDeadline = Date.now() + 10_000
+  while (!(await app.getByTestId('context-pill').textContent()).includes('1.9k') && Date.now() < compactDeadline) await wait(25)
   const after = readFileSync(path.join(home, 'threads', `${JSON.parse(readFileSync(path.join(home, 'settings.json'), 'utf8')).lastThreadId}.jsonl`), 'utf8')
   expect('Compact sends /compact as its own turn', after.includes('"vellum/compact"') && !after.includes('"text":"/compact"'))
   expect('the fold line is in the note', (await ids('compact-')).length === 1)

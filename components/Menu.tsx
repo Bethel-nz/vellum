@@ -13,8 +13,10 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { DismissableLayer, motion, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { FloatingLayer } from '@gpuix/react/floating'
+import { Button as Base } from '@gpuix/react/button'
 import { concentric, elevation, radiusBase } from '../ui/theme'
 import { Lifted } from './Lifted'
+import { PopoverBackdrop } from './PopoverBackdrop'
 import type { IconName } from '../ui/icons'
 import { Icon } from './Icon'
 import { Kbd } from './Kbd'
@@ -96,7 +98,7 @@ export function Menu({
   return <MenuPanel key="menu" onClose={onClose} items={items} header={header} width={width} side={side} align={align} testId={testId} closeKey={closeKey} />
 }
 
-function MenuPanel({ onClose, items, header, width, side, align, testId, closeKey }: { onClose: () => void; items: MenuItem[]; header?: ReactNode; width: number; side: 'top' | 'bottom'; align: 'start' | 'end'; testId?: string; closeKey?: string }) {
+function MenuPanel({ onClose, items, header, width, side, align, testId }: { onClose: () => void; items: MenuItem[]; header?: ReactNode; width: number; side: 'top' | 'bottom'; align: 'start' | 'end'; testId?: string; closeKey?: string }) {
   const m = useM()
   const panel = useRef<PublicInstance>(null)
   const [active, setActive] = useState(-1)
@@ -147,36 +149,35 @@ function MenuPanel({ onClose, items, header, width, side, align, testId, closeKe
   let row = 0
   return (
     <DismissableLayer onEscapeKeyDown={onClose} initialFocus={() => panel.current?.id ?? null}>
-      {/* FloatingLayer paints a square #1A1A1A behind its content unless told otherwise. */}
-      <FloatingLayer side={side} align={align} sideOffset={6} style={{ width, backgroundColor: '#00000000' }}>
+      {/* The native anchored surface needs its own radius as well as the painted panel. */}
+      <FloatingLayer side={side} align={align} sideOffset={6} style={{ width, borderRadius: radiusBase + PAD, backgroundColor: '#00000000' }}>
+        <PopoverBackdrop onClose={onClose} testId={testId ? `${testId}-backdrop` : undefined} />
         {/* The plain div owns focus, keys and outside clicks; motion.div only animates. */}
-        <div ref={panel} testId={testId} tabIndex={0} onKeyDown={onKeyDown} onMouseDownOutside={() => {
-            markOutsideClose(closeKey)
-            onClose()
-          }} style={{ keyboardFocusDim: false }}>
+        <div ref={panel} role="menu" testId={testId} tabIndex={0} onKeyDown={onKeyDown} onMouseLeave={() => setActive(-1)} style={{ position: 'relative', keyboardFocusDim: false }}>
         <Lifted
-          onMouseLeave={() => setActive(-1)}
           initial={{ opacity: 0, top: from }}
           animate={{ opacity: 1, top: 0 }}
           transition={tween({ duration: duration.fast, ease: ease.enter })}
           shadow={elevation(m, 'popover')}
           style={{
-            position: 'relative',
-            display: 'flex',
-            flexDirection: 'column',
-            padding: PAD,
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            pointerEvents: 'none',
             backgroundColor: m.popup,
             borderRadius: concentric(radiusBase + PAD, 0),
             borderWidth: 1,
             borderColor: m.border,
           }}
-        >
+        />
+        <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', padding: PAD }}>
           {/* One highlight for every row: glides for the pointer, jumps for the keyboard. */}
           <motion.div
             initial={false}
             animate={{ top: tops[active] ?? tops[0] ?? PAD, opacity: active >= 0 ? 1 : 0 }}
             transition={tween(glide ? spring.snappy : { duration: 0 })}
-            style={{ position: 'absolute', left: PAD, right: PAD, height: ROW, borderRadius: concentric(radiusBase + PAD, PAD), backgroundColor: danger ? m.dangerBg : m.popupHover }}
+            style={{ position: 'absolute', left: PAD, right: PAD, height: ROW, borderRadius: concentric(radiusBase + PAD, PAD), backgroundColor: danger ? m.dangerBg : m.popupHover, pointerEvents: 'none' }}
           />
           {header ? (
             <div onLayout={(e) => setHeaderHeight(e.height ?? 0)} style={{ display: 'flex', flexDirection: 'column' }}>
@@ -194,21 +195,15 @@ function MenuPanel({ onClose, items, header, width, side, align, testId, closeKe
             const n = row++
             const color = it.disabled ? m.textFaint : it.destructive ? m.danger : m.textUi
             return (
+              <div key={it.testId ?? it.label} style={{ position: 'relative', height: ROW }}>
               <motion.div
-                key={`${it.label}-${i}`}
-                onMouseEnter={() => {
-                  if (!selectable(it)) return
-                  setGlide(active >= 0)
-                  setActive(i)
-                }}
-                onClick={() => pick(i)}
                 initial={{ opacity: 0, top: from * 0.4 }}
                 animate={{ opacity: 1, top: 0 }}
                 // Rows arrive from the trigger outward: top-down below it, bottom-up above it.
                 transition={tween({ duration: duration.standard, ease: ease.enter, delay: Math.min(side === 'top' ? rows - 1 - n : n, stagger.maxItems - 1) * stagger.item })}
-                style={{ position: 'relative', height: ROW }}
+                style={{ position: 'absolute', left: 0, right: 0, height: ROW, pointerEvents: 'none' }}
               >
-                <div testId={it.testId} style={{ height: ROW, display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 9, paddingLeft: 9, paddingRight: 8, cursor: it.disabled ? 'default' : 'pointer' }}>
+                <div style={{ height: ROW, display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 9, paddingLeft: 9, paddingRight: 8 }}>
                 {it.image !== undefined ? (
                   // An app's own icon (Open in); an empty slot keeps the row aligned while it loads.
                   it.image ? <img src={it.image} style={{ width: 18, height: 18, marginLeft: -2, marginRight: -2 }} objectFit="contain" /> : <div style={{ width: 14 }} />
@@ -225,9 +220,11 @@ function MenuPanel({ onClose, items, header, width, side, align, testId, closeKe
                 {it.checked ? <Icon name="check" size={13} color={m.text} /> : null}
                 </div>
               </motion.div>
+              <Base testId={it.testId} aria-label={it.label} disabled={it.disabled} onClick={() => pick(i)} onMouseEnter={() => { if (selectable(it)) { setGlide(active >= 0); setActive(i) } }} onKeyDown={(event) => { if (event.key === 'enter' || event.key === 'space') event.stopPropagation() }} style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, cursor: it.disabled ? 'default' : 'pointer', borderRadius: radiusBase }} />
+              </div>
             )
           })}
-        </Lifted>
+        </div>
         </div>
       </FloatingLayer>
     </DismissableLayer>

@@ -23,10 +23,12 @@ import { defaultMode, describe, type Ask, type PermissionMode, type Think } from
 import { filePatch } from './files'
 import { changedFiles, snapshot, type Snapshot } from './gitsnap'
 import { acquire, liveHolder, release } from './locks'
-import type { ModelOption } from './models'
+import { effortLabel, effortValue, type EffortOption, type ModelOption } from './models'
 import { claudeBin, imageMime } from './platform'
 import type { Profile } from './profiles'
 import { profileEnv } from './profiles'
+import { vellumPrompt } from './prompt'
+import { formQuestions, questionError, type QuestionContent } from './questions'
 import { patchFromInput, type AcpRecord, type VellumRecord } from './threads'
 
 export type RunnerTarget = {
@@ -52,6 +54,7 @@ type Listener = {
   /** The agent changed the mode itself (e.g. leaving plan mode). */
   modeChanged?(mode: PermissionMode): void
   models?(list: ModelOption[]): void
+  efforts?(list: EffortOption[]): void
   /** Who this account is, from the adapter's `_auth/status_update`. */
   account?(a: { email?: string; plan?: string; label?: string }): void
   /** Something worth a toast, not a place in the note (a merged link, an MCP clash). */
@@ -62,7 +65,7 @@ type Listener = {
 const toAgentMode = (m: PermissionMode) => (m === 'manual' ? 'default' : m)
 const fromAgentMode = (id: string): PermissionMode => (id === 'default' ? 'manual' : (id as PermissionMode))
 /** Thinking maps onto the adapter's effort option: off is its lowest level, max its highest. */
-const effortFor = (t: Think) => (t === 'off' ? 'low' : t === 'max' ? 'max' : 'default')
+const effortFor = (t: Think) => (t === 'off' ? 'low' : t === 'on' ? 'default' : t)
 
 /** The agent program: the bundled adapter, run by this Bun. VELLUM_AGENT swaps in a fake for checks. */
 export function agentArgv(): string[] {
@@ -135,13 +138,25 @@ export class AgentRunner {
   /** Answer an ask with one of the options it offered. A deny with a note sends the note next. */
   answer(requestId: string, decision: { allow: true; always?: boolean } | { allow: false; message?: string }) {
     const p = this.#asks.get(requestId)
-    if (!p) return
+    if (!p || p.ask.questions) return
     this.#asks.delete(requestId)
     const ids = p.ask.optionIds ?? {}
     const optionId = decision.allow ? ((decision.always && ids.always) || ids.allow) : ids.reject
     p.resolve(optionId ? { outcome: { outcome: 'selected', optionId } } : { outcome: { outcome: 'cancelled' } })
     // ACP's reject carries no reason; the note goes in as your next message (the adapter queues it).
     if (!decision.allow && decision.message?.trim()) this.send(decision.message.trim(), [], true)
+  }
+
+  answerQuestions(requestId: string, content: QuestionContent | null) {
+    const pending = this.#asks.get(requestId)
+    if (!pending?.ask.questions) return
+    if (content && pending.ask.questions.some((question) => questionError(question, content))) return
+    const result = content ? { ...content } : undefined
+    if (result) for (const question of pending.ask.questions) {
+      if ((question.kind === 'number' || question.kind === 'integer') && result[question.id] !== undefined && result[question.id] !== '') result[question.id] = Number(result[question.id])
+    }
+    this.#asks.delete(requestId)
+    pending.resolve(result ? { action: 'accept', content: result } : { action: 'cancel' })
   }
 
   /**
@@ -243,11 +258,15 @@ export class AgentRunner {
 
     const init: any = await conn.request('initialize', {
       protocolVersion: 1,
-      clientCapabilities: { auth: { terminal: true }, session: { compaction: {} } },
+      // Each capability is an object: `form: true` fails ACP's schema and is silently dropped, and
+      // without form support the adapter starts claude with --disallowedTools=AskUserQuestion.
+      clientCapabilities: { auth: { terminal: true }, session: { compaction: {} }, elicitation: { form: {} } },
       clientInfo: { name: 'vellum', title: 'Vellum', version: '0.1.0' },
     })
     const canResume = Boolean(init?.agentCapabilities?.sessionCapabilities?.resume)
-    const params = { cwd: workspace, mcpServers: [] }
+    // What Vellum draws for the agent's tools, after its own prompt, for agents that take one.
+    const systemPrompt = init?.agentCapabilities?.sessionCapabilities?.systemPrompt ? { mode: 'append', content: [{ type: 'text', text: vellumPrompt }] } : undefined
+    const params = { cwd: workspace, mcpServers: [], ...(systemPrompt ? { systemPrompt } : {}) }
     let res: any
     let id = sessionId
     if (id && canResume) {
@@ -312,6 +331,15 @@ export class AgentRunner {
       const flat = model.options.flatMap((x: any) => x.options ?? [x])
       const list: ModelOption[] = flat.map((x: any) => ({ value: String(x.value), displayName: String(x.name ?? x.value), description: x.description ?? undefined }))
       if (list.length) this.#listener.models?.(list)
+    }
+    const effort: any = this.#option('thought_level')
+    if (effort?.options) {
+      const flat = effort.options.flatMap((x: any) => x.options ?? [x])
+      const list: EffortOption[] = flat.flatMap((x: any) => {
+        const value = effortValue(String(x.value))
+        return value ? [{ value, displayName: x.name && x.name !== x.value ? String(x.name) : effortLabel(value), description: x.description ?? undefined }] : []
+      })
+      if (list.length) this.#listener.efforts?.(list)
     }
     const mode: any = this.#option('mode')
     if (react && mode?.currentValue) {
@@ -384,7 +412,7 @@ export class AgentRunner {
           }
           return
       }
-      this.#emit({ type: 'acp/update', update })
+      this.#emit({ type: 'acp/update', update, at: new Date().toISOString() })
       return
     }
     if (method === '_auth/status_update') {
@@ -394,6 +422,17 @@ export class AgentRunner {
   }
 
   async #onRequest(method: string, params: any, id: number | string): Promise<unknown> {
+    if (method === 'elicitation/create') {
+      if (params.mode && params.mode !== 'form') throw new RpcFailure(method, { code: -32602, message: 'Only question forms are supported' })
+      let questions: Ask['questions']
+      try { questions = formQuestions(String(params.message ?? ''), params.requestedSchema) }
+      catch (error) { throw new RpcFailure(method, { code: -32602, message: String((error as Error).message) }) }
+      const ask: Ask = { requestId: String(id), threadId: this.#target.threadId, tool: 'AskUserQuestion', title: questions[0]!.title, detail: String(params.message ?? ''), input: {}, questions, at: new Date().toISOString() }
+      return new Promise((resolve) => {
+        this.#asks.set(ask.requestId, { ask, resolve })
+        this.#listener.ask(ask)
+      })
+    }
     if (method !== 'session/request_permission') throw new RpcFailure(method, { code: -32601, message: `Vellum does not handle ${method}` })
     const req = params as RequestPermissionRequest
     const call: any = req.toolCall ?? {}
@@ -424,7 +463,7 @@ export class AgentRunner {
 
   #dropAsks() {
     for (const [rid, p] of this.#asks) {
-      p.resolve({ outcome: { outcome: 'cancelled' } })
+      p.resolve(p.ask.questions ? { action: 'cancel' } : { outcome: { outcome: 'cancelled' } })
       this.#listener.askGone(rid)
     }
     this.#asks.clear()

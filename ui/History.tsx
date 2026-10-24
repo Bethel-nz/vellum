@@ -3,13 +3,13 @@
 // that has focus as it opens. ↑↓ or ⌃N ⌃P move, ↩ opens, esc closes. ⌘K stays the quick jump.
 
 import { useMemo, useRef, useState } from 'react'
-import type { KeyEvent, PublicInstance } from '@gpuix/react'
-import { Button, Scroll, SidePanel } from '../components'
+import { useGpuixRequired, type KeyEvent, type PublicInstance } from '@gpuix/react'
+import { Button, Label, Menu, Scroll, Segmented, SidePanel } from '../components'
 import { keys, primary } from '../core/platform'
 import type { Profile } from '../core/profiles'
 import type { Thread } from '../core/threads'
 import { ago, Row } from './dialogs'
-import { Dot, Icon, Kbd, Meta, useM } from './kit'
+import { Dot, Icon, Meta, useM } from './kit'
 import { accentFor, font } from './theme'
 import path from 'node:path'
 
@@ -43,22 +43,30 @@ export function History({
   onPick: (id: string) => void
 }) {
   const m = useM()
+  const renderer = useGpuixRequired()
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
+  const [sort, setSort] = useState<'match' | 'newest' | 'az'>('match')
+  const [filter, setFilter] = useState<'all' | 'open' | 'running'>('all')
+  const [profile, setProfile] = useState<string | undefined>(undefined)
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const inputRef = useRef<PublicInstance>(null)
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase()
     const list = threads
       .filter((t) => !q || t.title.toLowerCase().includes(q) || t.workspace.toLowerCase().includes(q))
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .filter((t) => (filter !== 'open' || openIds.includes(t.id)) && (filter !== 'running' || t.running) && (!profile || t.profileId === profile))
+    const rank = (t: Thread) => t.title.toLowerCase() === q ? 0 : t.title.toLowerCase().startsWith(q) ? 1 : t.title.toLowerCase().includes(q) ? 2 : 3
+    list.sort((a, b) => sort === 'az' ? a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }) : (sort === 'match' && q ? rank(a) - rank(b) : 0) || b.updatedAt.localeCompare(a.updatedAt))
     const out: [string, Thread[]][] = []
     for (const t of list) {
-      const g = dayGroup(t.updatedAt)
-      if (out.at(-1)?.[0] === g) out.at(-1)![1].push(t)
+      const g = sort === 'az' || (sort === 'match' && q) ? 'Results' : dayGroup(t.updatedAt)
+      const last = out.at(-1)
+      if (last?.[0] === g) last[1].push(t)
       else out.push([g, [t]])
     }
     return out
-  }, [threads, query])
+  }, [threads, query, sort, filter, profile, openIds])
   const flat = groups.flatMap(([, ts]) => ts)
   const pick = (t?: Thread) => t && onPick(t.id)
 
@@ -75,9 +83,10 @@ export function History({
   }
 
   return (
-    <SidePanel open={open} onClose={onClose} side="left" width={340} initialFocus={inputRef} testId="history">
-      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10, height: 46, paddingLeft: 16, paddingRight: 12, borderBottomWidth: 1, borderColor: m.border, flexShrink: 0 }}>
-        <Icon name="search" size={14} />
+    <SidePanel open={open} onClose={onClose} side="left" width={480} initialFocus={inputRef} testId="history">
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, borderBottomWidth: 1, borderColor: m.border, flexShrink: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 9, height: 38, paddingLeft: 12, paddingRight: 6, borderRadius: 19, backgroundColor: m.chipBg, borderWidth: 1, borderColor: m.border, flexGrow: 1, minWidth: 0 }}>
+        <Icon name="search" size={16} />
         <input
           ref={inputRef}
           testId="history-input"
@@ -91,10 +100,21 @@ export function History({
           onKeyDown={onKeyDown}
           style={{ flexGrow: 1, minWidth: 0, fontSize: 13.5, color: m.text }}
         />
-        <Kbd>⌘Y</Kbd>
-        <Button onPress={onClose} testId="history-close" title="Close (esc)" style={{ width: 24, paddingLeft: 0, paddingRight: 0 }}>
-          <Icon name="x" size={13} />
-        </Button>
+        {query ? <Button onPress={() => { setQuery(''); setActive(0); if (inputRef.current) renderer.focusElement?.(inputRef.current.id) }} testId="history-clear" title="Clear search" style={{ width: 26, height: 26, paddingLeft: 0, paddingRight: 0, borderRadius: 13 }}><Icon name="x" size={14} /></Button> : null}
+      </div>
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <Button onPress={() => setFiltersOpen((value) => !value)} testId="history-filters" title="Filter notes" selected={filtersOpen || filter !== 'all' || Boolean(profile)} style={{ height: 38, paddingLeft: 12, paddingRight: 12, borderRadius: 19, borderWidth: 1, borderColor: m.border, gap: 8 }}><Icon name="settings" size={16} /><Label>Filters</Label></Button>
+        <Menu open={filtersOpen} onClose={() => setFiltersOpen(false)} side="bottom" align="end" width={240} testId="history-filter-menu" items={[
+          ...([{ value: 'all', label: 'All notes' }, { value: 'open', label: 'Open tabs' }, { value: 'running', label: 'Running' }] as const).map((option) => ({ label: option.label, checked: filter === option.value, testId: `history-filter-${option.value}`, onSelect: () => { setFilter(option.value); setActive(0) } })),
+          { kind: 'separator' }, { kind: 'label', label: 'Account' },
+          { label: 'All accounts', checked: !profile, testId: 'history-profile-all', onSelect: () => { setProfile(undefined); setActive(0) } },
+          ...profiles.map((option) => ({ label: option.name, dot: accentFor(m, profiles, option.id), checked: profile === option.id, testId: `history-profile-${option.id}`, onSelect: () => { setProfile(option.id); setActive(0) } })),
+        ]} />
+      </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingLeft: 16, paddingRight: 14, paddingTop: 12, paddingBottom: 12, flexShrink: 0 }}>
+        <text testId="history-results" style={{ fontSize: 12, lineHeight: 17, color: m.textMuted }}>{`${flat.length} ${flat.length === 1 ? 'result' : 'results'}`}</text>
+        <Segmented<'match' | 'newest' | 'az'> pill testId="history-sort" value={sort} onChange={(value) => { setSort(value); setActive(0) }} width={82} options={[{ value: 'match', label: 'Best match' }, { value: 'newest', label: 'Newest' }, { value: 'az', label: 'A to Z' }]} />
       </div>
       <Scroll style={{ flexGrow: 1 }} padding={6}>
         {flat.length === 0 ? (
@@ -126,6 +146,8 @@ export function History({
       </Scroll>
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', paddingLeft: 16, paddingRight: 12, height: 36, borderTopWidth: 1, borderColor: m.border, flexShrink: 0 }}>
         <Meta>{keys('↩ open · ⌃N ⌃P move · esc close')}</Meta>
+        <div style={{ flexGrow: 1 }} />
+        <Button onPress={onClose} testId="history-close" title="Close (esc)" style={{ width: 24, paddingLeft: 0, paddingRight: 0 }}><Icon name="x" size={13} /></Button>
       </div>
     </SidePanel>
   )

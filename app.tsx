@@ -9,20 +9,25 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, render, useGpuixRequired, useWindowSize, type KeyEvent, type PublicInstance } from '@gpuix/react'
-import { ApprovalCard, Button, closedByOutsidePress, Field, Label, Menu, Sheet, SheetHeader, SheetSection, stripHeight, TabStrip, useToast, type MenuItem as MenuEntry } from './components'
+import { ApprovalCard, Button, closedByOutsidePress, Field, Label, Menu, stripHeight, TabStrip, useToast, type MenuItem as MenuEntry } from './components'
 import { FloatingLayer } from '@gpuix/react/floating'
-import { ease, setReducedMotion, tween } from './components/motion'
+import { StreamChunk, useStreamChunks } from './components/StreamChunk'
+import { ConfirmMorph } from './components/ConfirmMorph'
+import { duration, ease, setReducedMotion, tween } from './components/motion'
 import { AgentRunner, killAllAgents } from './core/agent'
 import { accountStatus, loginCommand, loginMethods, logout, sameLogin } from './core/auth'
 import { linkAccount } from './core/accounts'
 import { identityFor, machineAvatar, realName } from './core/avatar'
-import { cacheModels, cachedModels, type ModelOption } from './core/models'
+import { cacheModels, cachedModels, shortModel, type EffortOption, type ModelOption } from './core/models'
 import { StatusBar } from './ui/StatusBar'
+import { AskUserQuestions } from './components/AskUserQuestions'
+import type { QuestionContent } from './core/questions'
 import { defaultMode, type Ask, type PermissionMode, type Think } from './core/asks'
 import { createProfile, loadProfiles, profileEnv, profileForWorkspace, rememberWorkspace, updateProfile, type Profile } from './core/profiles'
 import { paths, readJson, readSettings, updateSettings, writeJson } from './core/store'
 import { promptFor, tagsIn, tagText } from './core/tags'
-import { killAllTerms, startTerm, type TermSession } from './core/term'
+import { heldTerms, holdTerm, killAllTerms, startTerm, type TermSession } from './core/term'
+import { setDockIcon } from './core/dock'
 import { OpenIn } from './ui/OpenIn'
 import { claudeBin, hasPty, isMac, keys, openConsole, pasteImage, primary, revealFolder, revealLabel, shellArgv, tabStep } from './core/platform'
 import {
@@ -92,10 +97,19 @@ const FONTS = [
   'Inter-Regular.ttf', 'Inter-Medium.ttf', 'Inter-SemiBold.ttf',
 ]
 
-type Pane =
-  /** `label` is what runs, as you'd type it (the agent hands `--cli auth login` to claude). */
-  | { kind: 'login'; profileId: string; session: TermSession; label: string }
-  | { kind: 'claude'; threadId: string; session: TermSession }
+/**
+ * A terminal of its own in the terminal view: a login, Claude Code on a note, or a shell.
+ * `title` names its tab; `label` is what runs, as you'd type it (the header); `hint` what to do.
+ */
+type Term = {
+  id: string
+  kind: 'login' | 'claude' | 'shell'
+  title: string
+  label: string
+  hint?: string
+  session: TermSession
+  threadId?: string
+}
 
 type Draft = { text: string; tags: Tag[]; images?: string[] }
 
@@ -104,14 +118,20 @@ const shortcuts: { current?: (e: KeyEvent) => void } = {}
 
 // ---------------------------------------------------------------- document
 
-function Paragraph({ children, kind }: { children: React.ReactNode; kind?: Block['kind'] | 'title' | 'status' | 'composer' }) {
+function Paragraph({ children, kind }: { children: React.ReactNode; kind?: Block['kind'] | 'title' | 'status' | 'composer' | 'stream' }) {
   const top = kind === 'user' || kind === 'composer' ? 18 : kind === 'title' ? 28 : 6
   const width = readingWidthFor(useWindowSize().width)
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', paddingTop: top, paddingBottom: 6 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', paddingTop: kind === 'stream' ? 0 : top, paddingBottom: kind === 'stream' ? 0 : 6 }}>
       <div style={{ width: '100%', maxWidth: width, paddingLeft: 28, paddingRight: 28 }}>{children}</div>
     </div>
   )
+}
+
+function Reply({ block, actions }: { block: Extract<Block, { kind: 'assistant' }>; actions: BlockActions }) {
+  const chunks = useStreamChunks(block.markdown, block.streaming)
+  if (!block.streaming) return <Paragraph kind="assistant"><BlockView block={block} actions={actions} /></Paragraph>
+  return <>{chunks.map((chunk) => <Paragraph key={chunk.id} kind="stream"><StreamChunk text={chunk.text} id={`stream-${block.id}-${chunk.id}`} /></Paragraph>)}</>
 }
 
 // The whole page is the note: your paragraphs, Claude's replies and tool work,
@@ -145,7 +165,7 @@ const Document = memo(function Document({
       style={{ flexGrow: 1, minHeight: 0, width: '100%', scrollbarColor: m.scrollbar, scrollbarWidth: 10 }}
     >
       <div key="head" style={{ height: 28 }} />
-      {thread.blocks.map((b) => (
+      {thread.blocks.map((b) => b.kind === 'assistant' ? <Reply key={b.id} block={b} actions={actions} /> : (
         <Paragraph key={b.id} kind={b.kind}>
           <BlockView block={b} actions={actions} />
         </Paragraph>
@@ -327,20 +347,11 @@ function EmptyState({ onNew }: { onNew: () => void }) {
   )
 }
 
-function TerminalPane({ pane, title, hint, onClose }: { pane: Pane; title: string; hint: string; onClose: () => void }) {
-  const m = useM()
+/** The terminal view: one terminal, full size, no header (its tab in the strip names and closes it). */
+function TerminalView({ term, onLeave }: { term: Term; onLeave: () => void }) {
   return (
-    <div style={{ flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 10, paddingLeft: 16, paddingRight: 16, paddingBottom: 16 }}>
-      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <text style={{ fontSize: 13, lineHeight: 18, color: m.text, fontWeight: 500 }}>{title}</text>
-        <Meta>{hint}</Meta>
-        <div style={{ flexGrow: 1 }} />
-        <Quiet onPress={onClose} testId="close-pane">
-          <Icon name="x" size={12} />
-          <Meta color={m.textMuted}>Close</Meta>
-        </Quiet>
-      </div>
-      <TerminalBlock session={pane.session} title={pane.kind === 'login' ? pane.label : pane.session.argv.join(' ')} mode="full" autoFocus testId="pane-term" />
+    <div style={{ flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column', paddingTop: 12, paddingLeft: 16, paddingRight: 16, paddingBottom: 16 }}>
+      <TerminalBlock key={term.id} session={term.session} title={term.label} mode="full" bare autoFocus onReturnFocus={onLeave} testId="pane-term" />
     </div>
   )
 }
@@ -376,11 +387,17 @@ function App() {
   /** Permission asks waiting on you, per note, oldest first. They live as long as their process. */
   const [asks, setAsks] = useState<Record<string, Ask[]>>({})
   const [models, setModels] = useState<Record<string, ModelOption[]>>(cachedModels)
+  const [efforts, setEfforts] = useState<Record<string, EffortOption[]>>({})
   const [denying, setDenying] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, Draft>>(() => readJson(paths.drafts, {}))
   const [overlay, setOverlay] = useState<null | 'new' | 'switcher' | 'settings' | 'history' | 'changes'>(null)
   const [noteMenu, setNoteMenu] = useState(false)
-  const [pane, setPane] = useState<Pane | null>(null)
+  const [terms, setTerms] = useState<Term[]>([])
+  const termsRef = useRef(terms)
+  termsRef.current = terms
+  const [view, setView] = useState<'notes' | 'terminal'>('notes')
+  const [termId, setTermId] = useState<string | null>(null)
+  const term = view === 'terminal' ? terms.find((t) => t.id === termId) : undefined
   // Tab strip: the mode from settings, ⌘⇧T flipping it, and the top-edge hover in auto mode.
   const [tabMode, setTabMode] = useState<TabMode>(() => readSettings().tabs ?? 'pinned')
   const [stripToggled, setStripToggled] = useState(false)
@@ -544,7 +561,7 @@ function App() {
             setAsks((all) => ({ ...all, [thread.id]: [...(all[thread.id] ?? []), a] }))
             if (activeRef.current !== thread.id) {
               const title = threadsRef.current.find((t) => t.id === thread.id)?.title ?? 'A note'
-              showToastRef.current(`${title} · Claude needs your OK`)
+              showToastRef.current(`${title} · ${a.questions ? 'Claude has a question' : 'Claude needs your OK'}`)
             }
           },
           askGone(requestId) {
@@ -556,6 +573,9 @@ function App() {
           models(list) {
             setModels((all) => ({ ...all, [profile.id]: list }))
             cacheModels(profile.id, list)
+          },
+          efforts(list) {
+            setEfforts((all) => ({ ...all, [profile.id]: list }))
           },
           notice(text) {
             showToastRef.current(text)
@@ -666,7 +686,7 @@ function App() {
     const images = d.images ?? []
     if (!text && !edits && !images.length) return
     if (thread.running) return
-    if (pane?.kind === 'claude' && pane.threadId === thread.id) return
+    if (termsRef.current.some((t) => t.kind === 'claude' && t.threadId === thread.id)) return
     const tags = tagsIn(text, d.tags)
     record(thread.id, { type: 'vellum/user', text, tags, at: new Date().toISOString(), ...(images.length ? { images } : {}) })
     if (edits) record(thread.id, { type: 'vellum/synced' })
@@ -678,7 +698,7 @@ function App() {
     const prompt = text ? promptFor(text, tags, { workspace: thread.workspace, scopes: thread.tagScopes }) : ''
     runnerFor(thread).send([handoff, edits, prompt].filter(Boolean).join('\n\n'), images)
     setDraft(thread.id, '', [], [])
-  }, [pane, record, runShell, runnerFor, setDraft])
+  }, [record, runShell, runnerFor, setDraft])
   const sendRef = useRef(send)
   sendRef.current = send
 
@@ -733,6 +753,86 @@ function App() {
     },
     [focusComposer, openNote, setThreads],
   )
+
+  // ---- terminals: their own view, one tab each
+
+  const termSeq = useRef(0)
+  /** A terminal gets its tab; `show` switches to it (a terminal kept from last time doesn't). */
+  const addTerm = useCallback((t: Omit<Term, 'id'>, show = true) => {
+    const id = `term-${++termSeq.current}`
+    setTerms((all) => [...all, { ...t, id }])
+    if (show) {
+      setTermId(id)
+      setView('terminal')
+    } else setTermId((cur) => cur ?? id)
+    return id
+  }, [])
+  /** A terminal is gone (it exited or was closed): show another, or go back to the notes. */
+  const dropTerm = useCallback(
+    (id: string) => {
+      const rest = termsRef.current.filter((t) => t.id !== id)
+      setTerms(rest)
+      setTermId((cur) => {
+        if (cur !== id) return cur
+        const next = rest[rest.length - 1]
+        if (!next) {
+          setView('notes')
+          setTimeout(focusComposer, 50)
+        }
+        return next?.id ?? null
+      })
+    },
+    [focusComposer],
+  )
+  // openLogin is declared before these; it reaches them through refs.
+  const addTermRef = useRef(addTerm)
+  addTermRef.current = addTerm
+  const dropTermRef = useRef(dropTerm)
+  dropTermRef.current = dropTerm
+  const closeTerm = useCallback(
+    (id: string) => {
+      termsRef.current.find((t) => t.id === id)?.session.kill()
+      dropTerm(id)
+    },
+    [dropTerm],
+  )
+  /** A shell or Claude Code: the terminal holder keeps it, so it outlives a quit or a reload. */
+  const keepTerm = useCallback(
+    async (t: Omit<Term, 'id' | 'session'>, run: { argv: string[]; cwd: string; env: Record<string, string | undefined> }) => {
+      const session = await holdTerm({ ...run, cols: 100, rows: 30 }, t)
+      const id = addTerm({ ...t, session })
+      session.exited.then(() => dropTerm(id))
+    },
+    [addTerm, dropTerm],
+  )
+  const newShell = useCallback(() => {
+    const shell = process.env.SHELL || '/bin/zsh'
+    const cwd = activeRef.current ? (threadsRef.current.find((t) => t.id === activeRef.current)?.workspace ?? homedir()) : homedir()
+    void keepTerm({ kind: 'shell', title: `${path.basename(shell)} · ${path.basename(cwd)}`, label: `${path.basename(shell)} · ${cwd.replace(homedir(), '~')}` }, { argv: [shell, '-l'], cwd, env: process.env })
+  }, [keepTerm])
+  // The terminals kept from last time come back as tabs, without taking you away from your note.
+  const restoredTerms = useRef(false)
+  useEffect(() => {
+    if (restoredTerms.current) return
+    restoredTerms.current = true
+    void heldTerms().then((held) => {
+      for (const { meta, session } of held) {
+        const t = meta as Omit<Term, 'id' | 'session'>
+        if (!t || !['shell', 'claude'].includes(t.kind)) continue
+        const id = addTerm({ ...t, session }, false)
+        session.exited.then(() => dropTerm(id))
+      }
+    })
+  }, [addTerm, dropTerm])
+  const showNotes = useCallback(() => {
+    setView('notes')
+    setTimeout(focusComposer, 50)
+  }, [focusComposer])
+  const showTerminal = useCallback(() => {
+    if (!termsRef.current.length) return hasPty ? newShell() : undefined
+    setView('terminal')
+    setTermId((cur) => cur ?? termsRef.current[termsRef.current.length - 1]!.id)
+  }, [newShell])
 
   /** Ask who an account is (no model turn) and keep it on the profile. */
   const refreshAccount = useCallback(async (profileId: string, given?: Profile) => {
@@ -790,11 +890,10 @@ function App() {
         return
       }
       const session = startTerm({ argv, cwd: homedir(), env, cols: 100, rows: 30 })
-      setPane({ kind: 'login', profileId, session, label })
+      const id = addTermRef.current({ kind: 'login', title: `Log in · ${profile.name}`, label, hint: 'Finish in your browser · this closes by itself', session })
       session.exited.then(async () => {
-        setPane((p) => (p?.session === session ? null : p))
+        dropTermRef.current(id)
         await done()
-        setTimeout(focusComposer, 50)
       })
     },
     [refreshAccount],
@@ -860,22 +959,11 @@ function App() {
       showToastRef.current('Opened in a Claude Code window')
       return
     }
-    const session = startTerm({
-      argv: [claudeBin(), '--resume', active.claudeSessionId],
-      cwd: active.workspace,
-      env: profileEnv(profile),
-      cols: 100,
-      rows: 30,
-    })
-    setPane({ kind: 'claude', threadId: active.id, session })
-    session.exited.then(() => setPane((p) => (p?.session === session ? null : p)))
-  }, [active])
-
-  const closePane = useCallback(() => {
-    pane?.session.kill()
-    setPane(null)
-    setTimeout(focusComposer, 50)
-  }, [pane, focusComposer])
+    void keepTerm(
+      { kind: 'claude', threadId: active.id, title: `Claude Code · ${active.title}`, label: `claude --resume ${active.claudeSessionId.slice(0, 8)}…`, hint: 'Quit claude to come back' },
+      { argv: [claudeBin(), '--resume', active.claudeSessionId], cwd: active.workspace, env: profileEnv(profile) },
+    )
+  }, [active, keepTerm])
 
   const toggleMaterial = useCallback(() => {
     setMaterialName((n) => {
@@ -890,12 +978,12 @@ function App() {
   const pendingAsks = (active && asks[active.id]) || []
   /** When each ask's card first showed, so a reflexive ↵ can't approve what you haven't read. */
   const askSeenAt = useRef(new Map<string, number>())
-  if (!pane && pendingAsks[0] && !askSeenAt.current.has(pendingAsks[0].requestId)) askSeenAt.current.set(pendingAsks[0].requestId, Date.now())
+  if (!term && pendingAsks[0] && !askSeenAt.current.has(pendingAsks[0].requestId)) askSeenAt.current.set(pendingAsks[0].requestId, Date.now())
   const answer = useCallback(
     (key: 'allow' | 'always' | 'deny', message?: string) => {
       const thread = threadsRef.current.find((t) => t.id === activeRef.current)
       const a = thread && asks[thread.id]?.[0]
-      if (!thread || !a) return
+      if (!thread || !a || a.questions) return
       if (key === 'deny' && message === undefined) return setDenying(true)
       const always = key === 'always' && Boolean(a.suggestions)
       runners.current.get(thread.id)?.answer(a.requestId, key === 'deny' ? { allow: false, message } : { allow: true, always })
@@ -908,6 +996,15 @@ function App() {
     [asks, focusComposer, record],
   )
   useEffect(() => setDenying(false), [activeId])
+  const answerQuestions = (content: QuestionContent | null) => {
+    const thread = threadsRef.current.find((item) => item.id === activeRef.current)
+    const ask = thread && asks[thread.id]?.[0]
+    if (!thread || !ask?.questions) return
+    runners.current.get(thread.id)?.answerQuestions(ask.requestId, content)
+    record(thread.id, { type: 'vellum/answer', tool: ask.tool, title: ask.title, detail: content ? JSON.stringify(content, null, 2) : 'Cancelled', decision: content ? 'allowed' : 'denied', at: new Date().toISOString() })
+    setAsks((all) => ({ ...all, [thread.id]: (all[thread.id] ?? []).filter((item) => item.requestId !== ask.requestId) }))
+    setTimeout(focusComposer, 30)
+  }
 
   const setMode = useCallback(
     (mode: PermissionMode) => {
@@ -997,7 +1094,8 @@ function App() {
     } else if (key === 'w' && mods.shift) {
       // Plain ⌘W is GPUIX's native Close Window (it quits a one-window app) and never reaches us.
       e.preventDefault()
-      if (activeId) closeTab(activeId)
+      if (view === 'terminal' && termId) closeTerm(termId)
+      else if (activeId) closeTab(activeId)
     } else if (/^[1-9]$/.test(key)) {
       e.preventDefault()
       const id = key === '9' ? tabs[tabs.length - 1] : tabs[Number(key) - 1]
@@ -1054,10 +1152,9 @@ function App() {
   }, [threads, profiles])
 
   const typing = writing && Boolean(draft.text.trim())
-  const stripVisible = tabMode === 'pinned' ? !stripToggled : tabMode === 'auto' ? stripToggled || stripHover || !typing : stripToggled
+  const stripVisible = confirmClose !== null || (tabMode === 'pinned' ? !stripToggled : tabMode === 'auto' ? stripToggled || stripHover || !typing : stripToggled)
   const m = material
   const paneRadius = concentric(windowRadius, shellInset)
-  const loginProfile = pane?.kind === 'login' ? profiles.find((p) => p.id === pane.profileId) : undefined
   const tabThreads = tabs.map((id) => threads.find((t) => t.id === id)).filter((t): t is Thread => Boolean(t))
   const editsWaiting = active ? pendingEdits(active).length > 0 : false
   const placeholder = !active?.blocks.length
@@ -1087,9 +1184,9 @@ function App() {
           <motion.div
             initial={false}
             animate={{ height: stripVisible ? stripHeight : 0 }}
-            transition={tween({ duration: 0.15, ease: ease.enter })}
+            transition={tween({ duration: duration.fast, ease: ease.enter })}
             onMouseLeave={() => setStripHover(false)}
-            style={{ flexShrink: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+            style={{ minHeight: 0, flexShrink: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
           >
             <TabStrip
               tabs={tabThreads.map((t) => ({
@@ -1099,9 +1196,24 @@ function App() {
                 running: t.running,
                 unread: (unread[t.id] ?? 0) > 0,
                 needsYou: (asks[t.id]?.length ?? 0) > 0,
+                attention: asks[t.id]?.[0]?.title,
                 dot: accentFor(m, profiles, t.profileId),
               }))}
               activeId={activeId}
+              confirmation={confirmClose ? {
+                tabId: confirmClose,
+                onDismiss: () => { setConfirmClose(null); setTimeout(focusComposer, 32) },
+                content: <ConfirmMorph key={confirmClose} label="Close tab" prompt="Stop Claude and close?" confirmLabel="Stop and close" defaultState="confirming" autoFocus testId="confirm-close"
+                  onCancel={() => { setConfirmClose(null); setTimeout(focusComposer, 32) }}
+                  onConfirm={() => {
+                    const id = confirmClose
+                    setConfirmClose(null)
+                    runners.current.get(id)?.interrupt()
+                    closeTabNow(id)
+                    setTimeout(focusComposer, 32)
+                  }}
+                />,
+              } : undefined}
               leading={
                 <Button onPress={() => setOverlay('history')} testId="open-history" title="Past notes (⌘Y)">
                   <Icon name="history" size={14} />
@@ -1126,21 +1238,28 @@ function App() {
                 // A tab is a way out of Settings, back to that note.
                 if (overlay === 'settings') setOverlay(null)
                 // The current pill is the note's title: pressing it opens its menu.
-                if (id === activeId) return setNoteMenu((v) => !v && !closedByOutsidePress())
+                if (id === activeId && view === 'notes') return setNoteMenu((v) => !v && !closedByOutsidePress())
+                setView('notes')
                 setActiveId(id)
                 setTimeout(focusComposer, 50)
               }}
               onClose={closeTab}
+              view={view}
+              terms={terms.map((t) => ({ id: t.id, title: t.title, running: t.session.exitCode === undefined }))}
+              activeTermId={termId ?? undefined}
+              onNotes={showNotes}
+              onTerminal={showTerminal}
+              onPickTerm={(id) => {
+                setTermId(id)
+                setView('terminal')
+              }}
+              onCloseTerm={closeTerm}
+              onNewTerm={hasPty ? newShell : undefined}
               onNew={() => setOverlay('new')}
+              changes={stripChanges ? { summary: stripChanges, onPress: () => setOverlay('changes') } : undefined}
               trailing={
                 <>
                   <OpenIn folder={active?.workspace} />
-                  {stripChanges ? (
-                    <Button onPress={() => setOverlay('changes')} testId="open-changes" title={noteChanges?.files ? 'Changes in this note (⇧⌘D)' : 'Uncommitted changes in this folder (⇧⌘D)'}>
-                      <Icon name="diff" size={13} />
-                      <Label muted>{`${stripChanges.files} ${stripChanges.files === 1 ? 'file' : 'files'}`}</Label>
-                    </Button>
-                  ) : null}
                   <Button onPress={() => setOverlay('switcher')} testId="open-switcher" title="Find a note (⌘K)">
                     <Icon name="search" size={13} />
                     <Kbd>⌘K</Kbd>
@@ -1172,13 +1291,8 @@ function App() {
               position: 'relative',
             }}
           >
-          {pane ? (
-            <TerminalPane
-              pane={pane}
-              title={pane.kind === 'login' ? `Log in · ${loginProfile?.name ?? ''}` : 'Claude Code'}
-              hint={pane.kind === 'login' ? 'Finish in your browser. This closes by itself once you are in.' : 'Interactive session on this note. Quit claude or close to return.'}
-              onClose={closePane}
-            />
+          {term ? (
+            <TerminalView term={term} onLeave={showNotes} />
           ) : active ? (
             <>
               {/* Text scrolls under the strip through a short fade instead of a hard edge. */}
@@ -1219,7 +1333,7 @@ function App() {
                     mode={active.mode ?? defaultMode}
                     onMode={setMode}
                     // Keys answer only the card that is on screen, and not in its first moments.
-                    asking={!pane && pendingAsks.length > 0}
+                    asking={!term && pendingAsks.length > 0 && !pendingAsks[0]?.questions}
                     onAskKey={(k) => {
                       const shown = pendingAsks[0] && Date.now() - askSeenAt.current.get(pendingAsks[0].requestId)! >= ASK_KEY_DELAY_MS
                       if (shown || k === 'deny') answer(k)
@@ -1241,13 +1355,15 @@ function App() {
                 }}
               />
               <Timeline thread={active} list={noteList} rows={visibleRows} />
-              <div style={{ position: 'absolute', right: 14, bottom: 10 }}>
+              <div style={{ position: 'absolute', left: 0, right: 0, bottom: 10, display: 'flex', flexDirection: 'row', justifyContent: 'center', pointerEvents: 'none' }}>
+                <div style={{ pointerEvents: 'auto' }}>
                 <StatusBar
                   mode={active.mode ?? defaultMode}
                   onMode={setMode}
                   think={active.think ?? 'on'}
                   onThink={setThink}
                   models={models[active.profileId]}
+                  efforts={efforts[active.profileId]}
                   model={active.modelPick}
                   resolvedModel={active.model}
                   onModel={setModel}
@@ -1255,6 +1371,7 @@ function App() {
                   running={active.running}
                   onCompact={compact}
                 />
+                </div>
               </div>
               </div>
             </>
@@ -1302,8 +1419,10 @@ function App() {
           ) : null}
           {toast}
           <ApprovalCard
-            ask={pane ? undefined : pendingAsks[0]}
+            ask={term || pendingAsks[0]?.questions ? undefined : pendingAsks[0]}
             more={pendingAsks.length - 1}
+            workspace={active?.workspace}
+            model={active?.model ? shortModel(undefined, active.model) : undefined}
             denying={denying}
             onDenying={(open) => {
               setDenying(open)
@@ -1314,6 +1433,7 @@ function App() {
             onDeny={(message) => answer('deny', message)}
             preview={pendingAsks[0]?.patch ? <DiffCard patch={pendingAsks[0].patch} /> : undefined}
           />
+          <AskUserQuestions ask={term ? undefined : pendingAsks[0]} onAnswer={answerQuestions} />
           </div>
         </div>
         {overlay === 'new' ? (
@@ -1330,30 +1450,6 @@ function App() {
             onLogin={openLogin}
           />
         ) : null}
-        <Sheet open={confirmClose !== null} onClose={() => setConfirmClose(null)} width={400} testId="confirm-close">
-          <SheetHeader title="Claude is still working" onClose={() => setConfirmClose(null)} />
-          <SheetSection>
-            <text style={{ fontSize: 13, lineHeight: 19, color: m.textUi }}>Stop it and close this tab? The note and its session stay; you can reopen it with {keys('⌘K')}.</text>
-          </SheetSection>
-          <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'flex-end', gap: 6, paddingLeft: 18, paddingRight: 14, paddingBottom: 14 }}>
-            <Button onPress={() => setConfirmClose(null)} testId="confirm-cancel">
-              <Label>Cancel</Label>
-            </Button>
-            <Button
-              variant="solid"
-              testId="confirm-stop-close"
-              onPress={() => {
-                const id = confirmClose
-                setConfirmClose(null)
-                if (!id) return
-                runners.current.get(id)?.interrupt()
-                closeTabNow(id)
-              }}
-            >
-              <Label variant="solid">Stop and close</Label>
-            </Button>
-          </div>
-        </Sheet>
         <Changes
           open={overlay === 'changes'}
           onClose={() => setOverlay(null)}
@@ -1424,3 +1520,6 @@ render(<App />, {
     shortcuts.current?.(event)
   },
 })
+
+// Run from `bun app.tsx`, the Dock would show Bun's icon: only a .app bundle names one (core/dock.ts).
+setTimeout(() => setDockIcon(path.join(import.meta.dir, 'assets', 'icon.png')), 0)

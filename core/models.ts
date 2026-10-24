@@ -7,8 +7,13 @@
 
 import { paths, readJson, writeJson } from './store'
 import path from 'node:path'
+import type { Think } from './asks'
 
 export type ModelOption = { value: string; displayName: string; description?: string; resolvedModel?: string }
+export type EffortOption = { value: Think; displayName: string; description?: string }
+export const effortValue = (value: string): Think | undefined => ({ low: 'off', default: 'on', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' } as Record<string, Think>)[value]
+export const effortLabel = (value: Think) => ({ off: 'Low', on: 'Default', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' })[value]
+export const fallbackEfforts: EffortOption[] = ['off', 'on', 'max'].map((value) => ({ value: value as Think, displayName: effortLabel(value as Think) }))
 
 export const fallbackModels: ModelOption[] = [
   { value: 'default', displayName: 'Default (recommended)' },

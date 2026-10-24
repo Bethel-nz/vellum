@@ -41,7 +41,9 @@ try {
   await app.getByTestId('open-changes').waitFor({ timeoutMs: 15_000 }).catch(() => {})
   const pill = (await app.getByTestId('open-changes').count()) === 1
   const summary = pill ? await app.getByTestId('open-changes').textContent().catch(() => '') : ''
-  expect('the strip offers Changes for the folder’s two files', pill && summary.includes('2 files'), summary)
+  // In a narrow strip the pill folds to its icon; its label then lives in its title.
+  const folded = (await app.getByTestId('changes-summary-icon').count()) === 1
+  expect('the strip offers Changes for the folder’s two files', pill && (summary.includes('2 files') || folded), summary || 'folded to its icon')
   await app.screenshot({ path: 'screenshots/uncommitted-1-strip.png' })
   if (pill) await app.getByTestId('open-changes').click()
   await app.getByTestId('changes').waitFor({ timeoutMs: 3000 }).catch(() => {})

@@ -1,21 +1,20 @@
-// The bottom-right corner of the note: how Claude will work on the next turn, as four small
-// controls that stay out of the writing. Permission mode and thinking are icons (their names are
-// in the tooltip and the menu), the model is its short name, and context is a ring that fills as
-// the conversation grows, with the token count beside it. Everything opens upward, from here.
+// Agent settings, centred below the note: three fixed segments on one shared surface.
+// A single hover wash moves between them; labels stay visible. Everything opens upward.
 //
 //   shield / pencil / checklist / bolt / ban / lock   mode (⇧⇥ in the composer cycles it)
-//   bulb   thinking off, on, max (faint, plain, accent)
-//   name   model switcher, from the CLI's own list
+//   name   model and effort picker, from the CLI's own list
 //   ring   context card: used of window, and Compact
 
 import { useState } from 'react'
 import { DismissableLayer, motion, type PublicInstance } from '@gpuix/react'
 import { FloatingLayer } from '@gpuix/react/floating'
 import { useRef } from 'react'
-import { Button, closedByOutsidePress, Label, markOutsideClose, Menu, Tooltip } from '../components'
+import { Button, ButtonGroup, closedByOutsidePress, Label, Menu } from '../components'
 import { duration, ease, offset, tween } from '../components/motion'
+import { ModelPicker } from '../components/ModelPicker'
+import { PopoverBackdrop } from '../components/PopoverBackdrop'
 import { modeLabel, modes, type PermissionMode, type Think } from '../core/asks'
-import { fallbackModels, formatTokens, shortModel, type ContextUse, type ModelOption } from '../core/models'
+import { effortLabel, fallbackModels, formatTokens, shortModel, type ContextUse, type EffortOption, type ModelOption } from '../core/models'
 import type { IconName } from './icons'
 import { Icon, useM } from './kit'
 import { concentric, elevation, font, radiusBase, radiusXl } from './theme'
@@ -31,17 +30,13 @@ const modeIcon: Record<PermissionMode, IconName> = {
   bypassPermissions: 'unlock',
 }
 
-const thinkNext: Record<Think, Think> = { off: 'on', on: 'max', max: 'off' }
-const thinkTitle: Record<Think, string> = { off: 'Thinking off', on: 'Thinking on', max: 'Thinking at max effort' }
-/** What a click on the bulb does next, for its tooltip. */
-const thinkHint: Record<Think, string> = { off: 'click to turn on', on: 'click for max effort', max: 'click to turn off' }
-
 export function StatusBar({
   mode,
   onMode,
   think,
   onThink,
   models,
+  efforts,
   model,
   resolvedModel,
   onModel,
@@ -54,6 +49,7 @@ export function StatusBar({
   think: Think
   onThink: (think: Think) => void
   models?: ModelOption[]
+  efforts?: EffortOption[]
   /** The picked `--model` value; undefined is the account default. */
   model?: string
   /** What the CLI said it is running, for the label before a pick. */
@@ -66,77 +62,35 @@ export function StatusBar({
   const m = useM()
   const [menu, setMenu] = useState<'mode' | 'model' | 'context' | null>(null)
   const close = () => setMenu(null)
-  // A press on an open menu's own trigger closes it (closedByOutsidePress), rather than reopening.
+  // A press on an open menu's own trigger closes it (keyed guard), rather than reopening;
+  // closing one menu also doesn't eat the click that moves straight to another pill.
   const toggle = (k: 'mode' | 'model' | 'context') => setMenu((cur) => (cur === k || closedByOutsidePress(k) ? null : k))
   const list = models ?? fallbackModels
   const picked = list.find((x) => x.value === (model ?? 'default'))
   const risky = mode === 'bypassPermissions'
   const modeColor = risky ? m.warning : mode === 'plan' ? m.blue : m.textMuted
+  const modelTitle = shortModel(picked, model ? undefined : resolvedModel)
+  const effort = efforts?.find((option) => option.value === think)?.displayName ?? effortLabel(think)
+  const contextTitle = context?.used ? `${formatTokens(context.used)}${context.window ? ` / ${formatTokens(context.window)}` : ' tokens'}` : 'Context empty'
 
   return (
-    <div testId="status-bar" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 2, height: statusBarHeight }}>
-      <div style={{ position: 'relative' }}>
-        <Tooltip label={`Permissions: ${modeLabel(mode)}`} shortcut="⇧⇥" side="top">
-          <Button onPress={() => toggle('mode')} selected={menu === 'mode'} testId="mode-pill" title={`Change permissions (now ${modeLabel(mode)})`} style={iconButton}>
-            <Icon name={modeIcon[mode]} size={14} color={modeColor} />
-          </Button>
-        </Tooltip>
-        <Menu
-          open={menu === 'mode'}
-          onClose={close}
-          side="top"
-          align="end"
-          width={360}
-          testId="mode-menu"
-          closeKey="mode"
-          items={modes.map((x) => ({ label: x.label, hint: x.hint, icon: modeIcon[x.id], checked: x.id === mode, destructive: x.id === 'bypassPermissions', testId: `mode-${x.id}`, onSelect: () => onMode(x.id) }))}
-        />
-      </div>
-
-      <Tooltip label={`${thinkTitle[think]} · ${thinkHint[think]}`} side="top">
-        <Button onPress={() => onThink(thinkNext[think])} testId="think-pill" title={`${thinkTitle[think]}. Change thinking`} style={iconButton}>
-          <Icon name="bulb" size={14} color={think === 'off' ? m.textFaint : think === 'max' ? m.accent : m.textMuted} />
-          {think === 'max' ? <div style={{ position: 'absolute', top: 4, right: 5, width: 4, height: 4, borderRadius: 2, backgroundColor: m.accent }} /> : null}
-        </Button>
-      </Tooltip>
-
-      <div style={{ position: 'relative' }}>
-        <Tooltip label="Model for this note" side="top">
-          <Button onPress={() => toggle('model')} selected={menu === 'model'} testId="model-pill" title="Change model" style={{ paddingLeft: 7, paddingRight: 7, height: 24, minHeight: 24 }}>
-            <text style={{ fontSize: 12, lineHeight: 16, fontWeight: 500, color: m.textMuted, whiteSpace: 'nowrap' }}>{shortModel(picked, model ? undefined : resolvedModel)}</text>
-          </Button>
-        </Tooltip>
-        <Menu
-          open={menu === 'model'}
-          onClose={close}
-          side="top"
-          align="end"
-          width={320}
-          testId="model-menu"
-          closeKey="model"
-          items={[
-            { kind: 'label' as const, label: models ? 'Model for this note' : 'Model for this note · more after the first reply' },
-            ...list.map((x) => ({
-              label: x.displayName,
-              hint: x.description?.split(' · ')[0],
-              checked: x.value === (model ?? 'default'),
-              testId: `model-${x.value}`,
-              onSelect: () => onModel(x.value === 'default' ? undefined : x.value),
-            })),
-          ]}
-        />
-      </div>
-
-      <div style={{ position: 'relative' }}>
-        <Tooltip label={contextLabel(context)} side="top">
-          <Button onPress={() => toggle('context')} selected={menu === 'context'} testId="context-pill" title="Show context" style={{ gap: 6, paddingLeft: 6, paddingRight: 7, height: 24, minHeight: 24 }}>
-            <Ring fraction={context?.window ? context.used / context.window : 0} />
-            {context?.used ? <text style={{ fontSize: 11.5, lineHeight: 15, color: m.textFaint, fontFamily: font.mono }}>{formatTokens(context.used)}</text> : null}
-          </Button>
-        </Tooltip>
-        {menu === 'context' ? <ContextCard context={context} running={running} onClose={close} onCompact={onCompact} /> : null}
-      </div>
-    </div>
+    <ButtonGroup label="Agent settings" testId="status-bar" items={[
+      {
+        id: 'mode-pill', label: `Permissions: ${modeLabel(mode)}`, shortcut: '⇧⇥', selected: menu === 'mode', onPress: () => toggle('mode'),
+        content: <><Icon name={modeIcon[mode]} size={14} color={modeColor} /><Label muted>{modeLabel(mode)}</Label></>,
+        popover: <Menu open={menu === 'mode'} onClose={close} side="top" align="end" width={360} testId="mode-menu" closeKey="mode" items={modes.map((x) => ({ label: x.label, hint: x.hint, icon: modeIcon[x.id], checked: x.id === mode, destructive: x.id === 'bypassPermissions', testId: `mode-${x.id}`, onSelect: () => onMode(x.id) }))} />,
+      },
+      {
+        id: 'model-pill', label: `Model: ${modelTitle} · Effort: ${effort}`, selected: menu === 'model', onPress: () => toggle('model'),
+        content: <><Icon name="claude" size={14} color="#d97757" /><Label>{modelTitle}</Label><text style={{ fontSize: 12, lineHeight: 16, color: m.textMuted }}>{effort}</text></>,
+        popover: menu === 'model' ? <ModelPicker models={list} model={model} resolvedModel={resolvedModel} efforts={efforts} think={think} onModel={onModel} onThink={onThink} onClose={close} /> : null,
+      },
+      {
+        id: 'context-pill', label: contextLabel(context), selected: menu === 'context', onPress: () => toggle('context'),
+        content: <><Ring fraction={context?.window ? context.used / context.window : 0} /><Label muted>{contextTitle}</Label></>,
+        popover: menu === 'context' ? <ContextCard context={context} running={running} onClose={close} onCompact={onCompact} /> : null,
+      },
+    ]} />
   )
 }
 
@@ -144,8 +98,6 @@ function contextLabel(c?: ContextUse) {
   if (!c?.used) return 'Context: empty'
   return c.window ? `Context: ${formatTokens(c.used)} of ${formatTokens(c.window)} tokens` : `Context: ${formatTokens(c.used)} tokens`
 }
-
-const iconButton = { width: 26, height: 24, minHeight: 24, paddingLeft: 0, paddingRight: 0, position: 'relative' as const }
 
 /** How full the context is: a faint track and an arc, as two tinted SVGs (GPUIX tints a whole SVG one colour). */
 function Ring({ fraction, size = 13 }: { fraction: number; size?: number }) {
@@ -189,11 +141,10 @@ function ContextCard({ context, running, onClose, onCompact }: { context?: Conte
   const pad = 12
   return (
     <DismissableLayer onEscapeKeyDown={onClose} initialFocus={() => panel.current?.id ?? null}>
-      <FloatingLayer side="top" align="end" sideOffset={6} style={{ width: 280, backgroundColor: '#00000000' }}>
-        <div ref={panel} testId="context-card" tabIndex={0} onMouseDownOutside={() => {
-            markOutsideClose('context')
-            onClose()
-          }} style={{ keyboardFocusDim: false }}>
+      <FloatingLayer side="top" align="end" sideOffset={6} style={{ width: 280, borderRadius: radiusXl, backgroundColor: '#00000000' }}>
+        <PopoverBackdrop onClose={onClose} testId="context-card-backdrop" />
+        {/* biome-ignore lint/a11y/noNoninteractiveTabindex: GPUIX needs a focusable panel to receive Escape. */}
+        <div ref={panel} testId="context-card" role="dialog" aria-label="Context" tabIndex={0} style={{ position: 'relative', keyboardFocusDim: false }}>
           <motion.div
             initial={{ opacity: 0, top: offset.menu }}
             animate={{ opacity: 1, top: 0 }}

@@ -9,7 +9,7 @@ import type { UserQuestion } from './questions'
 
 /** Claude Code's permission modes, as `--permission-mode` lists them. */
 export type PermissionMode = 'manual' | 'acceptEdits' | 'plan' | 'auto' | 'dontAsk' | 'bypassPermissions'
-export type Think = 'off' | 'on' | 'max'
+export type Think = 'off' | 'on' | 'medium' | 'high' | 'xhigh' | 'max'
 
 export const modes: { id: PermissionMode; label: string; hint: string }[] = [
   { id: 'manual', label: 'Ask', hint: 'Every edit and command asks first' },

@@ -33,7 +33,7 @@ export function Switch({ checked, onChange, testId, label }: { checked: boolean;
         initial={false}
         animate={{ left: checked ? W - THUMB - 2 : 2, opacity: 1 }}
         transition={tween(spring.snappy)}
-        style={{ position: 'absolute', top: (H - THUMB) / 2, width: THUMB, height: THUMB, borderRadius: THUMB / 2, backgroundColor: '#ffffff' }}
+        style={{ position: 'absolute', top: (H - THUMB) / 2, width: THUMB, height: THUMB, borderRadius: THUMB / 2, backgroundColor: '#ffffff', pointerEvents: 'none' }}
       />
       {/* A motion.div keeps presses to itself: the click is taken by this layer above the thumb. */}
       <div onClick={() => onChange(!checked)} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />

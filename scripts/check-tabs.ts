@@ -12,6 +12,16 @@ const home = mkdtempSync(path.join(tmpdir(), 'vellum-tabs-'))
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } })
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+// A held sheet closes after its scrim. Observe the removal instead of racing a fixed sleep.
+const closed = async (id: string) => {
+  const deadline = Date.now() + 3000
+  while (await app.getByTestId(id).count()) {
+    if (Date.now() >= deadline) return false
+    await wait(25)
+  }
+  return true
+}
+
 const shot = (n: string) => app.screenshot({ path: 'screenshots/tabs-' + n + '.png' })
 const titleY = async () => Math.round((await app.getByTestId('page').bounds()).y)
 const tabIds = async () => (await app.getByType('div').all()).map((n) => n.testId ?? '').filter((id) => id.startsWith('tab-'))
@@ -63,15 +73,17 @@ try {
   const rows = (await app.getByType('div').all()).map((n) => n.testId ?? '').filter((id) => id.startsWith('history-') && id !== 'history-input')
   expect('History lists notes', rows.length >= 2, `${rows.length} rows`)
   await shot('5-history')
+  await app.getByTestId('history-input').bounds()
+  await wait(32)
   await app.getByTestId('history-input').press('escape')
   await wait(400)
-  expect('esc closes History', (await app.getByTestId('history-input').count()) === 0)
+  expect('esc closes History', await closed('history-input'))
   await app.getByTestId('open-history').click()
   await app.getByTestId('history-input').waitFor({ timeoutMs: 3000 })
   await wait(500)
   await app.mouse.click({ x: 900, y: 400 })
   await wait(400)
-  expect('a click beside it closes History', (await app.getByTestId('history-input').count()) === 0)
+  expect('a click beside it closes History', await closed('history-input'))
 
   // the current pill opens the note menu
   await app.getByTestId('title-menu').click()
@@ -96,7 +108,8 @@ try {
   await wait(300)
   expect('settings save auto', (await Bun.file(path.join(home, 'settings.json')).json()).tabs === 'auto')
   await app.getByTestId('set-tabs-auto').press('escape')
-  await wait(500)
+  await closed('settings')
+  await wait(32)
   await c.click()
   await c.fill('A few words')
   await wait(600)
