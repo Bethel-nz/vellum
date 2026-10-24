@@ -219,6 +219,9 @@ export function TerminalBlock({
   }
 
   const radius = concentric(radiusBase, 0)
+  // The terminal view is a pure terminal: its run straight on the window, no box around it.
+  // A run in the note keeps its box.
+  const pure = bare && mode === 'full'
   return (
     <div
       testId={testId}
@@ -229,10 +232,10 @@ export function TerminalBlock({
         flexDirection: 'column',
         flexGrow: mode === 'full' ? 1 : 0,
         minHeight: 0,
-        borderRadius: radius,
-        borderWidth: 1,
+        borderRadius: pure ? 0 : radius,
+        borderWidth: pure ? 0 : 1,
         borderColor: focused ? m.accent : m.border,
-        backgroundColor: m.termBg,
+        backgroundColor: pure ? '#00000000' : m.termBg,
         overflow: 'hidden',
       }}
     >

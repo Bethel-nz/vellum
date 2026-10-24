@@ -359,7 +359,7 @@ function EmptyState({ onNew }: { onNew: () => void }) {
 /** The terminal view: one terminal, full size, no header (its tab in the strip names and closes it). */
 function TerminalView({ term, onLeave }: { term: Term; onLeave: () => void }) {
   return (
-    <div style={{ flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column', paddingTop: 12, paddingLeft: 16, paddingRight: 16, paddingBottom: 16 }}>
+    <div style={{ flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <TerminalBlock key={term.id} session={term.session} title={term.label} mode="full" bare autoFocus onReturnFocus={onLeave} testId="pane-term" />
     </div>
   )
