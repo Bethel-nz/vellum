@@ -50,6 +50,8 @@ export type Settings = {
   tabs?: 'pinned' | 'auto' | 'hidden'
   /** Reduce motion: follow macOS, always reduce, or always animate. */
   motion?: 'system' | 'reduce' | 'full'
+  /** The app "Open in" opens a note's folder in by default (core/openin.ts ids). */
+  openIn?: string
   lastThreadId?: string
   /** Thread ids open as tabs, in order. */
   openTabs?: string[]

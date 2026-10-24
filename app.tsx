@@ -23,6 +23,7 @@ import { createProfile, loadProfiles, profileEnv, profileForWorkspace, rememberW
 import { paths, readJson, readSettings, updateSettings, writeJson } from './core/store'
 import { promptFor, tagsIn, tagText } from './core/tags'
 import { killAllTerms, startTerm, type TermSession } from './core/term'
+import { OpenIn } from './ui/OpenIn'
 import { claudeBin, hasPty, isMac, keys, openConsole, pasteImage, primary, revealFolder, revealLabel, shellArgv, tabStep } from './core/platform'
 import {
   appendLine,
@@ -1133,6 +1134,7 @@ function App() {
               onNew={() => setOverlay('new')}
               trailing={
                 <>
+                  <OpenIn folder={active?.workspace} />
                   {stripChanges ? (
                     <Button onPress={() => setOverlay('changes')} testId="open-changes" title={noteChanges?.files ? 'Changes in this note (⇧⌘D)' : 'Uncommitted changes in this folder (⇧⌘D)'}>
                       <Icon name="diff" size={13} />

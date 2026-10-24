@@ -29,6 +29,8 @@ export type MenuItem =
       icon?: IconName
       /** A colour dot instead of an icon (accounts). */
       dot?: string
+      /** An image file instead of an icon (an app's own icon); '' while it loads. */
+      image?: string
       hint?: string
       shortcut?: string
       checked?: boolean
@@ -207,7 +209,10 @@ function MenuPanel({ onClose, items, header, width, side, align, testId, closeKe
                 style={{ position: 'relative', height: ROW }}
               >
                 <div testId={it.testId} style={{ height: ROW, display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 9, paddingLeft: 9, paddingRight: 8, cursor: it.disabled ? 'default' : 'pointer' }}>
-                {it.dot ? (
+                {it.image !== undefined ? (
+                  // An app's own icon (Open in); an empty slot keeps the row aligned while it loads.
+                  it.image ? <img src={it.image} style={{ width: 18, height: 18, marginLeft: -2, marginRight: -2 }} objectFit="contain" /> : <div style={{ width: 14 }} />
+                ) : it.dot ? (
                   <div style={{ width: 14, display: 'flex', justifyContent: 'center' }}>
                     <div style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: it.dot }} />
                   </div>
