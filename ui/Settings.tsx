@@ -10,7 +10,7 @@ import { Button, Dot, Field, Label, Segmented, SheetRow, SheetSection, Switch } 
 import { enter, offset } from '../components/motion'
 import { sameLogin } from '../core/auth'
 import type { Profile } from '../core/profiles'
-import { accentFor } from './theme'
+import { accentFor, solid } from './theme'
 import { useM } from './kit'
 import type { Settings } from '../core/store'
 import type { MaterialName } from './theme'
@@ -101,7 +101,9 @@ export function SettingsPage({
 
   return (
     <DismissableLayer onEscapeKeyDown={onClose} initialFocus={() => root.current?.id ?? null}>
-      <div ref={root} testId="settings" tabIndex={0} style={{ position: 'absolute', top, left: 0, right: 0, bottom: 0, backgroundColor: m.pane, keyboardFocusDim: false }}>
+      {/* Opaque, whatever the material: on the glass ones the pane colour is translucent and the
+          note underneath showed through the page. */}
+      <div ref={root} testId="settings" tabIndex={0} style={{ position: 'absolute', top, left: 0, right: 0, bottom: 0, backgroundColor: m.name === 'groknight' ? m.pane.slice(0, 7) : solid(m).pane, keyboardFocusDim: false }}>
         <motion.div
           initial={{ opacity: 0, top: offset.menu }}
           animate={{ opacity: 1, top: 0 }}
