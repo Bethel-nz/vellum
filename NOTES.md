@@ -723,3 +723,20 @@ frames 0–260ms on a paused clock (`app.clock.pause()` / `fastForward()`) into
 - **An `<input>` reports focus only in a window that can take it.** A spike opened with
   `focus: false` never sees `onFocus`, so a field's focus ring never shows in its shots
   (spikes/input-focus.tsx). Open shots of fields with a focusable window.
+
+## 2026-10-24 — Changes covers the folder, and the note's column grows with the window
+
+- **Changes is not only what Claude did.** The panel's scope menu has This note (the edits
+  recorded in the conversation) and Uncommitted (the folder's working tree against HEAD, staged,
+  unstaged and untracked alike, from `uncommittedFiles` in core/gitsnap.ts, through the same
+  private index as the turn snapshots). A note that changed nothing opens Changes on Uncommitted,
+  and the strip offers Changes with the folder's count when the note has none of its own. The
+  count is read again when the note's changes move and when Changes closes, not on a timer: a
+  snapshot rehashes only what changed, but the first one in a big repo can take a while.
+- **One text edge in Changes, at 18:** the list's 8 plus each row's 10. The scope chip, the empty
+  line and the footer's count sit on it.
+- **The column is `readingWidthFor(window width)`:** 720 until the window passes about 1090,
+  then 66% of it, up to 960, where a line is still about 105 characters. The terminal's columns
+  follow it. `VELLUM_WINDOW=WxH` opens the window at another size for checks
+  (scripts/check-width.ts); GPUIX automation can't resize a window.
+- **The timeline rests at 40%** and comes up while the pointer is on it or its preview.

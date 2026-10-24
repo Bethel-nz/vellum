@@ -95,6 +95,11 @@ export function collectChanges(t: Thread): ChangeGroup[] {
 
 export const changeCount = (t: Thread) => new Set(turns(t.blocks).flat().map((e) => e.path)).size
 
+export function changeSummary(t: Thread) {
+  const edits = turns(t.blocks).flat()
+  return { files: new Set(edits.map((edit) => edit.path)).size, added: edits.reduce((sum, edit) => sum + edit.added, 0), removed: edits.reduce((sum, edit) => sum + edit.removed, 0) }
+}
+
 /** Where a hunk starts in the new file, from `@@ -a,b +c,d @@`. */
 export function hunkStart(header: string): number {
   return Number(/\+(\d+)/.exec(header)?.[1] ?? 1)

@@ -5,12 +5,14 @@
 // line, and a comment selects its hunk. "Add n hunks" puts them in your draft as ± pills that
 // carry the hunk and its comments (core/changes.ts hunkTags); Claude gets them spelled out.
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EventPayload } from '@gpuix/react'
 import { motion } from '@gpuix/react'
-import { Button, Dot, Field, FileIcon, Icon, Label, Scroll, SidePanel } from '../components'
+import { Button, Dot, Field, FileIcon, Icon, Label, Menu, Scroll, SidePanel } from '../components'
+import { ChangeTotals } from '../components/ChangesSummary'
 import { duration, ease, tween } from '../components/motion'
-import { collectChanges, hunkRows, noteFor, noteLabel, noteRows, rowOf, type FileChange, type Hunk } from '../core/changes'
+import { changeCount, collectChanges, hunkRows, noteFor, noteLabel, noteRows, rowOf, splitHunks, type FileChange, type Hunk } from '../core/changes'
+import { uncommittedFiles, type GitFile } from '../core/gitsnap'
 import type { HunkNote, Thread } from '../core/threads'
 import { Meta, useM } from './kit'
 import { concentric, diffHeaderClip, diffInk, diffTheme, font, radiusXl } from './theme'
@@ -20,7 +22,13 @@ type Commenting = { hunkId: string; from: number; to: number }
 
 export function Changes({ open, onClose, thread, onAdd }: { open: boolean; onClose: () => void; thread?: Thread; onAdd: (hunks: Hunk[], notes: Record<string, HunkNote[]>) => void }) {
   const m = useM()
-  const groups = useMemo(() => (thread ? collectChanges(thread) : []), [thread])
+  const [scope, setScope] = useState<'note' | 'uncommitted'>('note')
+  const [scopeOpen, setScopeOpen] = useState(false)
+  const [working, setWorking] = useState<GitFile[]>()
+  const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState(false)
+  const [revision, setRevision] = useState(0)
+  const groups = useMemo(() => scope === 'note' ? (thread ? collectChanges(thread) : []) : working?.length ? [{ label: 'Uncommitted', files: working.map((file) => ({ ...file, status: 'ok' as const, hunks: splitHunks(`uncommitted:${file.path}`, file.path, file.patch) })) }] : [], [scope, thread, working])
   const all = groups.flatMap((g) => g.files.flatMap((f) => f.hunks))
   const [openFiles, setOpenFiles] = useState<Record<string, boolean>>({})
   const [picked, setPicked] = useState<Record<string, boolean>>({})
@@ -28,6 +36,31 @@ export function Changes({ open, onClose, thread, onAdd }: { open: boolean; onClo
   const [commenting, setCommenting] = useState<Commenting | null>(null)
   const selected = all.filter((h) => picked[h.id])
   const noteCount = selected.reduce((n, h) => n + (notes[h.id]?.length ?? 0), 0)
+  const totals = groups.flatMap((group) => group.files).reduce((sum, file) => ({ added: sum.added + file.added, removed: sum.removed + file.removed }), { added: 0, removed: 0 })
+  useEffect(() => {
+    setPicked({})
+    setNotes({})
+    setCommenting(null)
+  }, [scope, thread?.id, revision])
+  useEffect(() => {
+    if (!open) setScopeOpen(false)
+    // A note with no changes of its own opens on the folder's, whoever made them.
+    else if (thread && !changeCount(thread)) setScope('uncommitted')
+  }, [open])
+  useEffect(() => {
+    setWorking(undefined)
+    setLoadError(false)
+    if (!open || scope !== 'uncommitted' || !thread?.workspace) { setLoading(false); return }
+    let cancelled = false
+    setLoading(true)
+    uncommittedFiles(thread.workspace).then((files) => {
+      if (cancelled) return
+      setWorking(files)
+      setLoadError(!files)
+      setLoading(false)
+    }).catch(() => { if (!cancelled) { setLoadError(true); setLoading(false) } })
+    return () => { cancelled = true }
+  }, [open, scope, thread?.workspace, thread?.id, revision])
   const toggleFile = (key: string) => setOpenFiles((o) => ({ ...o, [key]: !o[key] }))
   const toggleHunk = (id: string) => setPicked((p) => ({ ...p, [id]: !p[id] }))
   const comments: Comments = {
@@ -47,20 +80,32 @@ export function Changes({ open, onClose, thread, onAdd }: { open: boolean; onClo
     remove: (hunkId, i) => setNotes((n) => ({ ...n, [hunkId]: (n[hunkId] ?? []).filter((_, j) => j !== i) })),
   }
 
+  // One text edge at 18: the list's 8 plus each row's 10. The chip, the empty line and the
+  // footer's count line up on it.
   return (
     <SidePanel open={open} onClose={onClose} width={520} testId="changes">
-      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10, height: 52, paddingLeft: 18, paddingRight: 10, flexShrink: 0 }}>
-        <text style={{ fontSize: 17, lineHeight: 22, fontWeight: 600, color: m.text }}>Changes</text>
-        <text testId="changes-count" style={{ fontSize: 12.5, lineHeight: 16, color: m.textMuted }}>{`${selected.length} of ${all.length} hunks selected${noteCount ? ` · ${noteCount === 1 ? '1 comment' : `${noteCount} comments`}` : ''}`}</text>
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, height: 48, paddingLeft: 10, paddingRight: 10, borderBottomWidth: 1, borderColor: m.border, flexShrink: 0 }}>
+        <div style={{ position: 'relative' }}>
+          <Button testId="changes-scope" title="Changes scope" onPress={() => setScopeOpen(!scopeOpen)} style={{ height: 28, minHeight: 28, borderRadius: 14, paddingLeft: 8, paddingRight: 10, gap: 7, backgroundColor: m.chipBg }}>
+            <text style={{ fontSize: 12, lineHeight: 17, color: m.textUi, fontWeight: 500 }}>{scope === 'note' ? 'This note' : 'Uncommitted'}</text>
+            <Icon name="chevronDown" size={10} color={m.textMuted} />
+            {!loading && !loadError ? <ChangeTotals {...totals} /> : null}
+          </Button>
+          <Menu open={scopeOpen} onClose={() => setScopeOpen(false)} side="bottom" align="start" width={220} testId="changes-scope-menu" items={[
+            { label: 'This note', hint: 'Recorded changes in this conversation', checked: scope === 'note', testId: 'changes-scope-note', onSelect: () => setScope('note') },
+            { label: 'Uncommitted', hint: 'Current working tree against HEAD', checked: scope === 'uncommitted', testId: 'changes-scope-uncommitted', onSelect: () => setScope('uncommitted') },
+          ]} />
+        </div>
         <div style={{ flexGrow: 1 }} />
-        <Button onPress={onClose} testId="changes-close" title="Close (esc)" style={{ width: 26, paddingLeft: 0, paddingRight: 0 }}>
-          <Icon name="x" size={13} />
-        </Button>
+        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 2, padding: 2, borderRadius: 15, backgroundColor: m.chipBg }}>
+          {scope === 'uncommitted' ? <Button onPress={() => setRevision((value) => value + 1)} testId="changes-refresh" title="Refresh working-tree changes" disabled={loading} style={{ width: 26, height: 26, minHeight: 26, paddingLeft: 0, paddingRight: 0, borderRadius: 13 }}><Icon name="refresh" size={13} /></Button> : null}
+          <Button onPress={onClose} testId="changes-close" title="Close (esc)" style={{ width: 26, height: 26, minHeight: 26, paddingLeft: 0, paddingRight: 0, borderRadius: 13 }}><Icon name="x" size={13} /></Button>
+        </div>
       </div>
       <Scroll style={{ flexGrow: 1 }} padding={{ left: 8, right: 8, bottom: 8 }}>
         {groups.length === 0 ? (
-          <div style={{ padding: 14 }}>
-            <text style={{ fontSize: 13, lineHeight: 18, color: m.textMuted }}>Claude hasn't changed any files in this note.</text>
+          <div style={{ paddingTop: 14, paddingLeft: 10, paddingRight: 10 }}>
+            <text style={{ fontSize: 13, lineHeight: 18, color: m.textMuted }}>{loading ? 'Reading working-tree changes…' : loadError ? 'Couldn’t read Git changes in this folder.' : scope === 'uncommitted' ? 'No uncommitted changes.' : "Claude hasn't changed any files in this note."}</text>
           </div>
         ) : null}
         {groups.map((g) => (
@@ -75,7 +120,8 @@ export function Changes({ open, onClose, thread, onAdd }: { open: boolean; onClo
           </div>
         ))}
       </Scroll>
-      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6, height: 50, paddingLeft: 12, paddingRight: 12, borderTopWidth: 1, borderColor: m.border, flexShrink: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6, height: 50, paddingLeft: 18, paddingRight: 10, borderTopWidth: 1, borderColor: m.border, flexShrink: 0 }}>
+        <text testId="changes-count" style={{ fontSize: 11.5, lineHeight: 16, color: m.textMuted }}>{`${selected.length} of ${all.length} hunks selected${noteCount ? ` · ${noteCount === 1 ? '1 comment' : `${noteCount} comments`}` : ''}`}</text>
         <Button onPress={() => setPicked(selected.length === all.length ? {} : Object.fromEntries(all.map((h) => [h.id, true])))} testId="changes-select-all" disabled={!all.length}>
           <Label muted>{selected.length === all.length && all.length ? 'Select none' : 'Select all'}</Label>
         </Button>

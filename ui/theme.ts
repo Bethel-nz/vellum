@@ -25,6 +25,13 @@ export function concentric(parentRadius: number, inset: number) {
 }
 
 export const readingWidth = 720
+/**
+ * The note's column for a window this wide: 720 in a small window, growing with it so a wide one
+ * isn't mostly margin, up to 960, where lines are still short enough to read.
+ */
+export function readingWidthFor(windowWidth: number) {
+  return Math.round(Math.min(960, Math.max(readingWidth, windowWidth * 0.66)))
+}
 export const headerHeight = 36
 /** Space from the top of the pane to the first line of the note: the header band plus 16. Set once. */
 export const contentInset = headerHeight + 16

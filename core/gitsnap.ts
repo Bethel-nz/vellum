@@ -80,6 +80,15 @@ export async function changedFiles(a: Snapshot, b: Snapshot, workspace: string):
   return splitFiles(patch).map((f) => ({ ...f, path: path.relative(ws, path.join(a.root, f.path)).split(path.sep).join('/') || f.path }))
 }
 
+/** Current staged, unstaged and untracked changes against HEAD, using the same private index. */
+export async function uncommittedFiles(workspace: string): Promise<GitFile[] | undefined> {
+  const current = await snapshot(workspace)
+  if (!current) return
+  const head = (await git(current.root, ['rev-parse', '--verify', 'HEAD^{tree}'], current.env)).out?.trim()
+  const tree = head || (await git(current.root, [...current.config, 'mktree'], current.env)).out?.trim()
+  return tree ? changedFiles({ ...current, tree }, current, workspace) : undefined
+}
+
 /** A multi-file `git diff` cut into files, each with its own patch and counts. */
 export function splitFiles(patch: string): GitFile[] {
   const out: GitFile[] = []

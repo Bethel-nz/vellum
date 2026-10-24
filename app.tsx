@@ -48,7 +48,9 @@ import { History } from './ui/History'
 import { Changes } from './ui/Changes'
 import { revealEnd } from './ui/glide'
 import { Timeline, watchRows } from './ui/Timeline'
-import { changeCount, hunkTags } from './core/changes'
+import { changeSummary, hunkTags } from './core/changes'
+import { uncommittedFiles } from './core/gitsnap'
+import type { ChangeSummary } from './components/ChangesSummary'
 import { Dot, Icon, Kbd, MaterialContext, Meta, Quiet, useM } from './ui/kit'
 import { SettingsPage, type MotionPref, type TabMode } from './ui/Settings'
 import { CELL_W, TerminalBlock } from './ui/TerminalBlock'
@@ -58,7 +60,7 @@ import {
   radiusBase,
   contentInset,
   font,
-  readingWidth,
+  readingWidthFor,
   shellInset,
   materialNames,
   materials,
@@ -103,9 +105,10 @@ const shortcuts: { current?: (e: KeyEvent) => void } = {}
 
 function Paragraph({ children, kind }: { children: React.ReactNode; kind?: Block['kind'] | 'title' | 'status' | 'composer' }) {
   const top = kind === 'user' || kind === 'composer' ? 18 : kind === 'title' ? 28 : 6
+  const width = readingWidthFor(useWindowSize().width)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', paddingTop: top, paddingBottom: 6 }}>
-      <div style={{ width: '100%', maxWidth: readingWidth, paddingLeft: 28, paddingRight: 28 }}>{children}</div>
+      <div style={{ width: '100%', maxWidth: width, paddingLeft: 28, paddingRight: 28 }}>{children}</div>
     </div>
   )
 }
@@ -409,6 +412,26 @@ function App() {
 
   const active = threads.find((t) => t.id === activeId)
   const activeProfile = profiles.find((p) => p.id === active?.profileId)
+  // The folder's own uncommitted changes, so the strip offers Changes in a project with edits
+  // nobody made in this note. Read again when the note's changes move and when Changes closes.
+  const noteChanges = active ? changeSummary(active) : undefined
+  const [uncommitted, setUncommitted] = useState<{ workspace: string; summary: ChangeSummary }>()
+  const changesOpen = overlay === 'changes'
+  useEffect(() => {
+    const workspace = active?.workspace
+    if (!workspace || changesOpen) return
+    let cancelled = false
+    uncommittedFiles(workspace)
+      .then((files) => {
+        if (cancelled || !files) return
+        setUncommitted({ workspace, summary: { files: files.length, added: files.reduce((n, f) => n + f.added, 0), removed: files.reduce((n, f) => n + f.removed, 0) } })
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [active?.workspace, noteChanges?.files, noteChanges?.added, noteChanges?.removed, changesOpen])
+  const stripChanges = noteChanges?.files ? noteChanges : uncommitted && uncommitted.workspace === active?.workspace ? uncommitted.summary : undefined
   const draft = (active && drafts[active.id]) || { text: '', tags: [] }
 
   // Fonts: Inter for UI and prose. Text repaints once a family registers.
@@ -571,7 +594,7 @@ function App() {
 
   // ---- actions
 
-  const terminalCols = Math.max(40, Math.floor((Math.min(readingWidth, windowSize.width - shellInset * 2) - 56 - 22) / CELL_W))
+  const terminalCols = Math.max(40, Math.floor((Math.min(readingWidthFor(windowSize.width), windowSize.width - shellInset * 2) - 56 - 22) / CELL_W))
 
   const runShell = useCallback(
     (thread: Thread, command: string) => {
@@ -1110,10 +1133,10 @@ function App() {
               onNew={() => setOverlay('new')}
               trailing={
                 <>
-                  {active && changeCount(active) ? (
-                    <Button onPress={() => setOverlay('changes')} testId="open-changes" title="Changes in this note (⇧⌘D)">
+                  {stripChanges ? (
+                    <Button onPress={() => setOverlay('changes')} testId="open-changes" title={noteChanges?.files ? 'Changes in this note (⇧⌘D)' : 'Uncommitted changes in this folder (⇧⌘D)'}>
                       <Icon name="diff" size={13} />
-                      <Label muted>{`${changeCount(active)} ${changeCount(active) === 1 ? 'file' : 'files'}`}</Label>
+                      <Label muted>{`${stripChanges.files} ${stripChanges.files === 1 ? 'file' : 'files'}`}</Label>
                     </Button>
                   ) : null}
                   <Button onPress={() => setOverlay('switcher')} testId="open-switcher" title="Find a note (⌘K)">
@@ -1378,11 +1401,16 @@ function App() {
   )
 }
 
+function windowSize(spec: string | undefined) {
+  const [w, h] = (spec ?? '').split('x').map(Number)
+  return { width: w || 1080, height: h || 780 }
+}
+
 render(<App />, {
   title: 'Vellum',
   appName: 'Vellum',
-  width: 1080,
-  height: 780,
+  // VELLUM_WINDOW=1600x1000 opens it at another size, for checks of a wide or narrow window.
+  ...windowSize(process.env.VELLUM_WINDOW),
   // macOS: no titlebar and no traffic lights, since Vellum is driven from the keyboard (⌘Q, ⇧⌘W, ⌘M).
   // GPUIX has no option to hide them, so they sit off the window (see NOTES). Windows and Linux keep
   // the system title bar: GPUIX can't draw window controls or a drag area there.
