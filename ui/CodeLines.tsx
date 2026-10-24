@@ -1,17 +1,26 @@
-// The file pane's long text, mounted a window at a time (ui/windowed.ts): a 5,000-line file
-// used to build 5,000 rows at once. Code goes in blocks of a hundred lines, each its own <code>,
-// with the line numbers drawn here so they count on across blocks. A block highlights on its own,
-// so a comment or string that crosses into the next one can lose its colour there.
+// The file pane's long text, mounted a window at a time: a 5,000-line file used to build 5,000
+// rows at once. Code goes in blocks of a hundred lines, each its own <code>, with the line numbers
+// drawn here so they count on across blocks. A block highlights on its own, so a comment or string
+// that crosses into the next one can lose its colour there.
+//
+// Code doesn't scroll in a <virtual-list>: the list takes the sideways wheel, so nothing inside it
+// scrolls sideways. A plain scroller holds two columns, the line numbers and the code. Rows are a
+// fixed height, so what isn't mounted is a spacer of exact height in each, and the window follows
+// `onScrollChange`. The code column is the one sideways scroller, every block as wide as the
+// longest line so no <code> scrolls on its own and the lines move together; the numbers stay put.
+// The outer scroller scrolls both ways though only its height overflows: one that scrolls only
+// down turns a sideways swipe into a vertical one. Markdown keeps the list (ui/windowed.ts): its
+// pages have no exact height to stand in for them.
 //
 // The line numbers pick lines (ui/FilePreview.tsx keeps the pick): each block's strip over them
-// says which line a press or a drag is on; mid-drag the strips cover the code, since moves go
-// only to what's under the pointer.
+// says which line a press is on; mid-drag one cover lies over both columns, since moves go only to
+// what's under the pointer.
 //
 // Markdown goes in pages split at blank lines, before a heading or a paragraph, never inside a
 // fence or a list.
 
-import { useEffect, useMemo } from 'react'
-import { useGpuixRequired, type EventPayload } from '@gpuix/react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useGpuixRequired, type EventPayload, type PublicInstance } from '@gpuix/react'
 import { codeLanguage, type Preview } from '../core/preview'
 import { useM } from './kit'
 import { font, nativeTheme, replyText, replyTheme, type } from './theme'
@@ -22,11 +31,22 @@ type Shown = Extract<Preview, { ok: true }>
 /** <code> draws every row at the theme's code line height. */
 export const ROW = type.mono.lineHeight
 export const TOP = 14
+const BOTTOM = 32
+/** The "Showing the first … lines" note under a cut-off file. */
+const NOTE = 28
 const BLOCK = 100
 /** Blocks mounted at once: a few screens either side. */
 const SPAN = 8
 /** Geist Mono's advance at 12px. */
 const DIGIT = 7.2
+const TAB = 4
+
+/** How many columns a line takes: a tab to the next stop, wide (CJK, emoji) characters two. */
+function columns(line: string) {
+  let n = 0
+  for (const ch of line) n = ch === '\t' ? n + TAB - (n % TAB) : n + (ch.codePointAt(0)! >= 0x1100 ? 2 : 1)
+  return n
+}
 
 export function CodeLines({ preview, line, wash, picked, dragging, onPress, onDrag, onUp }: {
   preview: Shown
@@ -42,18 +62,31 @@ export function CodeLines({ preview, line, wash, picked, dragging, onPress, onDr
 }) {
   const m = useM()
   const renderer = useGpuixRequired()
-  const blocks = useMemo(() => {
+  const { blocks, widest } = useMemo(() => {
     const lines = preview.text.split('\n').slice(0, preview.shown)
     const out: string[] = []
     for (let i = 0; i < lines.length; i += BLOCK) out.push(lines.slice(i, i + BLOCK).join('\n'))
-    return out.length ? out : ['']
+    return { blocks: out.length ? out : [''], widest: lines.reduce((w, l) => Math.max(w, columns(l)), 0) }
   }, [preview.text, preview.shown])
-  const win = useWindowed(blocks.length, SPAN, [preview.abs, preview.text])
+  const scroller = useRef<PublicInstance>(null)
+  const [wanted, setStart] = useState(0)
+  const total = blocks.length
+  const start = Math.max(0, Math.min(wanted, total - SPAN))
+  const end = Math.min(total, start + SPAN)
+  const truncated = preview.shown < preview.lines
+  /** Where block `i` starts in a column. */
+  const offset = (i: number) => (i === 0 ? 0 : TOP + i * BLOCK * ROW)
+  const height = TOP + preview.shown * ROW + BOTTOM + (truncated ? NOTE : 0)
+  /** The window for a scroll at `y` down: a block above it, the rest below. */
+  const around = (y: number) => Math.max(0, Math.min(Math.floor((y - TOP) / (BLOCK * ROW)) - 1, total - SPAN))
+  useEffect(() => setStart(0), [preview.abs, preview.text])
   useEffect(() => {
     if (!line) return
-    const target = Math.max(0, line - 1 - 4)
-    const index = Math.floor(target / BLOCK)
-    win.reveal(index, (index === 0 ? TOP : 0) + (target % BLOCK) * ROW)
+    const y = TOP + Math.max(0, line - 1 - 4) * ROW
+    setStart(around(y))
+    // Once the window has the line.
+    const id = scroller.current?.id
+    if (id !== undefined) setTimeout(() => renderer.scrollTo?.(id, 0, -y), 16)
   }, [preview.abs, line])
 
   const numbers = String(preview.shown).length * DIGIT + 22
@@ -66,50 +99,95 @@ export function CodeLines({ preview, line, wash, picked, dragging, onPress, onDr
   const theme = nativeTheme(m)
   const language = preview.kind === 'text' ? 'text' : codeLanguage(preview.abs)
 
-  return (
-    <virtual-list {...win.props} testId="file-preview-scroll" alignment="top" estimatedItemHeight={BLOCK * ROW} overdraw={800} style={{ flexGrow: 1, minHeight: 0, width: '100%', scrollbarColor: m.scrollbar, scrollbarWidth: 6 }}>
-      {blocks.slice(win.start, win.end).map((code, k) => {
-        const i = win.start + k
+  /** One column: the room of the blocks above the window, the window's blocks, the room below. */
+  const column = (block: (i: number, first: number, count: number, a: number, b: number) => ReactNode) => (
+    <>
+      <div style={{ height: offset(start), flexShrink: 0 }} />
+      {blocks.slice(start, end).map((_, k) => {
+        const i = start + k
         const first = i * BLOCK + 1
         const count = Math.min(BLOCK, preview.shown - i * BLOCK) || 1
-        const top = i === 0 ? TOP : 0
-        const last = i === blocks.length - 1
+        const last = i === total - 1
         // The washed lines this block holds.
         const a = wash ? Math.max(wash[0], first) : 0
         const b = wash ? Math.min(wash[1], first + count - 1) : -1
         return (
-          <div key={i} testId={i === 0 ? 'file-preview-code' : undefined} style={{ display: 'flex', flexDirection: 'column', paddingTop: top, paddingBottom: last ? 32 : 0 }}>
-            <div style={{ position: 'relative', display: 'flex', flexDirection: 'row' }}>
-              {/* <code> paints no surface, so the wash sits under the lines. */}
-              {a <= b ? <div testId={a === wash![0] ? (picked ? 'file-preview-pick' : 'file-preview-line') : undefined} style={{ position: 'absolute', left: 0, right: 0, top: (a - first) * ROW, height: (b - a + 1) * ROW, backgroundColor: m.lineWash }} /> : null}
-              <text style={{ width: numbers, flexShrink: 0, paddingRight: 12, textAlign: 'right', fontFamily: font.mono, fontSize: type.mono.fontSize, lineHeight: ROW, color: m.textFaint }}>
-                {Array.from({ length: count }, (_, n) => first + n).join('\n')}
-              </text>
-              <code code={code || ' '} path={preview.abs} language={language} theme={theme} style={{ flexGrow: 1, minWidth: 0, paddingRight: 16, color: m.text, fontFamily: font.mono }} />
-              <div
-                testId={i === 0 ? 'file-preview-gutter' : `file-preview-gutter-${i}`}
-                onMouseDown={(e) => {
-                  const at = lineAt(e, first, count)
-                  if (at && e.button === 0) onPress(at, Boolean(e.modifiers?.shift))
-                }}
-                onMouseMove={(e) => {
-                  if (!dragging) return
-                  const at = lineAt(e, first, count)
-                  if (at) onDrag(at, e.pressedButton === 0)
-                }}
-                onMouseUp={onUp}
-                style={{ position: 'absolute', left: 0, top: 0, ...(dragging ? { right: 0 } : { width: numbers }), height: count * ROW, cursor: 'pointer' }}
-              />
-            </div>
-            {last && preview.shown < preview.lines ? (
-              <text testId="file-preview-truncated" style={{ paddingLeft: 20, paddingTop: 12, fontSize: 11.5, lineHeight: 16, color: m.textFaint }}>
-                {`Showing the first ${preview.shown.toLocaleString()} of ${preview.lines.toLocaleString()} lines`}
-              </text>
-            ) : null}
+          <div key={i} style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', height: (i === 0 ? TOP : 0) + count * ROW + (last ? BOTTOM + (truncated ? NOTE : 0) : 0), paddingTop: i === 0 ? TOP : 0 }}>
+            {block(i, first, count, a, b)}
           </div>
         )
       })}
-    </virtual-list>
+      {end < total ? <div style={{ height: height - offset(end), flexShrink: 0 }} /> : null}
+    </>
+  )
+  /** <code> paints no surface, so the wash sits under the lines, in both columns. */
+  const washed = (i: number, first: number, a: number, b: number, col: string) =>
+    a <= b ? <div testId={col === 'code' && a === wash![0] ? (picked ? 'file-preview-pick' : 'file-preview-line') : undefined} style={{ position: 'absolute', left: 0, right: 0, top: (a - first) * ROW, height: (b - a + 1) * ROW, backgroundColor: m.lineWash }} /> : null
+  /** The strip over a block's numbers that says which line a press is on. */
+  const strip = (first: number, count: number, testId?: string) => (
+    <div
+      testId={testId}
+      onMouseDown={(e) => {
+        const at = lineAt(e, first, count)
+        if (at && e.button === 0) onPress(at, Boolean(e.modifiers?.shift))
+      }}
+      onMouseUp={onUp}
+      style={{ position: 'absolute', left: 0, top: 0, right: 0, height: count * ROW, cursor: 'pointer' }}
+    />
+  )
+
+  return (
+    <div
+      ref={scroller}
+      testId="file-preview-scroll"
+      onScrollChange={(e) => {
+        const next = around(-(e.scrollY ?? 0))
+        if (next !== start) setStart(next)
+      }}
+      style={{ flexGrow: 1, minHeight: 0, width: '100%', overflow: 'scroll', scrollbarColor: m.scrollbar, scrollbarWidth: 6 }}
+    >
+      <div style={{ position: 'relative', flexShrink: 0, width: '100%', display: 'flex', flexDirection: 'row' }}>
+        <div style={{ width: numbers, flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+          {column((i, first, count, a, b) => (
+            <div style={{ position: 'relative', height: count * ROW }}>
+              {washed(i, first, a, b, 'numbers')}
+              <text style={{ paddingRight: 12, textAlign: 'right', fontFamily: font.mono, fontSize: type.mono.fontSize, lineHeight: ROW, color: m.textFaint }}>
+                {Array.from({ length: count }, (_, n) => first + n).join('\n')}
+              </text>
+              {strip(first, count, i === 0 ? 'file-preview-gutter' : `file-preview-gutter-${i}`)}
+            </div>
+          ))}
+        </div>
+        <div style={{ flexGrow: 1, minWidth: 0, overflowX: 'scroll' }}>
+          <div style={{ width: widest * DIGIT + 16 + 2 * DIGIT, minWidth: '100%', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+            {column((i, first, count, a, b) => (
+              <>
+                <div testId={i === 0 ? 'file-preview-code' : undefined} style={{ position: 'relative', height: count * ROW, display: 'flex', flexDirection: 'column' }}>
+                  {washed(i, first, a, b, 'code')}
+                  <code code={blocks[i] || ' '} path={preview.abs} language={language} theme={theme} style={{ paddingRight: 16, color: m.text, fontFamily: font.mono }} />
+                </div>
+                {i === total - 1 && truncated ? (
+                  <text testId="file-preview-truncated" style={{ paddingLeft: 8, paddingTop: 12, fontSize: 11.5, lineHeight: 16, color: m.textFaint }}>
+                    {`Showing the first ${preview.shown.toLocaleString()} of ${preview.lines.toLocaleString()} lines`}
+                  </text>
+                ) : null}
+              </>
+            ))}
+          </div>
+        </div>
+        {/* Mid-drag one cover over both columns says which line the pointer is on. */}
+        {dragging ? (
+          <div
+            onMouseMove={(e) => {
+              const at = lineAt(e, 1, preview.shown)
+              if (at) onDrag(at, e.pressedButton === 0)
+            }}
+            onMouseUp={onUp}
+            style={{ position: 'absolute', left: 0, right: 0, top: TOP, height: preview.shown * ROW, cursor: 'pointer' }}
+          />
+        ) : null}
+      </div>
+    </div>
   )
 }
 

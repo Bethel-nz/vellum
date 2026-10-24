@@ -1178,3 +1178,20 @@ label changed width under it ("Default" to "Max"), since it hangs from the pill'
 now closes the picker as a model does, and both lists open on what's chosen, not the first row.
 In a background automation window the menus' fade-ins don't advance on their own; checks that
 look at them pause the clock and fast-forward it (`app.clock`).
+
+## 2026-10-24 — code scrolls sideways, all of it at once
+
+Code in the file pane didn't scroll sideways at all. Each <code> is its own sideways scroller, but
+inside a <virtual-list> it never gets the wheel: the list takes it. Checked one by one: on its own,
+in a flex row and in a plain scroller, a <code> scrolls sideways; in the list it doesn't. And a
+block that did scroll would have moved alone, its hundred lines apart from the rest, since <code>
+reports no scroll of its own to sync the others by.
+
+So the pane's code (ui/CodeLines.tsx) left the list for a plain scroller with two columns: the
+line numbers, which stay put, and the code, the one sideways scroller. Every block is as wide as
+the longest line (tabs to the next stop of 4, wide characters as two), so no <code> scrolls on
+its own and the lines move together. The windowing stays: rows are 18 high, so the blocks that
+aren't mounted are a spacer of exact height in each column, and the window follows
+`onScrollChange`. The outer scroller is set to scroll both ways though only its height overflows,
+because a scroller that only scrolls down turns a sideways swipe into a vertical one. Mid-drag one
+cover lies over both columns for the pick. Markdown keeps the list; its pages have no exact height.
