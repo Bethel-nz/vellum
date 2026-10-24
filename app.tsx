@@ -1437,7 +1437,7 @@ function App() {
             <TabStrip
               tabs={tabs.flatMap((id): StripTab[] =>
                 id === HELP_ID
-                  ? [{ id, title: 'Help', time: '', running: false, unread: false, needsYou: false, dot: m.textFaint }]
+                  ? [{ id, title: 'Help', time: '', running: false, unread: false, needsYou: false, dot: m.textFaint, plain: true }]
                   : tabThreads.filter((t) => t.id === id).map((t) => ({
                     id: t.id,
                     title: t.title,
@@ -1500,7 +1500,8 @@ function App() {
                 // A tab is a way out of Settings, back to that note.
                 if (overlay === 'settings') setOverlay(null)
                 // The current pill is the note's title: pressing it opens its menu.
-                if (id === activeId && view === 'notes') return setNoteMenu((v) => !v && !closedByOutsidePress())
+                // Help's has no menu.
+                if (id === activeId && view === 'notes') return id === HELP_ID ? undefined : setNoteMenu((v) => !v && !closedByOutsidePress())
                 setView('notes')
                 setActiveId(id)
                 setTimeout(focusComposer, 50)

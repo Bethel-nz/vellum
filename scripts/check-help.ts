@@ -57,6 +57,15 @@ try {
   await wait(300)
   await app.getByTestId('open-help').click()
   expect('the Help button brings it back', await until(async () => (await count('help')) === 1))
+
+  // It has no note menu: no chevron, and its ✕ shows without a hover.
+  await wait(400)
+  expect('its tab has no menu chevron', (await count('title-menu')) === 0)
+  expect('…but its own ✕', (await count('close-vellum-help')) === 1)
+  await app.screenshot({ path: 'screenshots/help-3-tab.png' })
+  await app.getByTestId('close-vellum-help').click()
+  expect('the ✕ dismisses it', await until(async () => (await count('help')) === 0 && (await count('tab-vellum-help')) === 0))
+  expect('…back to the note', await until(async () => (await count('composer')) === 1))
 } finally {
   await app.close()
 }

@@ -44,6 +44,8 @@ export type StripTab = {
   attention?: string
   /** The account colour. */
   dot?: string
+  /** No note menu (the Help note): its ✕ shows instead of a chevron. */
+  plain?: boolean
 }
 
 export type StripTerm = { id: string; title: string; running: boolean }
@@ -209,6 +211,8 @@ function Tab({
   const show = () => { clearTimeout(hoverTimer.current); setHover(true) }
   const hide = () => { hoverTimer.current = setTimeout(() => setHover(false), duration.fast * 1000) }
   useEffect(() => () => clearTimeout(hoverTimer.current), [])
+  // No menu to open: the pill shows its ✕ all the time, as a terminal's does.
+  const bare = term || tab.plain
   const tone = tab.needsYou ? m.blue : tab.running ? m.accent : tab.unread ? m.textUi : hover ? m.textFaint : m.selected
   const box = (
     <div style={{ height: 28, paddingLeft: HIT_X, paddingRight: HIT_X, display: 'flex', alignItems: 'center' }}>
@@ -229,12 +233,12 @@ function Tab({
         }}
       >
         {active ? (
-          <div testId={term ? undefined : 'title-menu'} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 7, flexGrow: 1, minWidth: 0, paddingLeft: 10, paddingRight: 6 }}>
+          <div testId={bare ? undefined : 'title-menu'} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 7, flexGrow: 1, minWidth: 0, paddingLeft: 10, paddingRight: 6 }}>
             {term ? null : tab.running ? <Dot color={m.accent} size={6} pulse /> : <Dot color={tab.dot ?? m.textFaint} size={6} />}
             <text style={{ flexShrink: 1, minWidth: 0, fontSize: 12.5, lineHeight: 16, fontWeight: 500, color: m.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{tab.title}</text>
-            {term ? null : <Icon name="chevronDown" size={11} color={menuOpen ? m.text : m.textFaint} />}
+            {bare ? null : <Icon name="chevronDown" size={11} color={menuOpen ? m.text : m.textFaint} />}
             <div style={{ flexGrow: 1 }} />
-            {hover || term ? (
+            {hover || bare ? (
               <div style={{ width: 18, height: 18, flexShrink: 0 }} />
             ) : (
               <text style={{ fontSize: 10.5, lineHeight: 14, color: m.textFaint, fontFamily: font.mono, flexShrink: 0 }}>{tab.time}</text>
@@ -258,7 +262,7 @@ function Tab({
       onAuxClick={(e) => (e.button === 1 ? onClose() : undefined)}
       style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, cursor: 'default', borderRadius: 7, focusVisible: { outlineWidth: 2, outlineColor: m.focusRing, outlineOffset: -2 } }}
     />
-    {active && (hover || term) ? <div style={{ position: 'absolute', right: 6, top: 5 }}><Button onPress={onClose} testId={`close-${tab.id}`} title={term ? 'Close terminal' : 'Close tab (⇧⌘W)'} style={{ width: 18, height: 18, minHeight: 18, paddingLeft: 0, paddingRight: 0 }}><Icon name="x" size={11} /></Button></div> : null}
+    {active && (hover || bare) ? <div style={{ position: 'absolute', right: 6, top: 5 }}><Button onPress={onClose} testId={`close-${tab.id}`} title={term ? 'Close terminal' : 'Close tab (⇧⌘W)'} style={{ width: 18, height: 18, minHeight: 18, paddingLeft: 0, paddingRight: 0 }}><Icon name="x" size={11} /></Button></div> : null}
       {/* Its own hover label: the shared Tooltip's trigger eats the click a box needs. */}
       {hover && !active && !tab.needsYou && !tab.unread ? (
         <FloatingLayer side="bottom" align="center" sideOffset={4} style={{ backgroundColor: '#00000000' }}>
