@@ -516,3 +516,23 @@ Agent SDK (`CLAUDE_CODE_EXECUTABLE`), with your login, per account through `CLAU
   (a test proved all three). Every snapshot call sets `core.fsmonitor=false`,
   `core.hooksPath=/dev/null` and blanks each configured filter driver; files are hashed as they
   are on disk. The `#` file picker's `git ls-files` gets the fsmonitor guard as well.
+
+## 2026-10-24 — timeline, and two fixes
+
+- **Timeline.** A note with three or more of your paragraphs gets a tick for each at the far
+  left of the page (ui/Timeline.tsx). Ticks near the pointer widen like a dock; the hovered one
+  previews the paragraph with Go there and Edit, and the preview stays while you move onto it.
+  A click on a tick scrolls the note there (`scrollToItem`, 24px above it); Edit also puts the
+  caret in the paragraph (`editParagraph` in ui/blocks.tsx, retried until the row has mounted);
+  a real double-click on a tick does the same. The tick for the paragraph you're reading stays
+  bright. The visible range lives outside React state (`watchRows`), so scrolling the note
+  re-renders only the timeline. scripts/check-timeline.ts covers it; synthetic clicks can't
+  double-click, which is why Edit is a button rather than only a gesture.
+- **GPUIX:** a `motion.div` takes presses from the element around it (hover still reaches the
+  parent), so a clickable row whose child animates needs its handlers on a transparent overlay
+  above the child. Window-level typing in a check is `keystrokes` with no element; `keyDown`
+  alone inserts no text.
+- **New note:** "Log in" shows only for an account that's logged out; others show their email.
+- **Chunk-fade streaming** is the other session's (components/StreamChunk.tsx in its app.tsx
+  refactor). This session's version was taken back out of ui/blocks.tsx so the two don't fight;
+  core/stream.ts (settle points, tested) and scripts/check-stream.ts are left uncommitted for it.

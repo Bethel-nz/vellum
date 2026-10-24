@@ -45,6 +45,7 @@ import { Composer } from './ui/Composer'
 import { NewThreadDialog, ThreadSwitcher } from './ui/dialogs'
 import { History } from './ui/History'
 import { Changes } from './ui/Changes'
+import { Timeline, watchRows } from './ui/Timeline'
 import { changeCount, hunkTags } from './core/changes'
 import { Dot, Icon, Kbd, MaterialContext, Meta, Quiet, useM } from './ui/kit'
 import { SettingsSheet, type MotionPref, type TabMode } from './ui/SettingsSheet'
@@ -115,16 +116,22 @@ const Document = memo(function Document({
   composer,
   onStop,
   onTailClick,
+  listRef,
+  onVisibleRange,
 }: {
   thread: Thread
   actions: BlockActions
   composer: React.ReactNode
   onStop: () => void
   onTailClick: () => void
+  listRef?: React.Ref<PublicInstance>
+  onVisibleRange?: (range: [number, number]) => void
 }) {
   const m = useM()
   return (
     <virtual-list
+      ref={listRef}
+      onVisibleRange={(e) => onVisibleRange?.([e.startIndex ?? 0, e.endIndex ?? 0])}
       alignment="top"
       followTail
       estimatedItemHeight={90}
@@ -344,6 +351,9 @@ function App() {
   const showToastRef = useRef(showToast)
   showToastRef.current = showToast
   const composerRef = useRef<PublicInstance>(null)
+  /** The note's list, for the timeline to scroll, and which of its rows are on screen. */
+  const noteList = useRef<PublicInstance>(null)
+  const visibleRows = useMemo(watchRows, [])
   const runners = useRef(new Map<string, AgentRunner>())
   /** The word-cut title a note got on its first send; the agent's own title replaces only that. */
   const provisional = useRef(new Map<string, string>())
@@ -1070,6 +1080,8 @@ function App() {
                 actions={actions}
                 onStop={interrupt}
                 onTailClick={focusComposer}
+                listRef={noteList}
+                onVisibleRange={visibleRows.set}
                 composer={
                   <Composer
                     value={draft.text}
@@ -1114,6 +1126,7 @@ function App() {
                   background: { type: 'linear-gradient', angle: 180, stops: [{ color: m.pane, position: 0 }, { color: `${m.pane.slice(0, 7)}00`, position: 1 }] },
                 }}
               />
+              <Timeline thread={active} list={noteList} rows={visibleRows} />
               <div style={{ position: 'absolute', right: 14, bottom: 10 }}>
                 <StatusBar
                   mode={active.mode ?? defaultMode}

@@ -4,7 +4,7 @@
 
 import { existsSync } from 'node:fs'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import type { KeyEvent } from '@gpuix/react'
+import { useGpuixRequired, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { forDiff, type Block, type Tag, type ToolCall } from '../core/threads'
 import { getTerm } from '../core/term'
 import { FileIcon, Icon, Meta, Quiet, useM } from './kit'
@@ -31,6 +31,7 @@ function EditableText({
   color,
   weight,
   autoFocus,
+  focusRequest = 0,
   testId,
 }: {
   value: string
@@ -40,9 +41,13 @@ function EditableText({
   color: string
   weight?: number
   autoFocus?: boolean
+  /** Bumped to put the caret in it from outside (the timeline). */
+  focusRequest?: number
   testId?: string
 }) {
   const m = useM()
+  const renderer = useGpuixRequired()
+  const field = useRef<PublicInstance>(null)
   const [text, setText] = useState(value)
   const pending = useRef<string | undefined>(undefined)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -61,6 +66,9 @@ function EditableText({
     if (pending.current === undefined) setText(value)
   }, [value])
   useEffect(() => flush, [])
+  useEffect(() => {
+    if (focusRequest && field.current) renderer.focusElement?.(field.current.id)
+  }, [focusRequest, renderer])
 
   const onKeyDown = (e: KeyEvent) => {
     if (e.key === 'enter' && primary(e.modifiers)) {
@@ -76,6 +84,7 @@ function EditableText({
 
   return (
     <textarea
+      ref={field}
       testId={testId}
       value={text}
       minRows={1}
@@ -158,9 +167,27 @@ function PastedImages({ images }: { images: string[] }) {
   )
 }
 
+/** Your paragraphs on screen, by block id, each able to take the caret (see `editParagraph`). */
+const editable = new Map<string, () => void>()
+
+/** Puts the caret in one of your paragraphs. False when it isn't mounted (scrolled out of the list). */
+export function editParagraph(blockId: string): boolean {
+  const focus = editable.get(blockId)
+  focus?.()
+  return Boolean(focus)
+}
+
 function UserText({ block, actions }: { block: Extract<Block, { kind: 'user' }>; actions: BlockActions }) {
   const m = useM()
   const [editing, setEditing] = useState(false)
+  const [focusRequest, setFocusRequest] = useState(0)
+  useEffect(() => {
+    editable.set(block.id, () => {
+      setEditing(true)
+      setFocusRequest((n) => n + 1)
+    })
+    return () => void editable.delete(block.id)
+  }, [block.id])
   const hasTokens = block.tags.length > 0 && tokens(block.text, block.tags).some((t) => t.kind === 'tag')
   if (hasTokens && !editing) {
     return <TokenText text={block.text} tags={block.tags} ctx={actions.tokens} color={m.text} testId={`read-${block.id}`} onPress={() => setEditing(true)} />
@@ -172,6 +199,7 @@ function UserText({ block, actions }: { block: Extract<Block, { kind: 'user' }>;
         color={m.text}
         weight={500}
         autoFocus={editing}
+        focusRequest={focusRequest}
         testId={`para-${block.id}`}
         onCommit={(text) => actions.onEdit(block.id, text)}
         onSend={actions.onSend}
