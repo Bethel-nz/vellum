@@ -154,7 +154,7 @@ async function handle(msg: any) {
     case 'initialize':
       return reply({
         protocolVersion: 1,
-        agentCapabilities: { loadSession: true, sessionCapabilities: { resume: {} }, promptCapabilities: { image: true } },
+        agentCapabilities: { loadSession: true, sessionCapabilities: { resume: {}, systemPrompt: {} }, promptCapabilities: { image: true } },
         agentInfo: { name: 'fake-acp', version: '0' },
         authMethods: msg.params?.clientCapabilities?.auth?.terminal
           ? [{ id: 'claude-ai-login', name: 'Claude Subscription', type: 'terminal', args: ['--cli', 'auth', 'login', '--claudeai'] }]

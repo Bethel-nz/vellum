@@ -6,20 +6,23 @@
 
 import { useRef, useState, type ReactNode } from 'react'
 import { DismissableLayer, motion, useGpuixRequired, type PublicInstance } from '@gpuix/react'
-import { Button, Dot, Field, Label, Segmented, SheetRow, SheetSection, Switch } from '../components'
+import { Button, closedByOutsidePress, Dot, Field, Icon, Label, Menu, Segmented, SheetRow, SheetSection, Switch, type MenuItem } from '../components'
 import { enter, offset } from '../components/motion'
 import { sameLogin } from '../core/auth'
 import type { Profile } from '../core/profiles'
 import { accentFor } from './theme'
 import { useM } from './kit'
-import type { Settings } from '../core/store'
+import { readSettings, updateSettings, type Settings } from '../core/store'
+import { cycleModes, defaultMode, modes, type Think } from '../core/asks'
+import { effortLabel } from '../core/models'
+import { font } from './theme'
 import type { MaterialName } from './theme'
 import { keys } from '../core/platform'
 
 export type TabMode = NonNullable<Settings['tabs']>
 export type MotionPref = 'system' | 'reduce' | 'full'
 
-const sections = ['Accounts', 'Appearance', 'Tabs', 'Motion'] as const
+const sections = ['Accounts', 'New notes', 'Instructions', 'Notifications', 'Appearance', 'Tabs', 'Motion'] as const
 type Section = (typeof sections)[number]
 const NAV = 176
 /** A section counts as the one you're in once its top is this close under the top edge. */
@@ -90,7 +93,7 @@ export function SettingsPage({
     setCurrent(s)
   }
   const section = (s: Section, children: ReactNode) => (
-    <div key={s} ref={(node) => { if (node) anchors.current.set(s, node); else anchors.current.delete(s) }} testId={`settings-${s.toLowerCase()}`}>
+    <div key={s} ref={(node) => { if (node) anchors.current.set(s, node); else anchors.current.delete(s) }} testId={`settings-${slug(s)}`}>
       {children}
     </div>
   )
@@ -107,7 +110,7 @@ export function SettingsPage({
           <div style={{ width: NAV, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 2, paddingTop: 22, paddingLeft: 14, paddingRight: 10, borderRightWidth: 1, borderColor: m.border }}>
             <text style={{ fontSize: 15, lineHeight: 20, fontWeight: 600, color: m.text, paddingLeft: 8, paddingBottom: 12 }}>Settings</text>
             {sections.map((s) => (
-              <Button key={s} onPress={() => go(s)} selected={current === s} testId={`settings-go-${s.toLowerCase()}`} style={{ justifyContent: 'flex-start', paddingLeft: 8 }}>
+              <Button key={s} onPress={() => go(s)} selected={current === s} testId={`settings-go-${slug(s)}`} style={{ justifyContent: 'flex-start', paddingLeft: 8 }}>
                 <Label muted={current !== s}>{s}</Label>
               </Button>
             ))}
@@ -121,6 +124,9 @@ export function SettingsPage({
             <div ref={scroller} onScrollChange={track} style={{ flexGrow: 1, minHeight: 0, overflowY: 'scroll', scrollbarColor: m.scrollbar, scrollbarWidth: 10, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <div style={{ display: 'flex', flexDirection: 'column', width: '100%', maxWidth: 600, paddingLeft: 24, paddingRight: 24, paddingBottom: 240, gap: 14 }}>
                 {section('Accounts', <Accounts profiles={profiles} busy={busy} onLogin={onLogin} onLogout={onLogout} onAddProfile={onAddProfile} />)}
+                {section('New notes', <NewNotes profiles={profiles} />)}
+                {section('Instructions', <Instructions />)}
+                {section('Notifications', <Notifications />)}
                 {section(
                   'Appearance',
                   <SheetSection label="Appearance">
@@ -180,6 +186,95 @@ export function SettingsPage({
         </motion.div>
       </div>
     </DismissableLayer>
+  )
+}
+
+const slug = (s: Section) => s.toLowerCase().replace(/ /g, '-')
+
+/** These read and write settings.json themselves: nothing else on screen changes with them. */
+function useSetting<K extends keyof Settings>(key: K): [Settings[K], (next: Settings[K]) => void] {
+  const [value, setValue] = useState(() => readSettings()[key])
+  return [value, (next) => { setValue(next); updateSettings({ [key]: next } as Partial<Settings>) }]
+}
+
+const startEfforts: Think[] = ['off', 'on', 'high', 'max']
+
+/** What a new note starts with, and what's open at launch. */
+function NewNotes({ profiles }: { profiles: Profile[] }) {
+  const [mode, setMode] = useSetting('newNoteMode')
+  const [think, setThink] = useSetting('newNoteThink')
+  const [profile, setProfile] = useSetting('newNoteProfile')
+  const [atLaunch, setAtLaunch] = useSetting('atLaunch')
+  return (
+    <SheetSection label="New notes" hint="Each note keeps its own after that: ⇧⇥ changes the mode, the model menu the effort.">
+      <SheetRow label="Mode" detail={modes.find((x) => x.id === (mode ?? defaultMode))?.hint}>
+        <Segmented testId="set-new-mode" value={mode ?? defaultMode} onChange={setMode} options={cycleModes.map((id) => ({ value: id, label: modes.find((x) => x.id === id)!.label }))} width={64} />
+      </SheetRow>
+      <SheetRow label="Effort" detail="How long Claude thinks before it answers.">
+        <Segmented testId="set-new-effort" value={think ?? 'on'} onChange={setThink} options={startEfforts.map((value) => ({ value, label: effortLabel(value) }))} width={70} />
+      </SheetRow>
+      {profiles.length > 1 ? (
+        <SheetRow label="Account" detail="What New note starts on. A folder another account uses still picks that one.">
+          <AccountPick profiles={profiles} value={profiles.some((p) => p.id === profile) ? profile : undefined} onChange={setProfile} />
+        </SheetRow>
+      ) : null}
+      <SheetRow label="At launch" detail="Open the note you had open, or start a new one.">
+        <Segmented testId="set-at-launch" value={atLaunch ?? 'last'} onChange={setAtLaunch} options={[{ value: 'last', label: 'Last note' }, { value: 'new', label: 'New note' }]} width={84} />
+      </SheetRow>
+    </SheetSection>
+  )
+}
+
+/** One account from a menu, however many there are; unset follows the open note. */
+function AccountPick({ profiles, value, onChange }: { profiles: Profile[]; value?: string; onChange: (id: string | undefined) => void }) {
+  const m = useM()
+  const [open, setOpen] = useState(false)
+  const chosen = profiles.find((p) => p.id === value)
+  const items: MenuItem[] = [
+    { label: 'The open note’s', checked: !chosen, testId: 'set-new-account-open', onSelect: () => onChange(undefined) },
+    { kind: 'separator' },
+    ...profiles.map((p): MenuItem => ({ label: p.name, dot: accentFor(m, profiles, p.id), checked: p.id === chosen?.id, testId: `set-new-account-${p.id}`, onSelect: () => onChange(p.id) })),
+  ]
+  return (
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      <Button onPress={() => setOpen((v) => !v && !closedByOutsidePress('new-account'))} selected={open} testId="set-new-account" title="The account a new note suggests" style={{ gap: 7, paddingLeft: 10, paddingRight: 8, borderWidth: 1, borderColor: m.border }}>
+        {chosen ? <Dot color={accentFor(m, profiles, chosen.id)} size={8} /> : null}
+        <Label>{chosen?.name ?? 'The open note’s'}</Label>
+        <Icon name="chevronDown" size={11} />
+      </Button>
+      <Menu open={open} onClose={() => setOpen(false)} side="bottom" align="end" width={220} testId="set-new-account-menu" closeKey="new-account" items={items} />
+    </div>
+  )
+}
+
+/** Your own words for Claude, sent with what Vellum tells it (core/prompt.ts). */
+function Instructions() {
+  const m = useM()
+  const [text, setText] = useSetting('instructions')
+  return (
+    <SheetSection label="Instructions" hint="New notes get these at once; a note already open picks them up after its next compaction. Each project's CLAUDE.md still applies.">
+      <textarea
+        testId="set-instructions"
+        value={text ?? ''}
+        placeholder="Reply in British English. Prefer bun over npm."
+        minRows={4}
+        maxRows={14}
+        onChange={(e) => setText(e.value || undefined)}
+        style={{ width: '100%', minWidth: 0, fontFamily: font.mono, fontSize: 12.5, lineHeight: 19, color: m.text, backgroundColor: m.chipBg, borderRadius: 10, borderWidth: 1, borderColor: m.border, padding: 10 }}
+      />
+    </SheetSection>
+  )
+}
+
+/** macOS notifications, only while Vellum is behind another app (core/notify.ts). */
+function Notifications() {
+  const [want, setWant] = useSetting('notify')
+  return (
+    <SheetSection label="Notifications" hint="Only while Vellum is in the background.">
+      <SheetRow label="Notify me" detail="Asks are questions and permission requests; replies are finished turns.">
+        <Segmented testId="set-notify" value={want ?? 'asks'} onChange={setWant} options={[{ value: 'off', label: 'Never' }, { value: 'asks', label: 'Asks' }, { value: 'all', label: 'Asks, replies' }]} width={92} />
+      </SheetRow>
+    </SheetSection>
   )
 }
 

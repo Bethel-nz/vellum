@@ -12,6 +12,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
+import type { PermissionMode, Think } from './asks'
 
 export const home = process.env.VELLUM_HOME ?? path.join(homedir(), '.vellum')
 export const paths = {
@@ -50,6 +51,17 @@ export type Settings = {
   motion?: 'system' | 'reduce' | 'full'
   /** The app "Open in" opens a note's folder in by default (core/openin.ts ids). */
   openIn?: string
+  /** What a new note starts with; unset is Edits and the agent's own effort. */
+  newNoteMode?: PermissionMode
+  newNoteThink?: Think
+  /** The account the New note dialog starts on; unset is the open note's. A folder's own account still wins. */
+  newNoteProfile?: string
+  /** At launch: the note you had open, or a new one. */
+  atLaunch?: 'last' | 'new'
+  /** Your own words for Claude, after what Vellum tells it (core/prompt.ts). */
+  instructions?: string
+  /** macOS notifications while Vellum is in the background: none, when Claude needs you, or also when it's done. */
+  notify?: 'off' | 'asks' | 'all'
   lastThreadId?: string
   /** Thread ids open as tabs, in order. */
   openTabs?: string[]

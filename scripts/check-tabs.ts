@@ -108,6 +108,9 @@ try {
 
   // auto: writing tucks the strip away, the top edge brings it back
   await c.press('cmd-,')
+  // Tabs sits below the fold: jump to it first.
+  await app.getByTestId('settings-go-tabs').click()
+  await wait(400)
   await app.getByTestId('set-tabs-auto').click()
   await wait(300)
   expect('settings save auto', (await Bun.file(path.join(home, 'settings.json')).json()).tabs === 'auto')

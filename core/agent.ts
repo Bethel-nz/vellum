@@ -27,7 +27,7 @@ import { effortLabel, effortValue, type EffortOption, type ModelOption } from '.
 import { claudeBin, compiled, imageMime } from './platform'
 import type { Profile } from './profiles'
 import { profileEnv } from './profiles'
-import { vellumPrompt } from './prompt'
+import { systemPromptText } from './prompt'
 import { formQuestions, questionError, type QuestionContent } from './questions'
 import { patchFromInput, type AcpRecord, type VellumRecord } from './threads'
 
@@ -269,7 +269,7 @@ export class AgentRunner {
     })
     const canResume = Boolean(init?.agentCapabilities?.sessionCapabilities?.resume)
     // What Vellum draws for the agent's tools, after its own prompt, for agents that take one.
-    const systemPrompt = init?.agentCapabilities?.sessionCapabilities?.systemPrompt ? { mode: 'append', content: [{ type: 'text', text: vellumPrompt }] } : undefined
+    const systemPrompt = init?.agentCapabilities?.sessionCapabilities?.systemPrompt ? { mode: 'append', content: [{ type: 'text', text: systemPromptText() }] } : undefined
     const params = { cwd: workspace, mcpServers: [], ...(systemPrompt ? { systemPrompt } : {}) }
     let res: any
     let id = sessionId

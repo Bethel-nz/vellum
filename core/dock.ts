@@ -35,3 +35,21 @@ export function setDockIcon(png: string): boolean {
     return false
   }
 }
+
+/** Is Vellum the app in front? Asked of AppKit ([NSApp isActive]); off macOS, always yes. */
+export function appIsActive(): boolean {
+  if (process.platform !== 'darwin') return true
+  try {
+    const lib = '/usr/lib/libobjc.A.dylib'
+    const base = dlopen(lib, {
+      objc_getClass: { args: [FFIType.ptr], returns: FFIType.ptr },
+      sel_registerName: { args: [FFIType.ptr], returns: FFIType.ptr },
+      objc_msgSend: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
+    }).symbols
+    const isActive = dlopen(lib, { objc_msgSend: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.bool } }).symbols.objc_msgSend
+    const app = base.objc_msgSend(base.objc_getClass(cstr('NSApplication')), base.sel_registerName(cstr('sharedApplication')))
+    return Boolean(isActive(app, base.sel_registerName(cstr('isActive'))))
+  } catch {
+    return true
+  }
+}

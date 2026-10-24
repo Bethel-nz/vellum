@@ -28,6 +28,7 @@ import { paths, readJson, readSettings, updateSettings, writeJson } from './core
 import { promptFor, tagsIn, tagText } from './core/tags'
 import { heldTerms, holdTerm, killAllTerms, startTerm, type TermSession } from './core/term'
 import { setDockIcon } from './core/dock'
+import { notify } from './core/notify'
 import { FONTS } from './assets/fonts'
 import { OpenIn } from './ui/OpenIn'
 import { claudeBin, compiled, hasPty, isMac, keys, openConsole, pasteImage, primary, revealFolder, revealLabel, shellArgv, tabStep } from './core/platform'
@@ -376,7 +377,8 @@ function App() {
   const [efforts, setEfforts] = useState<Record<string, EffortOption[]>>({})
   const [denying, setDenying] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, Draft>>(() => readJson(paths.drafts, {}))
-  const [overlay, setOverlay] = useState<null | 'new' | 'switcher' | 'settings' | 'history' | 'changes'>(null)
+  // Settings › New notes › At launch: "New note" opens its dialog over the last note.
+  const [overlay, setOverlay] = useState<null | 'new' | 'switcher' | 'settings' | 'history' | 'changes'>(() => (readSettings().atLaunch === 'new' ? 'new' : null))
   // The History panel's two sides: past notes, or recipes.
   const [shelf, setShelf] = useState<'history' | 'recipes'>('history')
   const [recipesSaved, setRecipesSaved] = useState(0)
@@ -548,10 +550,10 @@ function App() {
         {
           ask(a) {
             setAsks((all) => ({ ...all, [thread.id]: [...(all[thread.id] ?? []), a] }))
-            if (activeRef.current !== thread.id) {
-              const title = threadsRef.current.find((t) => t.id === thread.id)?.title ?? 'A note'
-              showToastRef.current(`${title} · ${a.questions ? 'Claude has a question' : 'Claude needs your OK'}`)
-            }
+            const title = threadsRef.current.find((t) => t.id === thread.id)?.title ?? 'A note'
+            const what = a.questions ? 'Claude has a question' : 'Claude needs your OK'
+            if (activeRef.current !== thread.id) showToastRef.current(`${title} · ${what}`)
+            notify('ask', title, what)
           },
           askGone(requestId) {
             setAsks((all) => ({ ...all, [thread.id]: (all[thread.id] ?? []).filter((a) => a.requestId !== requestId) }))
@@ -584,10 +586,13 @@ function App() {
                 record(thread.id, { type: 'vellum/title', title: ev.update.title })
               }
             }
-            if (ev.type === 'acp/end' && activeRef.current !== thread.id) {
-              setUnread((u) => ({ ...u, [thread.id]: (u[thread.id] ?? 0) + 1 }))
+            if (ev.type === 'acp/end') {
               const title = threadsRef.current.find((t) => t.id === thread.id)?.title ?? 'A note'
-              showToastRef.current(`${title} · Claude replied`, 'success')
+              if (activeRef.current !== thread.id) {
+                setUnread((u) => ({ ...u, [thread.id]: (u[thread.id] ?? 0) + 1 }))
+                showToastRef.current(`${title} · Claude replied`, 'success')
+              }
+              notify('done', title, 'Claude replied')
             }
           },
           record(rec) {
@@ -750,7 +755,12 @@ function App() {
     (profileId: string, folder: string) => {
       const meta = { id: newThreadId(), title: 'Untitled', profileId, workspace: folder, createdAt: new Date().toISOString() }
       appendRecord(meta.id, { type: 'vellum/meta', meta })
-      setThreads((prev) => [newThread(meta), ...prev])
+      // Settings › New notes: the mode and effort a note starts with.
+      const thread = newThread(meta)
+      const { newNoteMode, newNoteThink } = readSettings()
+      if (newNoteMode) appendRecord(meta.id, { type: 'vellum/mode', mode: (thread.mode = newNoteMode) })
+      if (newNoteThink) appendRecord(meta.id, { type: 'vellum/think', think: (thread.think = newNoteThink) })
+      setThreads((prev) => [thread, ...prev])
       setProfiles(rememberWorkspace(profileId, folder))
       openNote(meta.id)
       setOverlay(null)
@@ -1445,7 +1455,7 @@ function App() {
             onClose={() => setOverlay(null)}
             profiles={profiles}
             recentFolders={recentFolders}
-            initialProfileId={active?.profileId}
+            initialProfileId={profiles.find((p) => p.id === readSettings().newNoteProfile)?.id ?? active?.profileId}
             initialFolder={active?.workspace}
             suggestProfile={(folder) => profileForWorkspace(profiles, folder)?.id}
             onCreate={createThread}
