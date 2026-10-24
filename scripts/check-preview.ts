@@ -4,7 +4,7 @@
 // rendered page, Source shows its text; the same chip again closes it; a missing file says why;
 // Esc closes. In a narrow window it slides over the note instead. Dragging down the line numbers
 // picks lines, ⇧-click stretches the pick, Esc clears it, and "Add to note" (or ↵) puts a
-// `#core/printed.ts:20-24` chip on the end of the draft. The pane is a card of its own, its
+// `#printed.ts:20-24` chip on the end of the draft, the tag keeping its path. The pane is a card of its own, its
 // header a path pill; "Show changes" swaps in the note's edit to the file; Open › Finder shows
 // that file; the tree opens on the file, marks what changed and opens another file; ⇧⌘E
 // hides it; and the strip's Files button opens the pane on the tree alone.
@@ -78,14 +78,16 @@ async function run(size: string, wide: boolean) {
     await app.getByTestId('file-preview-mention').click()
     await wait(500)
     // drafts.json is written a moment after the draft changes: wait for what's expected.
-    const draftText = () => {
-      try { return (JSON.parse(readFileSync(path.join(home, 'drafts.json'), 'utf8'))[id]?.text ?? '') as string } catch { return '' }
+    const saved = () => {
+      try { return JSON.parse(readFileSync(path.join(home, 'drafts.json'), 'utf8'))[id] ?? {} } catch { return {} }
     }
+    const draftText = () => (saved().text ?? '') as string
+    const draftTags = () => (saved().tags ?? []) as { value: string; endLine?: number }[]
     const draft = async (want: string) => {
       for (let i = 0; i < 30 && !draftText().includes(want); i++) await wait(100)
       return draftText()
     }
-    expect('"Add to note" puts the lines on the draft', (await draft('#core/printed.ts:20-24')).includes('#core/printed.ts:20-24'), draftText())
+    expect('"Add to note" puts the lines on the draft, by the file’s name', (await draft('#printed.ts:20-24')).includes('#printed.ts:20-24') && draftTags().some((t) => t.value === 'core/printed.ts' && t.endLine === 24), draftText())
     expect('…and clears the pick', (await count('file-preview-mention-bar')) === 0)
     await shot('5-mentioned')
 
@@ -101,7 +103,7 @@ async function run(size: string, wide: boolean) {
     await wait(300)
     await app.getByTestId('file-preview').press('enter')
     await wait(500)
-    expect('↵ adds one line', (await draft('#core/printed.ts:21 ')).includes('#core/printed.ts:21 '), draftText())
+    expect('↵ adds one line', (await draft('#printed.ts:21 ')).includes('#printed.ts:21 '), draftText())
 
     expect('the pane is a card of its own, apart from the note’s', pane.x - (page.x + page.width) >= 3, `gap ${Math.round(pane.x - page.x - page.width)}`)
     // Crumbs can come back with zero-width breaks between them.

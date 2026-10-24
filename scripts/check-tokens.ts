@@ -1,8 +1,10 @@
 // Self-check for context tokens: a paragraph with `#ui/theme.ts:3` reads with chips, hovering a
 // file chip opens nothing under the paragraph (pressing it opens the file, see check-preview),
-// replies carry no chip row, and `#` in the draft opens a files-only picker whose pick becomes a chip.
+// replies carry no chip row, and `#` in the draft opens a files-only picker whose pick is written by
+// its name alone (`#theme.ts`), the tag keeping its path. Writing elsewhere, the draft reads as
+// chips; a chip opens its file, and a click beside it goes back to writing.
 //   bun scripts/check-tokens.ts
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
@@ -56,12 +58,35 @@ try {
   expect('# opens a files-only picker', picker)
   await shot('4-hash-picker')
   await c.press('tab')
+  // drafts.json is written a moment after the draft changes.
+  const draft = async (want: string) => {
+    const text = () => {
+      try { return (JSON.parse(readFileSync(path.join(home, 'drafts.json'), 'utf8'))[id] ?? {}) as { text?: string; tags?: { value: string }[] } } catch { return {} }
+    }
+    for (let i = 0; i < 30 && !text().text?.includes(want); i++) await wait(100)
+    return text()
+  }
+  const picked = await draft('#theme.ts ')
+  expect('the pick is written by its name alone', picked.text === 'Look at #theme.ts ' && picked.tags?.some((t) => t.value === 'ui/theme.ts') === true, JSON.stringify(picked))
+  // The line number is typed after it.
+  await c.fill('Look at #theme.ts:2 ')
   await wait(300)
-  // The pick wrote `#ui/theme.ts `; the line number is typed after it.
-  await c.fill('Look at #ui/theme.ts:2 ')
+  expect('while you write, the draft is plain text', (await app.getByTestId('draft-read').count()) === 0)
+  await app.mouse.click({ x: 900, y: 150 })
   await wait(500)
-  expect('the pick becomes a draft chip', (await app.getByTestId('draft-chips-0').count()) === 1)
+  expect('writing elsewhere, the draft reads as chips', (await app.getByTestId('draft-chip-0').count()) === 1 && (await app.getByTestId('draft-chip-0').textContent()).includes('theme.ts:2'))
   await shot('5-draft-chip')
+  await app.getByTestId('draft-chip-0').click()
+  await wait(700)
+  expect('a draft chip opens its file', (await app.getByTestId('file-preview-name').count()) === 1 && (await app.getByTestId('file-preview-name').textContent()) === 'theme.ts')
+  await app.getByTestId('file-preview').press('escape')
+  await wait(500)
+  if (await app.getByTestId('draft-read').count()) {
+    const r = await app.getByTestId('draft-read').bounds()
+    await app.mouse.click({ x: r.x + r.width - 20, y: r.y + r.height / 2 })
+    await wait(400)
+  }
+  expect('a click beside the chips goes back to writing', (await app.getByTestId('draft-read').count()) === 0)
 } finally {
   await app.close()
 }

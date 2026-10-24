@@ -3,12 +3,17 @@
 // files, "#" tags files only (type ":42" after one to point at a line), and "$" at the start
 // picks a recipe (core/recipes.ts), whose prompt is sent in place of `$name …`.
 //
+// A picked file is written by its name alone (`#printed.ts`), or as much of its path as tells it
+// from the draft's other files; the tag keeps the whole path. The textarea can't draw chips, so
+// once you write elsewhere the draft reads as it will when sent, chips and all: a chip opens its
+// file, anywhere else goes back to writing. Editing a tag's name turns it back into a `#` search.
+//
 // ⇧⇥ cycles the permission mode (Ask, Edits, Plan, Auto); the mode, thinking, model and context
 // live in the status bar at the bottom left (ui/StatusBar.tsx). While Claude waits on an ask and
 // the draft is empty, ↵ ⌘↵ esc answer the approval card instead of editing.
 
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
-import { DismissableLayer, type KeyEvent, type PublicInstance } from '@gpuix/react'
+import { DismissableLayer, useGpuixRequired, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { FloatingLayer } from '@gpuix/react/floating'
 import { cycleModes, modes, type PermissionMode } from '../core/asks'
 
@@ -16,8 +21,8 @@ const modeLabel = (mode: PermissionMode) => modes.find((x) => x.id === mode)?.la
 import { keys, primary } from '../core/platform'
 import type { Profile } from '../core/profiles'
 import { recipeCall, type Recipe } from '../core/recipes'
-import { suggest, tagsIn, tagText, type Suggestion } from '../core/tags'
-import { TokenRow, type TokenContext } from './Tokens'
+import { relabel, suggest, tagsIn, tagText, type Suggestion } from '../core/tags'
+import { TokenText, type TokenContext } from './Tokens'
 import type { Tag } from '../core/threads'
 import { FileIcon, Icon, Meta, Quiet, useM } from './kit'
 import { motion as m_ } from '@gpuix/react'
@@ -138,7 +143,7 @@ export function Composer({
   placeholder: string
   /** The tab strip's auto mode tucks away while you write. */
   onFocusChange?: (focused: boolean) => void
-  /** Chips under the draft, with their hover slices. */
+  /** The draft's chips, while you're not writing in it. */
   tokenCtx?: TokenContext
   composerRef: RefObject<PublicInstance | null>
   mode: PermissionMode
@@ -155,6 +160,14 @@ export function Composer({
   recipes?: Recipe[]
 }) {
   const m = useM()
+  const renderer = useGpuixRequired()
+  // It autofocuses, and an autofocused textarea never reports focus, so it starts focused.
+  const [focused, setFocused] = useState(true)
+  // focusElement doesn't report onFocus, so this says so itself.
+  const focusInput = () => {
+    setFocused(true)
+    if (composerRef.current) renderer.focusElement?.(composerRef.current.id)
+  }
   const [items, setItems] = useState<Suggestion[]>([])
   const [active, setActive] = useState(0)
   const [dismissed, setDismissed] = useState<string | undefined>()
@@ -191,9 +204,11 @@ export function Composer({
 
   const pick = (s: Suggestion) => {
     const tag = { type: s.type, value: s.value } as Tag
-    const next = value.replace(/[@#]([^\s@#]*)$/, tagText(tag) + ' ')
-    onChange(next, [...tags.filter((t) => !(t.type === tag.type && t.value === tag.value)), tag])
+    const all = [...tags.filter((t) => !(t.type === tag.type && t.value === tag.value)), tag]
+    onChange(relabel(value.replace(/[@#]([^\s@#]*)$/, tagText(tag) + ' '), all), all)
     setItems([])
+    // A click on the popup takes focus from the draft.
+    focusInput()
   }
 
   const onKeyDown = (e: KeyEvent) => {
@@ -237,10 +252,13 @@ export function Composer({
   }
 
   const shell = value.startsWith('!')
+  const chips = !focused && !shell && tokenCtx && tagsIn(value, tags).length > 0
   const called = value.startsWith('$') ? recipeCall(value, recipes) : undefined
   const folder = workspace ? workspace.split(/[\\/]/).filter(Boolean).pop() : undefined
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, position: 'relative' }}>
+    // A click elsewhere doesn't take a GPUI field's focus, so it's what "writing elsewhere" means
+    // here, as for a paragraph being edited (ui/blocks.tsx). Typing brings the textarea back.
+    <div onMouseDownOutside={() => setFocused(false)} style={{ display: 'flex', flexDirection: 'column', gap: 6, position: 'relative' }}>
       {open ? (
         <DismissableLayer onEscapeKeyDown={() => setDismissed(recipesOpen ? value : query)}>
           <TagPopup items={rows} active={active} onPick={(i) => (recipesOpen ? pickRecipe(recipeItems[i]!) : pick(items[i]!))} onHover={setActive} />
@@ -263,23 +281,32 @@ export function Composer({
           backgroundColor: '#00000000',
           borderWidth: 0,
           padding: 0,
+          // Out of the way while the draft reads as chips; still there to take focus back.
+          ...(chips ? { position: 'absolute', top: 0, left: 0, right: 0, opacity: 0, pointerEvents: 'none' } : {}),
         }}
         onChange={(e) => {
           const next = e.value ?? ''
+          setFocused(true)
           onChange(next, tags)
           if (dismissed !== undefined && activeQuery(next) !== dismissed && next !== dismissed) setDismissed(undefined)
         }}
         // Plain ↵ arrives here, not in onKeyDown: it picks a tag, or allows a waiting ask.
         onSubmit={open ? pickActive : asking && onAskKey && !value.trim() ? () => onAskKey('allow') : undefined}
         onKeyDown={onKeyDown}
-        onFocus={onFocusChange ? () => onFocusChange(true) : undefined}
-        onBlur={onFocusChange ? () => onFocusChange(false) : undefined}
+        onFocus={() => {
+          setFocused(true)
+          onFocusChange?.(true)
+        }}
+        onBlur={() => {
+          setFocused(false)
+          onFocusChange?.(false)
+        }}
       />
+      {chips ? <TokenText testId="draft-read" chipPrefix="draft-chip" text={value} tags={tags} ctx={tokenCtx} color={m.text} onPress={focusInput} /> : null}
       {shell ? <Meta>{keys(`⌘↵ runs this in ${folder ?? 'the folder'}`)}</Meta> : null}
       {called && !open ? <Meta>{keys(`⌘↵ sends the $${called.recipe.name} recipe${called.recipe.mode ? ` in ${modeLabel(called.recipe.mode)}` : ''}${called.input.trim() ? ', with what follows as its input' : ''}`)}</Meta> : null}
       {asking && !value.trim() ? <Meta color={m.blue}>{keys('Claude is waiting on you · ↵ allow · ⌘↵ always · esc deny')}</Meta> : null}
       {images.length ? <ImageRow images={images} onRemove={onRemoveImage} /> : null}
-      {tokenCtx && !shell ? <TokenRow tags={tagsIn(value, tags)} ctx={tokenCtx} testId="draft-chips" /> : null}
     </div>
   )
 }

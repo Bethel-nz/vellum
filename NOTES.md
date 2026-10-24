@@ -1098,3 +1098,21 @@ and the folders they're in, carry a dot. It opens on the file's folders. Its key
 ⇧⌘E or the header's left button shows and hides it, and the choice is kept
 (`fileTree` in settings). The Files button beside History opens the pane on the tree alone.
 With the tree, the pane widens by up to 220 while the note keeps 560; past that it goes over.
+
+## 2026-10-24 — the draft writes files by name and reads as chips once you look away
+
+A picked file goes into the draft as its name alone, `#printed.ts:20-24`; the tag keeps the
+whole path, and that's what Claude gets. When two of the draft's files share a name, both
+lengthen to the shortest end of their paths that tells them apart (`fileLabel`, `relabel`,
+run whenever a tag joins the text). Reading text back, `tokens` takes a written path to the
+tag with exactly that path, else to the first whose path ends with it on a `/`. So older notes
+with full paths read as before, and `#ts` never matches `a.ts`.
+
+GPUIX's textarea draws no decoration of any kind: `highlight` washes ranges in `<text>`, but not
+inside a textarea, on it or on a parent (tried). So the chip row under the composer is gone, and
+instead the draft reads as a sent paragraph does while you're not writing in it. It's the same
+TokenText, its chips `draft-chip-N`; a chip opens its file in the pane, and anywhere else goes
+back to writing. The textarea stays mounted, out of the layout, invisible, so focus and ⌘↵
+still reach it. "Not writing" is a press outside the composer (`onMouseDownOutside`), as for a
+paragraph being edited, because a click on empty space doesn't take a GPUI field's focus. Typing
+brings the textarea straight back. Editing a tag's name turns it back into a `#` search.

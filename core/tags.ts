@@ -2,7 +2,9 @@
 // out of text for chips, line slices for hover, and the translation of tokens into the prompt
 // Claude Code receives. `promptFor` is the only place that translation happens.
 //
-//   #path        a file; becomes `@path`, which headless `claude -p` expands itself
+//   #path        a file; becomes `@path`, which headless `claude -p` expands itself. The text
+//                carries only as much of the path as tells the note's files apart
+//                (`#printed.ts`); the tag keeps the whole of it (`fileLabel`)
 //   #path:42     one line of a file; Claude gets that line quoted, not the file, unless the
 //                note widened the tag to the whole file
 //   @dir/        a folder, passed through as `@dir/`
@@ -159,6 +161,37 @@ export function tagText(tag: Tag) {
 /** `42` for a line tag, `12-18` for a range. */
 export const lineLabel = (tag: { line?: number; endLine?: number }) => (tag.endLine ? `${tag.line}-${tag.endLine}` : `${tag.line ?? ''}`)
 
+/**
+ * What a file is written as in the text: the shortest end of its path that no other file in
+ * `others` ends with, so `core/printed.ts` is `printed.ts` until `ui/printed.ts` joins it.
+ */
+export function fileLabel(value: string, others: string[]): string {
+  const parts = value.split('/')
+  for (let n = 1; n < parts.length; n++) {
+    const end = parts.slice(-n).join('/')
+    if (!others.some((o) => o !== value && (o === end || o.endsWith(`/${end}`)))) return end
+  }
+  return value
+}
+
+/** The file a written path means: the tag with exactly that path, else the first whose path ends with it. */
+function fileFor(written: string, files: string[]): string | undefined {
+  if (files.includes(written)) return written
+  return files.find((f) => f.endsWith(`/${written}`))
+}
+
+/**
+ * The text with every file tag written as its label among the files tagged in it. Run when a tag
+ * joins the text, so the labels stay apart (a second `printed.ts` lengthens both).
+ */
+export function relabel(text: string, known: Tag[]): string {
+  const present = tagsIn(text, known)
+  const files = [...new Set(present.filter((t) => t.type === 'file').map((t) => t.value))]
+  return tokens(text, known)
+    .map((t) => (t.kind === 'tag' && t.tag.type === 'file' ? `#${fileLabel(t.tag.value, files)}${t.tag.line ? `:${lineLabel(t.tag)}` : ''}` : t.text))
+    .join('')
+}
+
 export type Token = { kind: 'text'; text: string } | { kind: 'tag'; tag: Tag; text: string }
 
 const TRAILING = /[.,;:!?)\]]+$/
@@ -168,7 +201,7 @@ const TRAILING = /[.,;:!?)\]]+$/
  * become tokens, so a stray `#1` or an email address stays text.
  */
 export function tokens(text: string, known: Tag[]): Token[] {
-  const files = new Set(known.filter((t) => t.type === 'file').map((t) => t.value))
+  const files = [...new Set(known.filter((t) => t.type === 'file').map((t) => t.value))]
   const others = new Set(known.filter((t) => t.type !== 'file').map((t) => tagText(t)))
   const out: Token[] = []
   let plain = ''
@@ -185,7 +218,8 @@ export function tokens(text: string, known: Tag[]): Token[] {
       // may have eaten a lone ':'.
       const m = /^[#@](.+?)(?::(\d+)(?:-(\d+))?)?$/.exec(word)
       const end = m?.[3] ? Number(m[3]) : 0
-      if (m && files.has(m[1]!)) tag = { type: 'file', value: m[1]!, ...(m[2] ? { line: Number(m[2]) } : {}), ...(m[2] && end > Number(m[2]) ? { endLine: end } : {}) }
+      const value = m ? fileFor(m[1]!, files) : undefined
+      if (value) tag = { type: 'file', value, ...(m![2] ? { line: Number(m![2]) } : {}), ...(m![2] && end > Number(m![2]) ? { endLine: end } : {}) }
     }
     if (!tag && others.has(word)) tag = known.find((t) => t.type !== 'file' && tagText(t) === word)
     if (tag) {

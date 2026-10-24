@@ -1,5 +1,5 @@
-// Context tokens on the page: chips in your paragraphs and a chip row under the paragraph being
-// written. Pressing a file chip opens the file beside the note, at its lines (ui/FilePreview.tsx).
+// Context tokens on the page: chips in your paragraphs, and in the draft while you're not writing
+// in it (ui/Composer.tsx). Pressing a file chip opens the file beside the note, at its lines (ui/FilePreview.tsx).
 // A hunk is a ± pill; hovering it opens the hunk itself and your comments on its lines.
 //
 // GPUIX has no inline spans (nested <text> breaks onto its own line, see
@@ -108,7 +108,7 @@ function OpenHunk({ tags, hover }: { tags: Tag[]; hover: ReturnType<typeof useHo
 }
 
 /** Your paragraph, read: words and chips wrapping together. Click to edit the source. */
-export function TokenText({ text, tags, ctx, onPress, color, testId }: { text: string; tags: Tag[]; ctx: TokenContext; onPress: () => void; color: string; testId?: string }) {
+export function TokenText({ text, tags, ctx, onPress, color, testId, chipPrefix = 'chip' }: { text: string; tags: Tag[]; ctx: TokenContext; onPress: () => void; color: string; testId?: string; chipPrefix?: string }) {
   const hover = useHover()
   const found = useMemo(() => tokens(text, tags), [text, tags])
   const present = useMemo(() => found.flatMap((t) => (t.kind === 'tag' ? [t.tag] : [])), [found])
@@ -131,7 +131,7 @@ export function TokenText({ text, tags, ctx, onPress, color, testId }: { text: s
         <div key={li} style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 4, minHeight: type.user.lineHeight }}>
           {line.flatMap((t, ti) =>
             t.kind === 'tag'
-              ? [<TokenChip key={`${ti}`} token={t} hover={hover} ctx={ctx} testId={`chip-${chip++}`} />]
+              ? [<TokenChip key={`${ti}`} token={t} hover={hover} ctx={ctx} testId={`${chipPrefix}-${chip++}`} />]
               : t.text
                   .split(/\s+/)
                   .filter(Boolean)
@@ -144,22 +144,6 @@ export function TokenText({ text, tags, ctx, onPress, color, testId }: { text: s
         </div>
       ))}
       <OpenHunk tags={present} hover={hover} />
-    </div>
-  )
-}
-
-/** The tokens in the paragraph being written, as a row of chips under the composer. */
-export function TokenRow({ tags, ctx, testId }: { tags: Tag[]; ctx: TokenContext; testId?: string }) {
-  const hover = useHover()
-  if (!tags.length) return null
-  return (
-    <div testId={testId} style={{ display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
-        {tags.map((t, i) => (
-          <TokenChip key={keyOf(t)} token={{ kind: 'tag', tag: t, text: tagText(t) }} hover={hover} ctx={ctx} testId={testId ? `${testId}-${i}` : undefined} />
-        ))}
-      </div>
-      <OpenHunk tags={tags} hover={hover} />
     </div>
   )
 }

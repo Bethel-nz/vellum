@@ -25,7 +25,7 @@ import type { QuestionContent } from './core/questions'
 import { defaultMode, type Ask, type PermissionMode, type Think } from './core/asks'
 import { createProfile, loadProfiles, profileEnv, profileForWorkspace, rememberWorkspace, updateProfile, type Profile } from './core/profiles'
 import { paths, readJson, readSettings, updateSettings, writeJson } from './core/store'
-import { promptFor, tagsIn, tagText } from './core/tags'
+import { promptFor, relabel, tagsIn, tagText } from './core/tags'
 import { heldTerms, holdTerm, killAllTerms, startTerm, type TermSession } from './core/term'
 import { setDockIcon } from './core/dock'
 import { notify } from './core/notify'
@@ -696,8 +696,8 @@ function App() {
   const mentionLines = useCallback((threadId: string, file: string, line: number, endLine?: number) => {
     const tag: Tag = { type: 'file', value: file, line, ...(endLine ? { endLine } : {}) }
     const d = draftsRef.current[threadId] ?? { text: '', tags: [] }
-    const text = d.text.trim() ? `${d.text.trimEnd()} ${tagText(tag)} ` : `${tagText(tag)} `
-    setDraft(threadId, text, [...d.tags, tag])
+    const tags = [...d.tags, tag]
+    setDraft(threadId, relabel(d.text.trim() ? `${d.text.trimEnd()} ${tagText(tag)} ` : `${tagText(tag)} `, tags), tags)
     setTimeout(focusComposer, 50)
   }, [focusComposer, setDraft])
 
