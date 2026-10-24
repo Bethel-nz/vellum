@@ -982,3 +982,28 @@ entrance. With reduced motion the switch is instant.
 In the renderer: a click on a recipe 10ms after switching lands (the contract warns that a moving
 element can swallow clicks; this one is the click's own container, and it didn't). Six switches
 40ms apart settle on the right side. check-recipes and check-tabs pass.
+
+## 2026-10-24 — the timeline glides to a paragraph
+
+A tick on the timeline (or its preview's Go and Edit) used to jump the note to the paragraph. It
+now glides there with the glide that brings the note back to the composer, generalised in
+`ui/glide.ts`: `glideToItem` lays the frames out from the paragraph, above it coming down and
+below it going back up, as `glideToEnd` lays them out from the end. Edit puts the caret in once
+the glide lands. One glide runs at a time; a new one stops the last.
+
+- **Measuring.** Only negative offsets resolve against measured rows; a positive one is kept as
+  given and doesn't compare with a resolved anchor. So the distance is always searched upward:
+  from the paragraph to the viewport going down, from the viewport to the paragraph going up.
+- **Slow frames.** The first frame onto rows the note hasn't drawn can hold the app for about a
+  second (the old jump did too). The glide used to be timed by the wall clock, so that one late
+  frame skipped it to the end. Now a frame moves the glide on by two frames at most, so it pauses
+  and carries on. It still lands within 0.6s of its duration, however slow the frames are.
+- **Hidden windows.** In a check's never-shown window, JS timers sometimes run a second apart
+  (it isn't App Nap: an NSProcessInfo activity didn't change it; it varies run to run). So
+  check-timeline asserts that the note lands on the paragraph and never moves backwards, and
+  prints how many positions it saw rather than asserting a count. Healthy runs see 5–8
+  (368 → 262 → 126 → 70 → 50 → 46 → 43 → 42 going down). Under reduced motion it's one jump.
+
+check-timeline (full ×3, reduced), check-glide (full, reduced), check-motion and check-changes
+pass. check-tabs passes on HEAD plus this change in a clean worktree; in the shared checkout it
+fails at History's outside click, from another session's History.tsx work in progress.

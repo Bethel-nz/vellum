@@ -1,13 +1,15 @@
-// Scrolling the note to its end smoothly: when you write, send or come back to the composer
-// while it's scrolled out of view. GPUIX has no animated scroll, only `scrollToItem` (a jump)
-// and `getListScrollTop` (the anchor gpui scrolls by: item, offset in it, viewport height), so
-// this steps the anchor every frame (spikes/list-glide.tsx).
+// Scrolling the note smoothly: to its end when you write, send or come back to the composer while
+// it's scrolled out of view, and to a paragraph when you pick it on the timeline. GPUIX has no
+// animated scroll, only `scrollToItem` (a jump) and `getListScrollTop` (the anchor gpui scrolls
+// by: item, offset in it, viewport height), so this steps the anchor every frame
+// (spikes/list-glide.tsx).
 //
 // Both resolve synchronously, so the end can be read and the anchor put back in the same tick,
 // before anything paints. The glide is laid out from the end: each frame reads where the end is
 // now (a streaming reply moves it) and sits the viewport `r` px above it, `r` easing to 0. From
 // further than about a page away it starts a page away. The last step lands on the end itself,
-// so the list follows the tail again. A scroll of your own stops it.
+// so the list follows the tail again. A scroll of your own stops it. A glide to a paragraph works
+// the same way, laid out from the paragraph instead of the end. One glide runs at a time.
 
 import type { useGpuixRequired } from '@gpuix/react'
 import { duration, ease, reducedMotion } from '../components/motion'
@@ -20,6 +22,8 @@ const END = 1e9
 /** A glide starts at most this many viewports from the end. */
 const FAR = 1.25
 const FRAME_MS = 16
+/** How long past its duration a slowed glide may run before it lands. */
+const LATE = 600
 
 const before = (a: Anchor, b: Anchor) => a[0] < b[0] || (a[0] === b[0] && a[1] < b[1])
 const same = (a: Anchor | null, b: Anchor | null) => !!a && !!b && a[0] === b[0] && Math.abs(a[1] - b[1]) < 0.5
@@ -61,46 +65,113 @@ export function distanceToEnd(r: Renderer, list: number, cap: number): number {
   return Math.round(lo)
 }
 
+/** The glide running now, if any: a new one stops it. */
+let running: (() => void) | null = null
+
 /**
- * Glides the list to its end, `from` px above it (`distanceToEnd`). Returns a stop function, or
- * null when it jumped there at once (reduced motion, already there); `onDone` runs when a glide
- * ends, stopped or not. A scroll of your own stops it.
+ * Glides the list over `from` px to where `land` puts it, each frame sitting where `place(d)`
+ * puts it, `d` px short of there. Returns a stop function, or null when it jumped there at once
+ * (reduced motion, already there); `onDone` runs when a glide ends, stopped or not. A scroll of
+ * your own stops it.
  */
-export function glideToEnd(r: Renderer, list: number, from: number, onDone?: () => void): (() => void) | null {
+function glide(r: Renderer, list: number, from: number, place: (short: number) => Anchor | null, land: () => void, onDone?: () => void): (() => void) | null {
+  running?.()
   const now = anchorOf(r, list)
   const viewport = now?.[2] ?? 0
   if (!now || reducedMotion() || from < 1) {
-    r.scrollToItem?.(list, END, 0)
+    land()
+    onDone?.()
     return null
   }
   from = Math.min(from, viewport * FAR)
   const seconds = from < viewport * 0.75 ? duration.standard : duration.considered
   const curve = bezier(ease.standard)
+  // The glide's own clock: a frame that came late (rows rendering for the first time) moves it on
+  // by two frames at most, so it slows down under load instead of skipping to the end. However
+  // slow the frames, it lands within LATE of its duration.
+  let clock = 0
   const start = Date.now()
+  let last = start
   let set: Anchor | null = now
   let timer: ReturnType<typeof setTimeout> | undefined
   let stopped = false
+  const finish = () => {
+    stopped = true
+    clearTimeout(timer)
+    if (running === stop) running = null
+    onDone?.()
+  }
   const step = () => {
     if (stopped) return
     // Someone scrolled since the last frame: they win.
-    if (!same(anchorOf(r, list), set)) return stop()
-    const t = Math.min(1, (Date.now() - start) / (seconds * 1000))
+    if (!same(anchorOf(r, list), set)) return finish()
+    const at = Date.now()
+    clock += Math.min(at - last, FRAME_MS * 2)
+    last = at
+    const t = at - start > seconds * 1000 + LATE ? 1 : Math.min(1, clock / (seconds * 1000))
     if (t >= 1) {
-      r.scrollToItem?.(list, END, 0)
-      stopped = true
-      onDone?.()
-      return
+      land()
+      return finish()
     }
-    set = endAnchor(r, list, from * (1 - curve(t)))
+    set = place(from * (1 - curve(t)))
     timer = setTimeout(step, FRAME_MS)
   }
   const stop = () => {
-    stopped = true
-    clearTimeout(timer)
-    onDone?.()
+    if (!stopped) finish()
   }
+  running = stop
   step()
   return stop
+}
+
+/** Glides the list to its end, `from` px above it (`distanceToEnd`). */
+export function glideToEnd(r: Renderer, list: number, from: number, onDone?: () => void): (() => void) | null {
+  return glide(r, list, from, (short) => endAnchor(r, list, short), () => r.scrollToItem?.(list, END, 0), onDone)
+}
+
+/**
+ * Glides the list until item `index` sits `offset` px down the viewport's top (negative: above
+ * it), as `scrollToItem` would put it at once. From further than 1.25 viewports it starts that
+ * far away, like the glide to the end. `onDone` runs once it's there (or stopped), at once if it
+ * jumped.
+ */
+export function glideToItem(r: Renderer, list: number, index: number, offset = 0, onDone?: () => void): (() => void) | null {
+  const land = () => r.scrollToItem?.(list, index, offset)
+  const now = anchorOf(r, list)
+  land()
+  const target = anchorOf(r, list)
+  if (!now || !target || same(target, now)) {
+    running?.()
+    onDone?.()
+    return null
+  }
+  // Coming down to it, the frames sit above it; going back up, below it.
+  const down = before(now, target)
+  const at = (short: number) => {
+    r.scrollToItem?.(list, target[0], target[1] + (down ? -short : short))
+    return anchorOf(r, list)
+  }
+  // How far away it is, up to `cap`. Only negative offsets resolve against the rows (a positive one
+  // is kept as given and doesn't compare), so it's measured upward: from the paragraph to here
+  // going down, from here to the paragraph going up.
+  const cap = now[2] * FAR
+  const [low, high] = down ? [now, target] : [target, now]
+  const above = (d: number) => {
+    r.scrollToItem?.(list, high[0], high[1] - d)
+    return anchorOf(r, list)
+  }
+  let lo = 0
+  let hi = cap
+  const far = above(cap)
+  if (far && !before(far, low)) lo = hi
+  while (hi - lo > 1) {
+    const mid = (lo + hi) / 2
+    const a = above(mid)
+    if (a && before(a, low)) hi = mid
+    else lo = mid
+  }
+  r.scrollToItem?.(list, now[0], now[1])
+  return glide(r, list, Math.round(lo), at, land, onDone)
 }
 
 /** A CSS-style cubic-bezier easing: progress for time `t` in [0, 1]. */

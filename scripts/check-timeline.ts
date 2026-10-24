@@ -1,9 +1,13 @@
 // Self-check for the timeline: a note with eight paragraphs of yours shows a tick for each at the
 // far left; hovering one previews that paragraph; a click scrolls the note to it; the preview
 // stays as the pointer moves onto it, and its Edit scrolls there and puts the caret in the
-// paragraph, so what you type edits it (recorded as `vellum/edit`).
+// paragraph, so what you type edits it (recorded as `vellum/edit`). The note glides there one way
+// only, up or down (ui/glide.ts); under reduced motion it jumps. How many frames the check sees
+// depends on the machine: a never-shown window's timers can run a second apart, so the frame
+// count is printed, not asserted.
 //   bun scripts/check-timeline.ts
-import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs'
+//   MOTION=reduce bun scripts/check-timeline.ts
+import { existsSync, readFileSync, writeFileSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
@@ -34,6 +38,9 @@ const file = path.join(home, 'threads', `${id}.jsonl`)
 writeFileSync(file, lines.map((l) => JSON.stringify(l)).join('\n') + '\n')
 writeFileSync(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: id }))
 
+const mode = process.env.MOTION === 'reduce' ? 'reduce' : 'full'
+const settingsFile = path.join(home, 'settings.json')
+writeFileSync(settingsFile, JSON.stringify({ ...(existsSync(settingsFile) ? JSON.parse(readFileSync(settingsFile, 'utf8')) : {}), motion: mode }))
 const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } })
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const shot = (n: string) => app.screenshot({ path: 'screenshots/timeline-' + n + '.png' })
@@ -52,10 +59,49 @@ const onScreen = async (testId: string) => {
   return b.y >= page.y && b.y + b.height <= page.y + page.height
 }
 
+/**
+ * A paragraph's top inside the page every ~30ms for `ms`, from just after `go`; undefined while it
+ * isn't painted. Long enough for the glide (0.48s) plus the first render of rows the note hasn't
+ * shown yet, which can hold the app for a second.
+ */
+const sample = async (testId: string, go: () => Promise<unknown>, ms = 2500) => {
+  const page = await app.getByTestId('page').bounds()
+  const ys: (number | undefined)[] = []
+  await go()
+  const end = Date.now() + ms
+  while (Date.now() < end) {
+    const b = await app.getByTestId(testId).bounds().catch(() => undefined)
+    ys.push(b && b.y + b.height > page.y && b.y < page.y + page.height ? Math.round(b.y - page.y) : undefined)
+    await wait(30)
+  }
+  return ys
+}
+/** The positions it moved through, in order, without repeats. */
+const path_ = (ys: (number | undefined)[]) => ys.filter((y): y is number => y !== undefined).filter((y, i, all) => i === 0 || y !== all[i - 1])
+const until = async (ok: () => Promise<boolean>, ms = 4000) => {
+  const start = Date.now()
+  while (!(await ok()) && Date.now() - start < ms) await wait(100)
+  return ok()
+}
+/** Waits until the element has stayed put for ~300ms (a glide has landed), up to `ms`. */
+const settled = async (testId: string, ms = 5000) => {
+  const start = Date.now()
+  let last: number | undefined
+  let still = 0
+  while (still < 3 && Date.now() - start < ms) {
+    const y = (await app.getByTestId(testId).bounds().catch(() => undefined))?.y
+    still = y !== undefined && y === last ? still + 1 : 0
+    last = y
+    await wait(100)
+  }
+}
+const oneWay = (ys: number[], dir: 1 | -1) => ys.every((y, i) => i === 0 || Math.sign(y - ys[i - 1]!) === dir)
+
 try {
   await app.getByTestId('composer').waitFor({ timeoutMs: 60_000 })
   await wait(2500)
-  const ticks = (await ids('timeline-')).filter((t) => t !== 'timeline-preview')
+  // The preview and its buttons share the prefix; they show if the pointer starts over the rail.
+  const ticks = (await ids('timeline-')).filter((t) => !['timeline-preview', 'timeline-go', 'timeline-edit'].includes(t))
   expect('a tick for each of your paragraphs', ticks.length === asks.length, `${ticks.length}`)
   const blockIds = ticks.map((t) => t.slice('timeline-'.length))
   // At rest the rail is faded; hovering brings it up.
@@ -68,10 +114,23 @@ try {
   await shot('1-hover')
 
   expect('the first paragraph starts off screen (the note opens at its end)', !(await onScreen(`para-${blockIds[0]}`)))
-  await app.getByTestId(ticks[0]!).click()
-  await wait(700)
+  const up = path_(await sample(`para-${blockIds[0]}`, () => app.getByTestId(ticks[0]!).click()))
+  await wait(200)
   expect('a click scrolls the note to it', await onScreen(`para-${blockIds[0]}`))
+  if (mode === 'full') {
+    expect('…gliding up, one way only', up.length >= 1 && oneWay(up, 1), up.join(' → '))
+    console.log(`     ${up.length} positions seen`)
+  } else expect('…in one jump under reduced motion', up.length === 1, up.join(' → '))
   await shot('2-jumped')
+
+  // A short way down: the next paragraph.
+  const down = path_(await sample(`para-${blockIds[1]}`, () => app.getByTestId(ticks[1]!).click()))
+  await wait(200)
+  expect('a nearby tick scrolls down to it', await onScreen(`para-${blockIds[1]}`))
+  if (mode === 'full') {
+    expect('…gliding down, one way only', down.length >= 1 && oneWay(down, -1), down.join(' → '))
+    console.log(`     ${down.length} positions seen`)
+  } else expect('…in one jump under reduced motion', down.length === 1, down.join(' → '))
 
   await app.getByTestId(ticks[4]!).hover()
   await app.getByTestId('timeline-preview').waitFor({ timeoutMs: 3000 }).catch(() => {})
@@ -79,8 +138,10 @@ try {
   await wait(500)
   expect('the preview stays as the pointer moves onto it', (await app.getByTestId('timeline-edit').count()) === 1)
   await app.getByTestId('timeline-edit').click()
-  await wait(800)
-  expect('Edit scrolls to it', await onScreen(`para-${blockIds[4]}`))
+  expect('Edit scrolls to it', await until(() => onScreen(`para-${blockIds[4]}`)))
+  // The caret goes in once the glide has landed: wait for the note to stop, then for the caret.
+  await settled(`para-${blockIds[4]}`)
+  await wait(1200)
   // No element: the keys go wherever the caret is.
   await app.call('keystrokes', { keys: 'cmd-down space z z' })
   await wait(1500)

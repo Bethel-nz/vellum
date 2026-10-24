@@ -13,6 +13,7 @@ import { motion, useGpuixRequired, type PublicInstance } from '@gpuix/react'
 import type { Thread } from '../core/threads'
 import { ease, tween } from '../components/motion'
 import { editParagraph } from './blocks'
+import { glideToItem } from './glide'
 import { Meta, Quiet, useM } from './kit'
 import { elevation, radiusBase, type } from './theme'
 
@@ -88,13 +89,15 @@ export function Timeline({ thread, list, rows }: { thread: Thread; list: RefObje
 
   const go = (it: TimelineItem, edit: boolean) => {
     if (!list.current) return
-    // A little above the paragraph, so your picture and the line before it show too.
-    renderer.scrollToItem?.(list.current.id, it.row, -24)
-    if (!edit) return
-    // The row may only mount once the list has scrolled to it.
+    // A little above the paragraph, so your picture and the line before it show too. Edit puts
+    // the caret in once the note is there.
+    glideToItem(renderer, list.current.id, it.row, -24, edit ? () => caret(it.id) : undefined)
+  }
+  /** The row may only mount once the list has scrolled to it. */
+  const caret = (id: string) => {
     let tries = 0
     const attempt = () => {
-      if (!editParagraph(it.id) && ++tries < 10) setTimeout(attempt, 50)
+      if (!editParagraph(id) && ++tries < 10) setTimeout(attempt, 50)
     }
     setTimeout(attempt, 30)
   }
