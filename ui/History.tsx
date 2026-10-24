@@ -1,12 +1,15 @@
-// Past notes, as a sidebar from the left (⌘Y, or the clock in the strip). Tabs stop at nine, so
-// this is where everything else lives: every note, newest first, grouped by day, with a filter
-// that has focus as it opens. ↑↓ or ⌃N ⌃P move, ↩ opens, esc closes. ⌘K stays the quick jump.
+// Past notes and recipes, as a sidebar from the left (the shelf in the strip; ⌘Y opens past notes,
+// ⇧⌘Y recipes). Tabs stop at nine, so this is where everything else lives: every note, newest
+// first, grouped by day, with a filter that has focus as it opens. ↑↓ or ⌃N ⌃P move, ↩ opens,
+// esc closes. ⌘K stays the quick jump. Recipes are the other side (ui/Recipes.tsx).
 
 import { useMemo, useRef, useState } from 'react'
 import { useGpuixRequired, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { Button, Label, Menu, Scroll, Segmented, SidePanel } from '../components'
 import { keys, primary } from '../core/platform'
 import type { Profile } from '../core/profiles'
+import type { Recipe } from '../core/recipes'
+import { RecipesView } from './Recipes'
 import type { Thread } from '../core/threads'
 import { ago, Row } from './dialogs'
 import { Dot, Icon, Meta, useM } from './kit'
@@ -33,6 +36,12 @@ export function History({
   activeId,
   openIds,
   onPick,
+  view,
+  onView,
+  recipes,
+  folder,
+  onUseRecipe,
+  onRecipesChanged,
 }: {
   open: boolean
   onClose: () => void
@@ -41,6 +50,13 @@ export function History({
   activeId?: string
   openIds: string[]
   onPick: (id: string) => void
+  view: 'history' | 'recipes'
+  onView: (view: 'history' | 'recipes') => void
+  recipes: Recipe[]
+  /** The note's folder, for its project recipes. */
+  folder?: string
+  onUseRecipe: (name: string) => void
+  onRecipesChanged: () => void
 }) {
   const m = useM()
   const renderer = useGpuixRequired()
@@ -51,6 +67,7 @@ export function History({
   const [profile, setProfile] = useState<string | undefined>(undefined)
   const [filtersOpen, setFiltersOpen] = useState(false)
   const inputRef = useRef<PublicInstance>(null)
+  const recipesRef = useRef<PublicInstance>(null)
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase()
     const list = threads
@@ -75,15 +92,27 @@ export function History({
       e.preventDefault()
       setActive((a) => (flat.length ? (a + d + flat.length) % flat.length : 0))
     }
-    if (e.key === 'escape' || (primary(e.modifiers) && e.key === 'y')) {
+    if (e.key === 'escape' || (primary(e.modifiers) && e.key === 'y' && !e.modifiers?.shift)) {
       e.preventDefault()
       onClose()
+    } else if (primary(e.modifiers) && e.key === 'y' && e.modifiers?.shift) {
+      e.preventDefault()
+      onView(view === 'recipes' ? 'history' : 'recipes')
     } else if ((e.modifiers?.ctrl && e.key === 'n') || e.key === 'down') step(1)
     else if ((e.modifiers?.ctrl && e.key === 'p') || e.key === 'up') step(-1)
   }
 
   return (
-    <SidePanel open={open} onClose={onClose} side="left" width={480} initialFocus={inputRef} testId="history">
+    <SidePanel open={open} onClose={onClose} side="left" width={480} initialFocus={view === 'recipes' ? recipesRef : inputRef} testId="history">
+      <div style={{ display: 'flex', flexDirection: 'row', paddingLeft: 14, paddingRight: 14, paddingTop: 14, flexShrink: 0 }}>
+        <Segmented<'history' | 'recipes'> pill testId="history-view" value={view} onChange={onView} width={96} options={[{ value: 'history', label: 'Past notes' }, { value: 'recipes', label: 'Recipes' }]} />
+      </div>
+      {view === 'recipes' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, paddingTop: 12 }}>
+          <RecipesView recipes={recipes} folder={folder} onUse={onUseRecipe} onChanged={onRecipesChanged} inputRef={recipesRef} onKeyDown={onKeyDown} />
+        </div>
+      ) : (
+      <>
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, borderBottomWidth: 1, borderColor: m.border, flexShrink: 0 }}>
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 9, height: 38, paddingLeft: 12, paddingRight: 6, borderRadius: 19, backgroundColor: m.chipBg, borderWidth: 1, borderColor: m.border, flexGrow: 1, minWidth: 0 }}>
         <Icon name="search" size={16} />
@@ -149,6 +178,8 @@ export function History({
         <div style={{ flexGrow: 1 }} />
         <Button onPress={onClose} testId="history-close" title="Close (esc)" style={{ width: 24, paddingLeft: 0, paddingRight: 0 }}><Icon name="x" size={13} /></Button>
       </div>
+      </>
+      )}
     </SidePanel>
   )
 }

@@ -1,17 +1,21 @@
 // The end of the note, where new writing goes: a plain textarea, the last paragraph of the document.
 // Enter = newline, ⌘↵ = send. "!" runs a shell command, "@" tags skills, folders and
-// files, "#" tags files only (type ":42" after one to point at a line).
+// files, "#" tags files only (type ":42" after one to point at a line), and "$" at the start
+// picks a recipe (core/recipes.ts), whose prompt is sent in place of `$name …`.
 //
 // ⇧⇥ cycles the permission mode (Ask, Edits, Plan, Auto); the mode, thinking, model and context
 // live in the status bar at the bottom left (ui/StatusBar.tsx). While Claude waits on an ask and
 // the draft is empty, ↵ ⌘↵ esc answer the approval card instead of editing.
 
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { DismissableLayer, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { FloatingLayer } from '@gpuix/react/floating'
-import { cycleModes, type PermissionMode } from '../core/asks'
+import { cycleModes, modes, type PermissionMode } from '../core/asks'
+
+const modeLabel = (mode: PermissionMode) => modes.find((x) => x.id === mode)?.label ?? mode
 import { keys, primary } from '../core/platform'
 import type { Profile } from '../core/profiles'
+import { recipeCall, type Recipe } from '../core/recipes'
 import { suggest, tagsIn, tagText, type Suggestion } from '../core/tags'
 import { TokenRow, type TokenContext } from './Tokens'
 import type { Tag } from '../core/threads'
@@ -27,15 +31,23 @@ function activeQuery(text: string): string | undefined {
   return match && !/^#.+:\d*$/.test(match[1]!) ? match[1] : undefined
 }
 
+/** One row of the popup: a tag to insert, or a recipe. */
+type PopupRow = { key: string; testId: string; icon?: ReactNode; text: string; mono: boolean; hint?: string }
+
+/** The "$name" being typed as the whole draft so far, without the "$"; else undefined. */
+function recipeQuery(text: string): string | undefined {
+  return /^\$([a-z0-9-]*)$/.exec(text)?.[1]
+}
+
 function TagPopup({
   items,
   active,
   onPick,
   onHover,
 }: {
-  items: Suggestion[]
+  items: PopupRow[]
   active: number
-  onPick: (s: Suggestion) => void
+  onPick: (i: number) => void
   onHover: (i: number) => void
 }) {
   const m = useM()
@@ -63,9 +75,9 @@ function TagPopup({
       >
         {items.map((s, i) => (
           <div
-            key={`${s.type}:${s.value}`}
-            testId={`tag-${i}`}
-            onClick={() => onPick(s)}
+            key={s.key}
+            testId={s.testId}
+            onClick={() => onPick(i)}
             onMouseEnter={() => onHover(i)}
             style={{
               display: 'flex',
@@ -80,9 +92,9 @@ function TagPopup({
               cursor: 'pointer',
             }}
           >
-            {s.type === 'file' ? <FileIcon path={s.value} size={13} /> : s.type === 'skill' ? null : <Icon name="folder" size={13} />}
-            <text style={{ flexGrow: 1, minWidth: 0, fontSize: 12.5, lineHeight: 16, color: m.text, fontFamily: s.type === 'skill' ? font.sans : font.mono, whiteSpace: 'nowrap', textOverflow: 'ellipsis-start' }}>
-              {s.type === 'skill' ? s.value : s.label}
+            {s.icon}
+            <text style={{ flexGrow: 1, minWidth: 0, fontSize: 12.5, lineHeight: 16, color: m.text, fontFamily: s.mono ? font.mono : font.sans, whiteSpace: 'nowrap', textOverflow: 'ellipsis-start' }}>
+              {s.text}
             </text>
             {s.hint ? <Meta>{s.hint}</Meta> : null}
           </div>
@@ -115,6 +127,7 @@ export function Composer({
   images = [],
   onPaste,
   onRemoveImage,
+  recipes = [],
 }: {
   value: string
   tags: Tag[]
@@ -138,14 +151,22 @@ export function Composer({
   /** ⌘V: text pastes as usual; the owner checks the clipboard for an image too. */
   onPaste?: () => void
   onRemoveImage?: (index: number) => void
+  /** Recipes for `$`: yours and the note's project's. */
+  recipes?: Recipe[]
 }) {
   const m = useM()
   const [items, setItems] = useState<Suggestion[]>([])
   const [active, setActive] = useState(0)
   const [dismissed, setDismissed] = useState<string | undefined>()
   const query = activeQuery(value)
-  const open = query !== undefined && query !== dismissed && items.length > 0
+  const tagsOpen = query !== undefined && query !== dismissed && items.length > 0
+  const rq = recipeQuery(value)
+  const recipeItems = rq === undefined ? [] : recipes.filter((r) => r.name.includes(rq)).sort((a, b) => Number(!a.name.startsWith(rq)) - Number(!b.name.startsWith(rq))).slice(0, 8)
+  const recipesOpen = recipeItems.length > 0 && dismissed !== value
+  const open = tagsOpen || recipesOpen
+  const count = recipesOpen ? recipeItems.length : items.length
   const request = useRef(0)
+  useEffect(() => setActive(0), [rq])
 
   useEffect(() => {
     if (query === undefined || !workspace || !profile) {
@@ -159,6 +180,14 @@ export function Composer({
       setActive(0)
     })
   }, [query, workspace, profile])
+
+  const pickRecipe = (r: Recipe) => {
+    onChange(`$${r.name} `, tags)
+  }
+  const pickActive = () => (recipesOpen ? pickRecipe(recipeItems[active]!) : pick(items[active]!))
+  const rows: PopupRow[] = recipesOpen
+    ? recipeItems.map((r, i) => ({ key: `recipe:${r.file}`, testId: `recipe-pick-${i}`, icon: <Icon name="library" size={13} />, text: `$${r.name}`, mono: true, hint: r.description ?? (r.scope === 'project' ? 'this project' : undefined) }))
+    : items.map((s, i) => ({ key: `${s.type}:${s.value}`, testId: `tag-${i}`, icon: s.type === 'file' ? <FileIcon path={s.value} size={13} /> : s.type === 'skill' ? undefined : <Icon name="folder" size={13} />, text: s.type === 'skill' ? s.value : s.label, mono: s.type !== 'skill', hint: s.hint }))
 
   const pick = (s: Suggestion) => {
     const tag = { type: s.type, value: s.value } as Tag
@@ -187,17 +216,17 @@ export function Composer({
     if (open) {
       if (e.key === 'tab' || (primary(mods) && e.key === 'enter')) {
         e.preventDefault()
-        pick(items[active]!)
+        pickActive()
         return
       }
       if (mods?.ctrl && (e.key === 'n' || e.key === 'p')) {
         e.preventDefault()
-        setActive((a) => (a + (e.key === 'n' ? 1 : items.length - 1)) % items.length)
+        setActive((a) => (a + (e.key === 'n' ? 1 : count - 1)) % count)
         return
       }
       if (e.key === 'escape') {
         e.preventDefault()
-        setDismissed(query)
+        setDismissed(recipesOpen ? value : query)
         return
       }
     }
@@ -208,12 +237,13 @@ export function Composer({
   }
 
   const shell = value.startsWith('!')
+  const called = value.startsWith('$') ? recipeCall(value, recipes) : undefined
   const folder = workspace ? workspace.split(/[\\/]/).filter(Boolean).pop() : undefined
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, position: 'relative' }}>
       {open ? (
-        <DismissableLayer onEscapeKeyDown={() => setDismissed(query)}>
-          <TagPopup items={items} active={active} onPick={pick} onHover={setActive} />
+        <DismissableLayer onEscapeKeyDown={() => setDismissed(recipesOpen ? value : query)}>
+          <TagPopup items={rows} active={active} onPick={(i) => (recipesOpen ? pickRecipe(recipeItems[i]!) : pick(items[i]!))} onHover={setActive} />
         </DismissableLayer>
       ) : null}
       <textarea
@@ -237,15 +267,16 @@ export function Composer({
         onChange={(e) => {
           const next = e.value ?? ''
           onChange(next, tags)
-          if (dismissed !== undefined && activeQuery(next) !== dismissed) setDismissed(undefined)
+          if (dismissed !== undefined && activeQuery(next) !== dismissed && next !== dismissed) setDismissed(undefined)
         }}
         // Plain ↵ arrives here, not in onKeyDown: it picks a tag, or allows a waiting ask.
-        onSubmit={open ? () => pick(items[active]!) : asking && onAskKey && !value.trim() ? () => onAskKey('allow') : undefined}
+        onSubmit={open ? pickActive : asking && onAskKey && !value.trim() ? () => onAskKey('allow') : undefined}
         onKeyDown={onKeyDown}
         onFocus={onFocusChange ? () => onFocusChange(true) : undefined}
         onBlur={onFocusChange ? () => onFocusChange(false) : undefined}
       />
       {shell ? <Meta>{keys(`⌘↵ runs this in ${folder ?? 'the folder'}`)}</Meta> : null}
+      {called && !open ? <Meta>{keys(`⌘↵ sends the $${called.recipe.name} recipe${called.recipe.mode ? ` in ${modeLabel(called.recipe.mode)}` : ''}${called.input.trim() ? ', with what follows as its input' : ''}`)}</Meta> : null}
       {asking && !value.trim() ? <Meta color={m.blue}>{keys('Claude is waiting on you · ↵ allow · ⌘↵ always · esc deny')}</Meta> : null}
       {images.length ? <ImageRow images={images} onRemove={onRemoveImage} /> : null}
       {tokenCtx && !shell ? <TokenRow tags={tagsIn(value, tags)} ctx={tokenCtx} testId="draft-chips" /> : null}

@@ -163,3 +163,11 @@ export function recipeCall(text: string, recipes: Recipe[]): { recipe: Recipe; i
   const recipe = recipes.find((r) => r.name === m[1])
   return recipe ? { recipe, input: m[2] ?? '' } : undefined
 }
+
+/** The folder's current git branch, for {{branch}}; undefined outside a repo. */
+export function gitBranch(folder: string): string | undefined {
+  // The repo's config may name an fsmonitor to run; Vellum isn't sandboxed, so it never runs one.
+  const r = Bun.spawnSync(['git', '-c', 'core.fsmonitor=false', 'rev-parse', '--abbrev-ref', 'HEAD'], { cwd: folder, stdout: 'pipe', stderr: 'ignore' })
+  const branch = r.exitCode === 0 ? r.stdout.toString().trim() : ''
+  return branch && branch !== 'HEAD' ? branch : undefined
+}

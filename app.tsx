@@ -52,6 +52,7 @@ import { BlockView, DiffCard, type BlockActions } from './ui/blocks'
 import { Composer } from './ui/Composer'
 import { NewThreadDialog, ThreadSwitcher } from './ui/dialogs'
 import { History } from './ui/History'
+import { expandRecipe, gitBranch, loadRecipes, recipeCall } from './core/recipes'
 import { Changes } from './ui/Changes'
 import { revealEnd } from './ui/glide'
 import { Timeline, watchRows } from './ui/Timeline'
@@ -376,6 +377,9 @@ function App() {
   const [denying, setDenying] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, Draft>>(() => readJson(paths.drafts, {}))
   const [overlay, setOverlay] = useState<null | 'new' | 'switcher' | 'settings' | 'history' | 'changes'>(null)
+  // The History panel's two sides: past notes, or recipes.
+  const [shelf, setShelf] = useState<'history' | 'recipes'>('history')
+  const [recipesSaved, setRecipesSaved] = useState(0)
   const [noteMenu, setNoteMenu] = useState(false)
   const [terms, setTerms] = useState<Term[]>([])
   const termsRef = useRef(terms)
@@ -435,6 +439,8 @@ function App() {
   }, [active?.workspace, noteChanges?.files, noteChanges?.added, noteChanges?.removed, changesOpen])
   const stripChanges = noteChanges?.files ? noteChanges : uncommitted && uncommitted.workspace === active?.workspace ? uncommitted.summary : undefined
   const draft = (active && drafts[active.id]) || { text: '', tags: [] }
+  // Yours and the note's project's; read again when the panel opens or one is saved.
+  const recipes = useMemo(() => loadRecipes(active?.workspace), [active?.workspace, recipesSaved, overlay === 'history'])
 
   // Fonts: Inter for UI and prose. Text repaints once a family registers.
   useEffect(() => {
@@ -656,7 +662,22 @@ function App() {
     const thread = threadsRef.current.find((t) => t.id === activeRef.current)
     if (!thread) return
     const d = draftsRef.current[thread.id] ?? { text: '', tags: [] }
-    const text = d.text.trim()
+    let text = d.text.trim()
+    // `$name …`: a recipe. Its prompt is what's sent and shown; its mode and model apply first.
+    const call = text.startsWith('$') ? recipeCall(text, loadRecipes(thread.workspace)) : undefined
+    if (call) {
+      if (thread.running) return
+      const { recipe } = call
+      if (recipe.mode && recipe.mode !== thread.mode) {
+        record(thread.id, { type: 'vellum/mode', mode: recipe.mode })
+        runnerFor(thread).setMode(recipe.mode)
+      }
+      if (recipe.model) {
+        record(thread.id, { type: 'vellum/model', model: recipe.model })
+        runnerFor(thread).setModel(recipe.model)
+      }
+      text = expandRecipe(recipe, { input: call.input, folder: thread.workspace, branch: gitBranch(thread.workspace) })
+    }
     if (text.startsWith('!')) {
       const command = text.slice(1).trim()
       if (command) runShell(thread, command)
@@ -1090,8 +1111,11 @@ function App() {
       e.preventDefault()
       setOverlay((o) => (o === 'switcher' ? null : 'switcher'))
     } else if (key === 'y') {
+      // ⌘Y past notes, ⇧⌘Y recipes; the same keys close the panel on that side.
       e.preventDefault()
-      setOverlay((o) => (o === 'history' ? null : 'history'))
+      const side = mods.shift ? 'recipes' : 'history'
+      setOverlay((o) => (o === 'history' && shelf === side ? null : 'history'))
+      setShelf(side)
     } else if (key === 'd' && mods.shift) {
       e.preventDefault()
       setOverlay((o) => (o === 'changes' ? null : 'changes'))
@@ -1198,8 +1222,8 @@ function App() {
                 />,
               } : undefined}
               leading={
-                <Button onPress={() => setOverlay('history')} testId="open-history" title="Past notes (⌘Y)">
-                  <Icon name="history" size={14} />
+                <Button onPress={() => setOverlay('history')} testId="open-history" title={keys('Past notes (⌘Y) and recipes (⇧⌘Y)')}>
+                  <Icon name="library" size={14} />
                 </Button>
               }
               menuOpen={noteMenu}
@@ -1309,6 +1333,7 @@ function App() {
                     }}
                     profile={activeProfile}
                     workspace={active.workspace}
+                    recipes={recipes}
                     placeholder={placeholder}
                     composerRef={composerRef}
                     onFocusChange={setWriting}
@@ -1455,6 +1480,20 @@ function App() {
             setOverlay(null)
             setTimeout(focusComposer, 50)
           }}
+          view={shelf}
+          onView={setShelf}
+          recipes={recipes}
+          folder={active?.workspace}
+          onUseRecipe={(name) => {
+            if (!active) return
+            // The recipe goes at the start of the draft; anything already written follows it as its input.
+            const d = draftsRef.current[active.id]
+            const rest = d?.text.trim().replace(/^\$[a-z0-9-]+\s*/, '') ?? ''
+            setDraft(active.id, `$${name} ${rest}`, d?.tags ?? [])
+            setOverlay(null)
+            setTimeout(focusComposer, 50)
+          }}
+          onRecipesChanged={() => setRecipesSaved((n) => n + 1)}
         />
         {overlay === 'switcher' ? (
           <ThreadSwitcher
