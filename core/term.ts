@@ -195,7 +195,8 @@ export function killAllTerms() {
 
 // ---------------------------------------------------------------- the holder
 
-type Link = { wire: Wire; socket: { end(): void }; terms: Map<string, ReturnType<typeof makeSession>>; waiting: ((m: any) => boolean)[] }
+type Waiter = { match: (m: any) => boolean; fail: (e: Error) => void }
+type Link = { wire: Wire; socket: { end(): void }; terms: Map<string, ReturnType<typeof makeSession>>; waiting: Waiter[]; closed?: boolean }
 
 const socketPath = () => path.join(paths.home, 'run', 'termd.sock')
 // One connection per Vellum process; a hot reload drops the previous one (its shells stay held).
@@ -203,15 +204,22 @@ const g = globalThis as { __vellumTermd?: Promise<Link | undefined> }
 void g.__vellumTermd?.then((l) => l?.socket.end())
 g.__vellumTermd = undefined
 
-/** Resolve with the first message `match` accepts. */
+/** Resolve with the first message `match` accepts; reject if the link closes first. */
 function expect(link: Link, match: (m: any) => boolean, ms = 3000): Promise<any> {
   return new Promise((resolve, reject) => {
+    if (link.closed) return reject(new Error('the terminal holder link is closed'))
     const timer = setTimeout(() => reject(new Error('the terminal holder did not answer')), ms)
-    link.waiting.push((m) => {
-      if (!match(m)) return false
-      clearTimeout(timer)
-      resolve(m)
-      return true
+    link.waiting.push({
+      match: (m) => {
+        if (!match(m)) return false
+        clearTimeout(timer)
+        resolve(m)
+        return true
+      },
+      fail: (e) => {
+        clearTimeout(timer)
+        reject(e)
+      },
     })
   })
 }
@@ -223,7 +231,7 @@ async function open(): Promise<Link> {
     socket: {
       data(_s, chunk) {
         for (const m of link.wire.read(chunk)) {
-          const i = link.waiting.findIndex((w) => w(m))
+          const i = link.waiting.findIndex((w) => w.match(m))
           if (i >= 0) {
             link.waiting.splice(i, 1)
             continue
@@ -238,8 +246,11 @@ async function open(): Promise<Link> {
         }
       },
       drain: () => link.wire.drain(),
-      // The holder went away: its terminals are over as far as this Vellum can tell.
+      // The holder went away, or a hot reload let go of this link: its terminals are over as far
+      // as this Vellum can tell, and nothing more will answer on it.
       close() {
+        link.closed = true
+        for (const w of link.waiting.splice(0)) w.fail(new Error('the terminal holder link is closed'))
         for (const t of link.terms.values()) t.end(-1)
         link.terms.clear()
         const current = g.__vellumTermd
@@ -310,13 +321,26 @@ export async function holdTerm(opts: TermOpts, meta: unknown): Promise<TermSessi
   return t.session
 }
 
-/** The terminals the holder kept from earlier, each attached with its recent output on screen. */
+/**
+ * The terminals the holder kept from earlier, each attached with its recent output on screen.
+ * Never throws: a link a hot reload closed mid-way leaves it to the newer Vellum (quietly), and
+ * a holder that doesn't answer leaves them held for the next launch.
+ */
 export async function heldTerms(): Promise<{ meta: unknown; cwd: string; session: TermSession }[]> {
   if (!hasPty) return []
   // Don't start a holder just to ask: no socket, nothing held.
   if (!existsSync(socketPath())) return []
   const link = await holder()
   if (!link) return []
+  try {
+    return await attachHeld(link)
+  } catch (e) {
+    if (!link.closed) console.error(`vellum: held terminals not restored (${(e as Error).message})`)
+    return []
+  }
+}
+
+async function attachHeld(link: Link) {
   link.wire.send({ op: 'list' })
   const { terms } = (await expect(link, (m) => m.ev === 'list')) as { terms: HeldTerm[] }
   const out = []
