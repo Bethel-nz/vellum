@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Vellum Snapshot",
+  "version": "0.1.0",
+  "description": "Select a page, leave a note, and send it to Vellum.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzqj2kLL2hDWm0kMZ5lJiQFviv3lsUiaX/mMdizwV+WpetWgH6QmLwlH9e1Q43sLbJ0s/2N7pG9IkN7Exex7NHxTSU5RBxOWYPfgBUDBc0vJDlQiad/7SsKADQyY48NG4SGzkmTQMn2w7LQMbHN1EEVBpQQPGiVvom2Bg2MEYd+HhuUgUxqSwEoM5mXoRYPKtTNGuw31c1MCfJUV5KKfAaTsW6En6YGrLBY6kqt+4aqWYUmfwGgArOffYUJLE3iwzQj4rpGCwLirCu4LYaUt6Csh50vse+FGQmtZBoWbt205bOnHrkhwSjAc9xhOAvu0m03JdpLwIG9k6kasEnaQnVQIDAQAB",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "debugger"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icons/16.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
+    },
+    "default_title": "Vellum Snapshot \u2014 annotate this page"
+  },
+  "icons": {
+    "16": "icons/16.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "commands": {
+    "toggle-select": {
+      "suggested_key": {
+        "default": "Alt+Shift+V"
+      },
+      "description": "Select elements to send to Vellum"
+    }
+  }
+}
