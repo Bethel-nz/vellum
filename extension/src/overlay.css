@@ -1,0 +1,6 @@
+.vellum-layer { position: fixed; inset: 0; pointer-events: none; }
+.vellum-outline { position: fixed; border: 3px solid color-mix(in srgb, var(--focus-outline) 80%, transparent); background: color-mix(in srgb, var(--focus-outline) 3%, transparent); border-radius: 8px; pointer-events: none; }
+.vellum-outline-locked { border-width: 4px; background: color-mix(in srgb, var(--focus-outline) 4%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-outline) 8%, transparent); }
+.vellum-mount { position: fixed; top: 16px; left: 12px; right: 12px; display: flex; justify-content: center; pointer-events: none; }
+.vellum-annotation-pin { position: fixed; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 2px solid var(--surface); border-radius: 50% 50% 50% 5px; background: var(--focus-outline); color: var(--background); box-shadow: 0 2px 5px #0002; font: 600 12px/1 var(--font-body); cursor: pointer; pointer-events: auto; }
+.vellum-annotation-pin[aria-pressed='true'] { box-shadow: 0 0 0 3px var(--selection); }

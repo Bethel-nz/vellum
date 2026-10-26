@@ -1,0 +1,8 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.3/schema.json",
+  "root": true,
+  "javascript": { "globals": ["chrome", "Bun", "CSSAnimation", "CSSTransition"] },
+  "formatter": { "enabled": false },
+  "assist": { "enabled": false },
+  "linter": { "enabled": true, "rules": { "recommended": false, "correctness": { "noUndeclaredVariables": "error", "noUnusedVariables": "warn", "noUnreachable": "error", "noInvalidBuiltinInstantiation": "error" }, "suspicious": { "noDoubleEquals": "error", "noDuplicateCase": "error", "noDuplicateObjectKeys": "error" } } }
+}
