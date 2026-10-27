@@ -7,7 +7,8 @@
 // something that's there, and never in `.git` or under a credentials-looking name. `gitStatus`
 // is what the tree marks: git's own status of each file, as a letter.
 
-import { existsSync, mkdirSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync, type Dirent } from 'node:fs'
+import { readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { insideWorkspace } from './files'
 import { noFilters, SAFE } from './gitsnap'
@@ -16,44 +17,115 @@ export type TreeEntry = { name: string; rel: string; dir: boolean; ignored: bool
 
 const byName = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
 
+// Folders are listed from memory. Each listing carries a stamp: the folder's modified time
+// (adding, removing or renaming anything in it moves that) and the times of every .gitignore
+// that applies. A stamp that still matches costs a few stats, not a git process, so the tree
+// can redraw after every edit without stalling a frame. Listing a folder also maps its
+// subfolders in the background, so opening one finds it ready.
+type Listing = { stamp: string; entries: TreeEntry[] }
+const listings = new Map<string, Listing>()
+const MAX_LISTINGS = 4000
+const AHEAD = 64
+
+/** What a folder's listing depends on, or undefined when the folder isn't there. */
+function stampOf(workspace: string, rel: string): string | undefined {
+  const folder = statSync(path.join(workspace, rel), { throwIfNoEntry: false })
+  if (!folder?.isDirectory()) return
+  const rules = [path.join(workspace, '.git', 'info', 'exclude'), path.join(workspace, '.gitignore')]
+  for (const dir of rel ? [...ancestors(`${rel}/x`)] : []) rules.push(path.join(workspace, dir, '.gitignore'))
+  return [folder.mtimeMs, ...rules.map((f) => statSync(f, { throwIfNoEntry: false })?.mtimeMs ?? 0)].join(':')
+}
+
+function remember(key: string, listing: Listing) {
+  listings.delete(key)
+  listings.set(key, listing)
+  // Oldest first: a Map keeps insertion order.
+  if (listings.size > MAX_LISTINGS) listings.delete(listings.keys().next().value!)
+}
+
 /** A folder's entries; `rel` is '' for the note's folder itself. Empty when it can't be read. */
 export function listDir(workspace: string, rel = ''): TreeEntry[] {
-  let names: string[]
+  const key = path.join(workspace, rel)
+  const stamp = stampOf(workspace, rel)
+  if (stamp === undefined) {
+    listings.delete(key)
+    return []
+  }
+  const known = listings.get(key)
+  if (known?.stamp === stamp) return known.entries
+  let names: Dirent[]
   try {
-    names = readdirSync(path.join(workspace, rel))
+    names = readdirSync(key, { withFileTypes: true })
   } catch {
     return []
   }
+  const entries = entriesOf(workspace, rel, names)
+  try {
+    if (entries.length) markIgnored(entries, ignoredFrom(Bun.spawnSync(ignoreCommand(workspace), { stdin: ignoreInput(entries), stdout: 'pipe', stderr: 'ignore' }).stdout.toString()))
+  } catch {}
+  remember(key, { stamp, entries })
+  void mapAhead(workspace, entries)
+  return entries
+}
+
+/** Maps a note's folder and the folders in it in the background, before the tree asks. */
+export function prepareTree(workspace: string): Promise<void> {
+  return mapAhead(workspace, [{ name: '', rel: '', dir: true, ignored: false }], 1)
+}
+
+const mapping = new Set<string>()
+
+/** Lists the subfolders of what was just listed, one at a time, off the frame; `deeper` more levels under each. */
+async function mapAhead(workspace: string, listed: TreeEntry[], deeper = 0) {
+  for (const e of listed.filter((e) => e.dir && !e.ignored).slice(0, AHEAD)) {
+    const key = path.join(workspace, e.rel)
+    if (mapping.has(key)) continue
+    mapping.add(key)
+    try {
+      const stamp = stampOf(workspace, e.rel)
+      if (stamp === undefined) continue
+      let entries = listings.get(key)?.stamp === stamp ? listings.get(key)!.entries : undefined
+      if (!entries) {
+        entries = entriesOf(workspace, e.rel, await readdir(key, { withFileTypes: true }))
+        if (entries.length) {
+          const proc = Bun.spawn(ignoreCommand(workspace), { stdin: ignoreInput(entries), stdout: 'pipe', stderr: 'ignore' })
+          markIgnored(entries, ignoredFrom(await new Response(proc.stdout).text()))
+        }
+        // Something changed while this was read: leave it to the next listDir.
+        if (stampOf(workspace, e.rel) === stamp) remember(key, { stamp, entries })
+      }
+      if (deeper) await mapAhead(workspace, entries, deeper - 1)
+    } catch {
+    } finally {
+      mapping.delete(key)
+    }
+  }
+}
+
+function entriesOf(workspace: string, rel: string, names: Dirent[]): TreeEntry[] {
   const entries: TreeEntry[] = []
-  for (const name of names) {
+  for (const d of names) {
+    const name = d.name
     if (name === '.git' || /credentials|keychain/i.test(name)) continue
     const child = rel ? `${rel}/${name}` : name
-    let dir = false
-    try {
-      dir = statSync(path.join(workspace, child)).isDirectory()
-    } catch {
-      continue
+    let dir = d.isDirectory()
+    // A link counts as what it points to; one that points nowhere is left out.
+    if (d.isSymbolicLink()) {
+      const target = statSync(path.join(workspace, child), { throwIfNoEntry: false })
+      if (!target) continue
+      dir = target.isDirectory()
     }
     entries.push({ name, rel: child, dir, ignored: false })
   }
-  const ignored = gitIgnored(workspace, entries)
-  for (const e of entries) e.ignored = ignored.has(e.rel)
   return entries.sort((a, b) => (a.dir === b.dir ? byName.compare(a.name, b.name) : a.dir ? -1 : 1))
 }
 
-/** Which of these git ignores. Outside a repo, or without git, nothing is. */
-function gitIgnored(workspace: string, entries: TreeEntry[]): Set<string> {
-  if (!entries.length) return new Set()
-  try {
-    const out = Bun.spawnSync(['git', ...SAFE, '-C', workspace, 'check-ignore', '--stdin'], {
-      stdin: Buffer.from(entries.map((e) => (e.dir ? `${e.rel}/` : e.rel)).join('\n') + '\n'),
-      stdout: 'pipe',
-      stderr: 'ignore',
-    })
-    return new Set(out.stdout.toString().split('\n').filter(Boolean).map((l) => l.replace(/\/$/, '')))
-  } catch {
-    return new Set()
-  }
+// Which entries git ignores. Outside a repo, or without git, nothing is.
+const ignoreCommand = (workspace: string) => ['git', ...SAFE, '-C', workspace, 'check-ignore', '--stdin']
+const ignoreInput = (entries: TreeEntry[]) => Buffer.from(entries.map((e) => (e.dir ? `${e.rel}/` : e.rel)).join('\n') + '\n')
+const ignoredFrom = (out: string) => new Set(out.split('\n').filter(Boolean).map((l) => l.replace(/\/$/, '')))
+function markIgnored(entries: TreeEntry[], ignored: Set<string>) {
+  for (const e of entries) e.ignored = ignored.has(e.rel)
 }
 
 /** The folders a file sits in, outermost first: `a/b/c.ts` → `a`, `a/b`. */

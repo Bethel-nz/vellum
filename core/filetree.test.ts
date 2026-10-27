@@ -35,6 +35,26 @@ test('what git ignores is marked', () => {
   expect(ignored).toEqual(['node_modules', 'run.log'])
 })
 
+test('a folder is read again only when what it lists can have changed', () => {
+  const dir = folder()
+  Bun.spawnSync(['git', 'init', '-q', dir])
+  const first = listDir(dir, 'src')
+  // Nothing changed: the same listing, from memory.
+  expect(listDir(dir, 'src')).toBe(first)
+  // Editing a file's contents doesn't change the folder's list.
+  writeFileSync(path.join(dir, 'src/x.ts'), 'edited')
+  expect(listDir(dir, 'src')).toBe(first)
+  // A new file does.
+  writeFileSync(path.join(dir, 'src/y.log'), '')
+  expect(listDir(dir, 'src').map((e) => e.name)).toEqual(['x.ts', 'y.log'])
+  // So does a new ignore rule, though the folder itself didn't change.
+  writeFileSync(path.join(dir, '.gitignore'), '*.log\n')
+  expect(listDir(dir, 'src').find((e) => e.name === 'y.log')?.ignored).toBe(true)
+  // A folder that's gone lists empty.
+  Bun.spawnSync(['rm', '-rf', path.join(dir, 'src')])
+  expect(listDir(dir, 'src')).toEqual([])
+})
+
 test('ancestors', () => {
   expect(ancestors('a/b/c.ts')).toEqual(['a', 'a/b'])
   expect(ancestors('c.ts')).toEqual([])

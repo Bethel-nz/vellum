@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { commentTags, hunkRows, hunkTags, noteFor, noteLabel, splitHunks } from './changes'
+import { chunkHunk, commentTags, hunkRows, hunkTags, noteFor, noteLabel, splitHunks } from './changes'
 import { promptFor, tagText } from './tags'
 
 const patch = '@@ -1,3 +1,4 @@\n export function concentric(parentRadius: number, inset: number) {\n-  return parentRadius - inset\n+  // Nested rounding shares one centre.\n+  return Math.max(0, parentRadius - inset)\n }\n'
@@ -40,4 +40,15 @@ test('a comment on a hunk you did not pick goes alone: its line, its code and wh
   expect(prompt).toContain('My comments on ui/theme.ts:\n- new line 3 `return Math.max(0, parentRadius - inset)`: why zero?')
   expect(prompt).not.toContain('```diff')
   expect(commentTags([h!], {})).toEqual([])
+})
+
+test('a long hunk splits into chunks that number their lines as the whole does', () => {
+  const body = [' a', '-b', '+B', ' c', '-d', '-e', '+E', ' f', '+g']
+  const patch = ['@@ -10,7 +20,7 @@ fn', ...body].join('\n')
+  const whole = hunkRows(patch)
+  const chunks = chunkHunk(patch, 4)
+  expect(chunks.map((c) => [c.from, c.rows])).toEqual([[0, 4], [4, 4], [8, 1]])
+  // Each chunk's rows are the whole's rows from `from` on: same kinds, same numbers.
+  expect(chunks.flatMap((c) => hunkRows(c.patch))).toEqual(whole)
+  expect(chunkHunk(patch, 50)).toEqual([{ patch, from: 0, rows: 9 }])
 })
