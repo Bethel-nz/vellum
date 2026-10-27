@@ -135,3 +135,10 @@ the navigation buttons; it keeps the existing threshold and viewport bounds. Poi
 cancellation or capture loss ends the gesture. Dragging the header in a local component
 fixture moved the panel from (316, 166) to (501, 211); clicking parent navigation then
 incremented its callback without changing the position. No browser errors were recorded.
+
+Drag positioning now lives in a ref and directly reuses the placement routine on
+pointer movement. It does not commit React state per move, which previously caused
+the comment field and buttons to animate their global positions after the panel moved.
+Frame sampling reproduced roughly 78px of relative drift before the change, then 0px
+for forward and reverse dragging after it. No browser console errors were recorded.
+The existing child scale correction and comment resizing springs remain in place.

@@ -74,7 +74,8 @@ export function CapturePanel(props: CapturePanelProps) {
     const timer = setTimeout(() => setCopyState('idle'), 1800)
     return () => clearTimeout(timer)
   }, [copyState])
-  const [dragPosition, setDragPosition] = useState<{ ref: string; x: number; y: number } | null>(null)
+  const dragPosition = useRef<{ ref: string; x: number; y: number } | null>(null)
+  const placeComposer = useRef<() => void>(() => {})
   const dragOffset = useRef<{ pointerId: number; x: number; y: number; startX: number; startY: number; moved: boolean } | null>(null)
   const reduced = useReducedMotion()
   const panelTransition: Transition = { duration: reduced ? .12 : .2, ease: [...motionTokens.ease.enter] }
@@ -151,8 +152,8 @@ export function CapturePanel(props: CapturePanelProps) {
       const anchor = props.getAnchor()
       if (!anchor) return
       const width = node.getBoundingClientRect().width
-      const x = Math.max(12, Math.min(innerWidth - width - 12, dragPosition?.ref === active.ref ? dragPosition.x : anchor.x + 16))
-      const y = Math.max(76, Math.min(innerHeight - 360, dragPosition?.ref === active.ref ? dragPosition.y : anchor.y + 16))
+      const x = Math.max(12, Math.min(innerWidth - width - 12, dragPosition.current?.ref === active.ref ? dragPosition.current.x : anchor.x + 16))
+      const y = Math.max(76, Math.min(innerHeight - 360, dragPosition.current?.ref === active.ref ? dragPosition.current.y : anchor.y + 16))
       const rowHeight = node.querySelector('.vellum-comment-row')?.getBoundingClientRect().height ?? 48
       const next = [x, y, innerHeight, rowHeight].join(',')
       if (next === geometry) return
@@ -161,6 +162,7 @@ export function CapturePanel(props: CapturePanelProps) {
       node.style.setProperty('--vellum-editor-room', `${Math.max(100, innerHeight - y - 12)}px`)
       node.style.setProperty('--vellum-comment-height', `${rowHeight}px`)
     }
+    placeComposer.current = place
     place()
     const observer = new ResizeObserver(place)
     const row = node.querySelector('.vellum-comment-row')
@@ -168,8 +170,8 @@ export function CapturePanel(props: CapturePanelProps) {
     const resize = () => place()
     window.addEventListener('scroll', resize, true)
     window.addEventListener('resize', resize)
-    return () => { observer.disconnect(); window.removeEventListener('scroll', resize, true); window.removeEventListener('resize', resize) }
-  }, [active?.ref, active?.selector, props.picking, props.recording, dragPosition?.ref, dragPosition?.x, dragPosition?.y])
+    return () => { placeComposer.current = () => {}; observer.disconnect(); window.removeEventListener('scroll', resize, true); window.removeEventListener('resize', resize) }
+  }, [active?.ref, active?.selector, props.picking, props.recording])
   const closeEditor = () => { props.onActivate(null); toolbar.current?.querySelector<HTMLButtonElement>('button')?.focus() }
   const label = props.capturing ? props.message || 'Sending…' : props.recording ? props.message : props.error ? props.message : count ? `Annotating · ${count}` : props.picking ? 'Pick an element' : 'Annotating'
   return <AnimatePresence>{props.open ? <div className="vellum-snapshot" onKeyDown={(event) => {
@@ -233,7 +235,9 @@ export function CapturePanel(props: CapturePanelProps) {
       if (!offset.moved && Math.hypot(event.clientX - offset.startX, event.clientY - offset.startY) < 4) return
       offset.moved = true
       event.preventDefault()
-      setDragPosition({ ref: active.ref, x: event.clientX - offset.x, y: event.clientY - offset.y })
+      // Move the whole surface without a React commit triggering child layout springs.
+      dragPosition.current = { ref: active.ref, x: event.clientX - offset.x, y: event.clientY - offset.y }
+      placeComposer.current()
     }} onPointerUp={() => { dragOffset.current = null }} onPointerCancel={() => { dragOffset.current = null }} onLostPointerCapture={() => { dragOffset.current = null }}><span title={active.selector}>{active.label}</span>{([['parent', IconArrowUp], ['child', IconArrowDown], ['previous', IconArrowLeft], ['next', IconArrowRight]] as const).map(([direction, Icon]) => <button type="button" className="vellum-tool-button" key={direction} aria-label={`Select ${direction} element`} title={`Select ${direction} element`} disabled={props.capturing} onClick={() => props.onNavigate(direction)}><Icon size={15} /></button>)}</nav>
           <div className="vellum-inspector-scroll"><CaptureDials key={`${active.ref}:${active.selector}:${props.playback.scrubDuration}`} {...props} selection={active} /></div>
           <div className="vellum-inspector-footer"><button type="button" className="vellum-text-button" disabled={!active.changes || props.capturing} onClick={props.onReset}>Reset</button><span>{active.changes ? `${active.changes} changes` : ''}</span><button type="button" className="vellum-tool-button" aria-label="Capture selected element" title="Capture selected element" disabled={props.capturing} onClick={props.onCapture}><IconCamera1 size={17} /></button></div>
