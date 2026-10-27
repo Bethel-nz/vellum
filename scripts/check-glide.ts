@@ -4,13 +4,12 @@
 // during the glide stops it there. Under reduced motion it's a jump.
 //   bun scripts/check-glide.ts
 //   MOTION=reduce bun scripts/check-glide.ts
-import { mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
+import { scratchDir } from './scratch'
 
 const mode = process.env.MOTION === 'reduce' ? 'reduce' : 'full'
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-glide-'))
+const home = await scratchDir('vellum-glide-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 
 const id = '20261024-glide1'
@@ -21,8 +20,8 @@ for (let i = 0; i < 8; i++) {
   lines.push({ type: 'acp/update', update: { sessionUpdate: 'agent_message_chunk', messageId: `m${i}`, content: { type: 'text', text: reply } } })
   lines.push({ type: 'acp/end', stopReason: 'end_turn' })
 }
-writeFileSync(path.join(home, 'threads', `${id}.jsonl`), lines.map((l) => JSON.stringify(l)).join('\n') + '\n')
-writeFileSync(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: id, motion: mode }))
+await Bun.write(path.join(home, 'threads', `${id}.jsonl`), lines.map((l) => JSON.stringify(l)).join('\n') + '\n')
+await Bun.write(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: id, motion: mode }))
 
 const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } })
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))

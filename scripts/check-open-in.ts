@@ -3,21 +3,20 @@
 // it, and the button then opens there in one click. With a file open, an editor gets the file and
 // Finder shows it. Nothing is really opened: VELLUM_OPEN_LOG records what would be.
 //   bun scripts/check-open-in.ts
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
 import { openTargets } from '../core/openin'
+import { scratchDir } from './scratch'
 
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-open-in-'))
+const home = await scratchDir('vellum-open-in-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home } }).exited
 const log = path.join(home, 'open.log')
-writeFileSync(log, '')
+await Bun.write(log, '')
 const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home'), VELLUM_OPEN_LOG: log } })
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const shot = (n: string) => app.screenshot({ path: 'screenshots/open-in-' + n + '.png' })
-const opened = () => readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
-const settings = () => JSON.parse(readFileSync(path.join(home, 'settings.json'), 'utf8'))
+const opened = async () => (await Bun.file(log).text()).trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
+const settings = async () => JSON.parse(await Bun.file(path.join(home, 'settings.json')).text())
 const workspace = path.resolve(import.meta.dir, '..')
 let failed = 0
 const expect = (label: string, ok: boolean, detail = '') => {
@@ -41,7 +40,7 @@ try {
   const gets = (t: (typeof targets)[number], o?: { dir?: string; reveal?: string }) => (t.kind === 'files' ? o?.reveal === changed : o?.dir === (t.kind === 'editor' ? changed : workspace))
   await app.getByTestId('open-in').click()
   await wait(400)
-  expect(`one click opens it in the first app, ${targets[0]!.name}`, (targets[0]!.kind === 'files' || opened().at(-1)?.target === targets[0]!.id) && gets(targets[0]!, opened().at(-1)), JSON.stringify(opened().at(-1)))
+  expect(`one click opens it in the first app, ${targets[0]!.name}`, (targets[0]!.kind === 'files' || (await opened()).at(-1)?.target === targets[0]!.id) && gets(targets[0]!, (await opened()).at(-1)), JSON.stringify((await opened()).at(-1)))
 
   await app.getByTestId('open-in-menu-button').click()
   await app.getByTestId('open-in-menu').waitFor({ timeoutMs: 5_000 })
@@ -52,11 +51,11 @@ try {
   if (other) {
     await app.getByTestId(`open-in-${other.id}`).click()
     await wait(500)
-    expect(`picking ${other.name} opens the folder there`, opened().at(-1)?.target === other.id && Array.isArray(opened().at(-1)?.argv))
-    expect('…and remembers it', settings().openIn === other.id)
+    expect(`picking ${other.name} opens the folder there`, (await opened()).at(-1)?.target === other.id && Array.isArray((await opened()).at(-1)?.argv))
+    expect('…and remembers it', (await settings()).openIn === other.id)
     await app.getByTestId('open-in').click()
     await wait(400)
-    expect('the button now opens there in one click', opened().at(-1)?.target === other.id && opened().length === 3, String(opened().length))
+    expect('the button now opens there in one click', (await opened()).at(-1)?.target === other.id && (await opened()).length === 3, String((await opened()).length))
   }
   await app.getByTestId('file-tree-row-NOTES.md').click()
   await wait(600)
@@ -67,7 +66,7 @@ try {
     await wait(500)
     await app.getByTestId(`open-in-${editor.id}`).click()
     await wait(400)
-    expect(`with a file open, ${editor.name} gets the file`, opened().at(-1)?.dir === path.join(workspace, 'NOTES.md'), JSON.stringify(opened().at(-1)))
+    expect(`with a file open, ${editor.name} gets the file`, (await opened()).at(-1)?.dir === path.join(workspace, 'NOTES.md'), JSON.stringify((await opened()).at(-1)))
   }
   const finder = targets.find((t) => t.kind === 'files')
   if (finder) {
@@ -76,7 +75,7 @@ try {
     await wait(500)
     await app.getByTestId(`open-in-${finder.id}`).click()
     await wait(400)
-    expect(`…and ${finder.name} shows it`, opened().at(-1)?.reveal === path.join(workspace, 'NOTES.md'), JSON.stringify(opened().at(-1)))
+    expect(`…and ${finder.name} shows it`, (await opened()).at(-1)?.reveal === path.join(workspace, 'NOTES.md'), JSON.stringify((await opened()).at(-1)))
   }
 } finally {
   await app.close()

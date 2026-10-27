@@ -7,12 +7,11 @@
 // count is printed, not asserted.
 //   bun scripts/check-timeline.ts
 //   MOTION=reduce bun scripts/check-timeline.ts
-import { existsSync, readFileSync, writeFileSync, mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
+import { present, scratchDir } from './scratch'
 
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-timeline-'))
+const home = await scratchDir('vellum-timeline-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 
 const id = '20261024-time01'
@@ -35,12 +34,12 @@ asks.forEach((text, i) => {
   lines.push({ type: 'acp/end', stopReason: 'end_turn' })
 })
 const file = path.join(home, 'threads', `${id}.jsonl`)
-writeFileSync(file, lines.map((l) => JSON.stringify(l)).join('\n') + '\n')
-writeFileSync(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: id }))
+await Bun.write(file, lines.map((l) => JSON.stringify(l)).join('\n') + '\n')
+await Bun.write(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: id }))
 
 const mode = process.env.MOTION === 'reduce' ? 'reduce' : 'full'
 const settingsFile = path.join(home, 'settings.json')
-writeFileSync(settingsFile, JSON.stringify({ ...(existsSync(settingsFile) ? JSON.parse(readFileSync(settingsFile, 'utf8')) : {}), motion: mode }))
+await Bun.write(settingsFile, JSON.stringify({ ...(await present(settingsFile) ? JSON.parse(await Bun.file(settingsFile).text()) : {}), motion: mode }))
 const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } })
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const shot = (n: string) => app.screenshot({ path: 'screenshots/timeline-' + n + '.png' })
@@ -145,7 +144,7 @@ try {
   // No element: the keys go wherever the caret is.
   await app.call('keystrokes', { keys: 'cmd-down space z z' })
   await wait(1500)
-  const edits = readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.type === 'vellum/edit')
+  const edits = (await Bun.file(file).text()).split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.type === 'vellum/edit')
   expect('…and puts the caret in it, so typing edits that paragraph', edits.some((e) => e.blockId === blockIds[4] && e.text.endsWith(' zz')), JSON.stringify(edits.map((e) => [e.blockId, e.text])))
   await shot('3-editing')
 } finally {

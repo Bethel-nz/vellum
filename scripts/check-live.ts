@@ -3,21 +3,19 @@
 // Turn 1 streams a reply, writes a file (edit block) and runs a command (shell block).
 // Then the app is restarted, the first paragraph is edited in place, and turn 2 must
 // resume the same Claude session and answer from the edited text. Any permission card is allowed.
-import { mkdirSync, mkdtempSync, writeFileSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
+import { scratchDir } from './scratch'
 
-const root = mkdtempSync(path.join(tmpdir(), 'vellum-live-'))
+const root = await scratchDir('vellum-live-')
 const home = path.join(root, 'home')
 const ws = path.join(root, 'workspace')
-mkdirSync(path.join(home, 'threads'), { recursive: true })
-mkdirSync(ws, { recursive: true })
-writeFileSync(path.join(ws, 'README.md'), '# scratch\n')
+await Bun.$`mkdir -p ${path.join(home, 'threads')}`.quiet()
+await Bun.write(path.join(ws, 'README.md'), '# scratch\n')
 const id = 'live-check'
 const meta = { id, title: 'Untitled', profileId: 'main', workspace: ws, createdAt: new Date().toISOString() }
-writeFileSync(path.join(home, 'threads', `${id}.jsonl`), JSON.stringify({ type: 'vellum/meta', meta }) + '\n')
-writeFileSync(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: id }))
+await Bun.write(path.join(home, 'threads', `${id}.jsonl`), JSON.stringify({ type: 'vellum/meta', meta }) + '\n')
+await Bun.write(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: id }))
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 type App = Awaited<ReturnType<typeof launch>>
@@ -30,9 +28,9 @@ async function turn(text: string, shot: string, before?: (app: App) => Promise<v
     await composer.click()
     await composer.fill(text)
     await composer.press('cmd-enter')
-    await app.getByText('Working…').waitFor({ timeoutMs: 20_000 })
+    await app.getByText('Thinking…').waitFor({ timeoutMs: 20_000 })
     const started = Date.now()
-    while ((await app.getByText('Working…').count()) > 0 && Date.now() - started < 180_000) {
+    while ((await app.getByText('Thinking…').count()) > 0 && Date.now() - started < 180_000) {
       if ((await app.getByTestId('approval-allow').count()) === 1) await app.getByTestId('approval-allow').click()
       await wait(1000)
     }
@@ -61,7 +59,7 @@ await turn('What is my favourite colour, and which file did you create? Answer i
   await wait(600)
 })
 
-const lines = readFileSync(path.join(home, 'threads', `${id}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l))
+const lines = (await Bun.file(path.join(home, 'threads', `${id}.jsonl`)).text()).trim().split('\n').map((l) => JSON.parse(l))
 const sessions = [...new Set(lines.filter((l) => l.type === 'acp/session').map((l) => l.sessionId))]
 const ends = lines.filter((l) => l.type === 'acp/end').map((l) => l.stopReason)
 const errors = lines.filter((l) => l.type === 'vellum/error').map((l) => l.text)
@@ -76,10 +74,10 @@ const expect = (label: string, ok: boolean, detail = '') => {
 expect('one session across the restart', sessions.length === 1, sessions.join(', '))
 expect('both turns ended normally', ends.length === 2 && ends.every((e) => e === 'end_turn'), ends.join(', '))
 expect('no errors', errors.length === 0, errors.join(' | '))
-expect('notes.txt holds hello', readFileSync(path.join(ws, 'notes.txt'), 'utf8').trim() === 'hello')
+expect('notes.txt holds hello', (await Bun.file(path.join(ws, 'notes.txt')).text()).trim() === 'hello')
 expect('the edit reached Claude', lines.some((l) => l.type === 'vellum/edit') && lines.some((l) => l.type === 'vellum/synced'))
 expect('the answer uses the edited paragraph', /green/i.test(reply) && !/blue/i.test(reply), reply)
-expect('the readable copy is written', readFileSync(path.join(home, 'threads', `${id}.md`), 'utf8').includes('notes.txt'))
+expect('the readable copy is written', (await Bun.file(path.join(home, 'threads', `${id}.md`)).text()).includes('notes.txt'))
 console.log('home', home)
 console.log(failed ? `${failed} failed` : 'all passed')
 process.exit(failed ? 1 : 0)

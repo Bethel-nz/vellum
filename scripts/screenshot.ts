@@ -4,14 +4,13 @@
 //
 // Uses a scratch VELLUM_HOME, so ~/.vellum is never touched.
 
-import { mkdirSync, mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
+import { scratchDir } from './scratch'
 
 const out = process.argv[2] ?? 'screenshots'
-mkdirSync(out, { recursive: true })
-const home = process.env.VELLUM_HOME ?? mkdtempSync(path.join(tmpdir(), 'vellum-'))
+await Bun.$`mkdir -p ${out}`.quiet()
+const home = process.env.VELLUM_HOME ?? await scratchDir('vellum-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home'), MATERIAL: process.env.MATERIAL ?? 'dark' }, stdout: 'inherit' }).exited
 
 const app = await launch({
@@ -47,9 +46,9 @@ await shot('04-tag-popup')
 await app.getByTestId('composer').press('escape')
 await app.getByTestId('composer').fill('')
 
-await app.getByTestId('open-switcher').click()
-await shot('05-switcher')
-await app.getByTestId('switcher-input').press('escape')
+await app.getByTestId('open-history').click()
+await shot('05-library')
+await app.getByTestId('history-input').press('escape')
 
 await app.getByTestId('composer').press('cmd-n')
 await shot('06-new-thread')

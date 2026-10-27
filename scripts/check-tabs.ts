@@ -3,12 +3,11 @@
 // The strip's state is read from where the page starts (it moves up by the strip's height).
 // ⌘Y opens History from the left; picking a note there opens it in a tab.
 //   bun scripts/check-tabs.ts
-import { mkdtempSync, readdirSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
+import { names, scratchDir } from './scratch'
 
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-tabs-'))
+const home = await scratchDir('vellum-tabs-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } })
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -66,7 +65,7 @@ try {
   await wait(500)
   expect('⌃⇥ goes to the next tab', (await current()) === second)
   const threads = path.join(home, 'threads')
-  const modes = readdirSync(threads).filter((f) => f.endsWith('.jsonl')).flatMap((f) => readFileSync(path.join(threads, f), 'utf8').split('\n')).filter((l) => l.includes('"vellum/mode"'))
+  const modes = (await Promise.all(names(threads, '*.jsonl').map((f) => Bun.file(path.join(threads, f)).text()))).flatMap((t) => t.split('\n')).filter((l) => l.includes('"vellum/mode"'))
   expect('…and the composer’s mode stays (⇧⇥ alone cycles it)', modes.length === 0, `${modes.length} mode records`)
   await c.press('ctrl-left')
   await wait(500)
@@ -117,7 +116,7 @@ try {
   // auto: writing tucks the strip away, the top edge brings it back
   await c.press('cmd-,')
   // Tabs sits below the fold: jump to it first.
-  await app.getByTestId('settings-go-tabs').click()
+  await app.getByTestId('settings-go-appearance').click()
   await wait(400)
   await app.getByTestId('set-tabs-auto').click()
   await wait(300)

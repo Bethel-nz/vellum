@@ -1,13 +1,12 @@
 // Self-check for the note's column growing with the window: 720 in the default window, wider in a
 // wide one, and never past 960. Measures the composer, which spans the column less its padding.
 //   bun scripts/check-width.ts
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
 import { readingWidthFor } from '../ui/theme'
+import { scratchDir } from './scratch'
 
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-width-'))
+const home = await scratchDir('vellum-width-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 
 let failed = 0

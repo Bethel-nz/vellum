@@ -11,12 +11,11 @@
 // one the note changed last.
 // Shots: screenshots/preview-*.png.
 //   bun scripts/check-preview.ts
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
+import { present, remove, scratchDir } from './scratch'
 
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-preview-'))
+const home = await scratchDir('vellum-preview-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 const id = '20261024-prev01'
 const workspace = path.resolve(import.meta.dir, '..')
@@ -35,11 +34,11 @@ const lines = [
   { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'The file has been updated.' }] } },
   { type: 'result', subtype: 'success', result: 'Done.' },
 ]
-writeFileSync(path.join(home, 'threads', `${id}.jsonl`), lines.map((l) => JSON.stringify(l)).join('\n') + '\n')
-writeFileSync(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: id }))
+await Bun.write(path.join(home, 'threads', `${id}.jsonl`), lines.map((l) => JSON.stringify(l)).join('\n') + '\n')
+await Bun.write(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: id }))
 
 const opened = path.join(home, 'opened.log')
-writeFileSync(opened, '')
+await Bun.write(opened, '')
 let failed = 0
 const expect = (label: string, ok: boolean, detail = '') => {
   if (!ok) failed++
@@ -88,16 +87,16 @@ async function run(size: string, wide: boolean) {
     await app.getByTestId('file-preview-mention').click()
     await wait(500)
     // drafts.json is written a moment after the draft changes: wait for what's expected.
-    const saved = () => {
-      try { return JSON.parse(readFileSync(path.join(home, 'drafts.json'), 'utf8'))[id] ?? {} } catch { return {} }
+    const saved = async () => {
+      try { return JSON.parse(await Bun.file(path.join(home, 'drafts.json')).text())[id] ?? {} } catch { return {} }
     }
-    const draftText = () => (saved().text ?? '') as string
-    const draftTags = () => (saved().tags ?? []) as { value: string; endLine?: number }[]
+    const draftText = async () => ((await saved()).text ?? '') as string
+    const draftTags = async () => ((await saved()).tags ?? []) as { value: string; endLine?: number }[]
     const draft = async (want: string) => {
-      for (let i = 0; i < 30 && !draftText().includes(want); i++) await wait(100)
-      return draftText()
+      for (let i = 0; i < 30 && !(await draftText()).includes(want); i++) await wait(100)
+      return (await draftText())
     }
-    expect('"Add to note" puts the lines on the draft, by the file’s name', (await draft('#printed.ts:20-24')).includes('#printed.ts:20-24') && draftTags().some((t) => t.value === 'core/printed.ts' && t.endLine === 24), draftText())
+    expect('"Add to note" puts the lines on the draft, by the file’s name', (await draft('#printed.ts:20-24')).includes('#printed.ts:20-24') && (await draftTags()).some((t) => t.value === 'core/printed.ts' && t.endLine === 24), (await draftText()))
     expect('…and clears the pick', (await count('file-preview-mention-bar')) === 0)
     await shot('5-mentioned')
 
@@ -113,7 +112,7 @@ async function run(size: string, wide: boolean) {
     await wait(300)
     await app.getByTestId('file-preview').press('enter')
     await wait(500)
-    expect('↵ adds one line', (await draft('#printed.ts:21 ')).includes('#printed.ts:21 '), draftText())
+    expect('↵ adds one line', (await draft('#printed.ts:21 ')).includes('#printed.ts:21 '), (await draftText()))
 
     expect('the pane is a card of its own, apart from the note’s', pane.x - (page.x + page.width) >= 3, `gap ${Math.round(pane.x - page.x - page.width)}`)
     // Crumbs can come back with zero-width breaks between them.
@@ -131,7 +130,7 @@ async function run(size: string, wide: boolean) {
     await wait(500)
     await app.getByTestId('open-in-finder').click()
     await wait(300)
-    expect('Open › Finder shows that file', readFileSync(opened, 'utf8').includes('"reveal"') && readFileSync(opened, 'utf8').includes('core/printed.ts'))
+    expect('Open › Finder shows that file', (await Bun.file(opened).text()).includes('"reveal"') && (await Bun.file(opened).text()).includes('core/printed.ts'))
 
     await app.getByTestId('file-preview').press('shift-cmd-e')
     await wait(700)
@@ -175,7 +174,7 @@ async function run(size: string, wide: boolean) {
     let drafted: { tags?: { value: string }[] } | undefined
     for (let i = 0; i < 20 && !drafted?.tags?.some((t) => t.value === 'core/tags.ts'); i++) {
       await wait(150)
-      drafted = JSON.parse(readFileSync(path.join(home, 'drafts.json'), 'utf8'))[id]
+      drafted = JSON.parse(await Bun.file(path.join(home, 'drafts.json')).text())[id]
     }
     expect('Add to note puts the file in the draft', drafted?.tags?.some((t: { value: string }) => t.value === 'core/tags.ts') ?? false, JSON.stringify(drafted?.tags))
     await app.getByTestId('file-tree-search').click()
@@ -189,8 +188,8 @@ async function run(size: string, wide: boolean) {
     await app.getByTestId('file-tree-name').fill('scratch-renamed.ts')
     await app.getByTestId('file-tree-name').press('enter')
     await wait(700)
-    expect('Rename renames it in place', existsSync(path.join(workspace, 'core/scratch-renamed.ts')) && !existsSync(path.join(workspace, 'core/scratch-git.ts')) && (await count('file-tree-row-core/scratch-renamed.ts')) === 1)
-    rmSync(path.join(workspace, 'core/scratch-renamed.ts'), { force: true })
+    expect('Rename renames it in place', await present(path.join(workspace, 'core/scratch-renamed.ts')) && !await present(path.join(workspace, 'core/scratch-git.ts')) && (await count('file-tree-row-core/scratch-renamed.ts')) === 1)
+    await remove(path.join(workspace, 'core/scratch-renamed.ts'))
 
     // The pane's edge and the tree's drag; the pane stops where the note would get too narrow,
     // the tree at its widest.
@@ -209,7 +208,7 @@ async function run(size: string, wide: boolean) {
     await wait(500)
     const tree1 = await app.getByTestId('file-tree').bounds()
     expect('dragging the tree’s edge widens it, up to its widest', tree1.width > tree0.width + 40 && Math.round(tree1.width) <= 360, `${Math.round(tree0.width)} → ${Math.round(tree1.width)}`)
-    const sizes = JSON.parse(readFileSync(path.join(home, 'settings.json'), 'utf8'))
+    const sizes = JSON.parse(await Bun.file(path.join(home, 'settings.json')).text())
     expect('…and both sizes are kept', typeof sizes.previewWidth === 'number' && sizes.fileTreeWidth === Math.round(tree1.width), JSON.stringify({ previewWidth: sizes.previewWidth, fileTreeWidth: sizes.fileTreeWidth }))
     await shot('15-resized')
     await app.getByTestId('file-tree-new-file').click()
@@ -217,8 +216,8 @@ async function run(size: string, wide: boolean) {
     await app.getByTestId('file-tree-name').fill('scratch-note.md')
     await app.getByTestId('file-tree-name').press('enter')
     await wait(700)
-    expect('New file makes it in the open file’s folder, and opens it', existsSync(path.join(workspace, 'core/scratch-note.md')) && (await app.getByTestId('file-preview-name').textContent()) === 'scratch-note.md')
-    rmSync(path.join(workspace, 'core/scratch-note.md'), { force: true })
+    expect('New file makes it in the open file’s folder, and opens it', await present(path.join(workspace, 'core/scratch-note.md')) && (await app.getByTestId('file-preview-name').textContent()) === 'scratch-note.md')
+    await remove(path.join(workspace, 'core/scratch-note.md'))
     await app.getByTestId('file-tree-new-folder').click()
     await wait(400)
     await app.getByTestId('file-tree-name').fill('printed.ts')
@@ -255,7 +254,7 @@ async function run(size: string, wide: boolean) {
     await wait(700)
     await app.getByTestId('file-tree-row-app.tsx').click()
     await wait(800)
-    const total = Math.ceil(readFileSync(path.join(workspace, 'app.tsx'), 'utf8').split('\n').length / 100)
+    const total = Math.ceil((await Bun.file(path.join(workspace, 'app.tsx')).text()).split('\n').length / 100)
     const mounted = (await Promise.all(Array.from({ length: total }, (_, i) => count(i ? `file-preview-gutter-${i}` : 'file-preview-gutter')))).filter(Boolean).length
     expect('a long file mounts only the blocks near the top', mounted >= 1 && mounted < total, `${mounted} of ${total}`)
     await app.getByTestId('file-tree-query').press('escape')
@@ -312,14 +311,14 @@ async function firstUserBlock(app: Awaited<ReturnType<typeof launch>>) {
 }
 
 // A file git doesn't track, for the tree's marks.
-writeFileSync(path.join(workspace, 'core/scratch-git.ts'), '')
+await Bun.write(path.join(workspace, 'core/scratch-git.ts'), '')
 try {
   await run('1280x800', true)
   // The narrow run starts from the pane's own sizes, not the ones dragged above.
-  writeFileSync(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: id, fileTree: false }))
+  await Bun.write(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: id, fileTree: false }))
   await run('900x700', false)
 } finally {
-  for (const f of ['core/scratch-git.ts', 'core/scratch-renamed.ts']) rmSync(path.join(workspace, f), { force: true })
+  for (const f of ['core/scratch-git.ts', 'core/scratch-renamed.ts']) await remove(path.join(workspace, f))
 }
 console.log(failed ? `${failed} failed` : 'all passed')
 process.exit(failed ? 1 : 0)

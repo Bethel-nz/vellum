@@ -3,21 +3,17 @@
 //
 //   VELLUM_HOME=/tmp/vellum-demo bun scripts/fixture.ts
 
-import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { createTwoFilesPatch } from 'diff'
 
 const home = process.env.VELLUM_HOME
 if (!home) throw new Error('set VELLUM_HOME to a scratch folder')
 const workspace = path.resolve(import.meta.dir, '..')
-mkdirSync(path.join(home, 'threads'), { recursive: true })
-writeFileSync(
-  path.join(home, 'profiles.json'),
-  JSON.stringify([
+await Bun.$`mkdir -p ${path.join(home, 'threads')}`.quiet()
+await Bun.write(path.join(home, 'profiles.json'), JSON.stringify([
     { id: 'main', name: 'Default', color: '#1447e6', configDir: null, workspaces: [workspace], loggedIn: true },
     { id: 'work', name: 'Work', color: '#c2453a', configDir: path.join(home, 'profiles/work/claude'), workspaces: [] },
-  ]),
-)
+  ]))
 
 const id = '20261023-demo01'
 const at = '2026-10-23T14:21:00.000Z'
@@ -67,17 +63,14 @@ const lines: unknown[] = [
   { type: 'vellum/user', text: 'Thanks — what changed in git?', tags: [], at: '2026-10-23T14:24:00.000Z' },
   { type: 'result', subtype: 'success', is_error: true, result: 'Not logged in · Please run /login' },
 ]
-writeFileSync(path.join(home, 'threads', `${id}.jsonl`), lines.map((l) => JSON.stringify(l)).join('\n') + '\n')
+await Bun.write(path.join(home, 'threads', `${id}.jsonl`), lines.map((l) => JSON.stringify(l)).join('\n') + '\n')
 
 const id2 = '20261022-demo02'
-writeFileSync(
-  path.join(home, 'threads', `${id2}.jsonl`),
-  [
+await Bun.write(path.join(home, 'threads', `${id2}.jsonl`), [
     { type: 'vellum/meta', meta: { id: id2, title: 'Sketch the glass tokens', profileId: 'work', workspace: '/Users/APPLE/dev/other', createdAt: '2026-10-22T10:00:00.000Z' } },
     { type: 'vellum/user', text: 'Sketch the glass tokens', tags: [], at: '2026-10-22T10:00:00.000Z' },
   ]
     .map((l) => JSON.stringify(l))
-    .join('\n') + '\n',
-)
-writeFileSync(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: id, ...(process.env.MATERIAL ? { material: process.env.MATERIAL } : {}) }))
+    .join('\n') + '\n')
+await Bun.write(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: id, ...(process.env.MATERIAL ? { material: process.env.MATERIAL } : {}) }))
 console.log('fixture written to', home)

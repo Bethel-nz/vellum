@@ -4,13 +4,12 @@
 // nothing: it answers `promptRequired`, so the caller sends a turn of its own. An agent that
 // doesn't advertise steering is `unavailable` and is never asked.
 //   bun scripts/check-steer.ts
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { scratchDir } from './scratch'
 
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-steer-'))
+const home = await scratchDir('vellum-steer-')
 const log = path.join(home, 'fake-acp.log')
-writeFileSync(log, '')
+await Bun.write(log, '')
 // Before the imports below: the store reads its home as it loads.
 Object.assign(process.env, { VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home'), VELLUM_AGENT: path.resolve(import.meta.dir, 'fake-acp.ts'), FAKE_ACP_LOG: log })
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: process.env }).exited
@@ -23,7 +22,7 @@ const expect = (label: string, ok: boolean, detail = '') => {
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}${detail ? ` (${detail})` : ''}`)
 }
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
-const sent = () => readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l).in).filter(Boolean)
+const sent = async () => (await Bun.file(log).text()).trim().split('\n').filter(Boolean).map((l) => JSON.parse(l).in).filter(Boolean)
 
 const profiles = loadProfiles()
 let reply = ''
@@ -51,16 +50,16 @@ try {
   await wait(300)
   const outcome = await runner.steer('use bun, not npm')
   expect('a steer during the turn is taken in', outcome === 'injected', outcome)
-  const steers = sent().filter((m) => m.method === '_session/steering')
+  const steers = (await sent()).filter((m) => m.method === '_session/steering')
   expect('…sent as _session/steering with idleBehavior promptRequired', steers.length === 1 && steers[0].params._meta?.steering?.idleBehavior === 'promptRequired' && steers[0].params.prompt?.[0]?.text === 'use bun, not npm', JSON.stringify(steers.map((s) => s.params)))
   while (!ended && Date.now() - start < 20_000) await wait(50)
   expect('the same turn answers it before it ends', ended === 1 && reply.includes('Steered: use bun, not npm'), reply.slice(-60))
-  expect('…and no second prompt went out', sent().filter((m) => m.method === 'session/prompt').length === 1)
+  expect('…and no second prompt went out', (await sent()).filter((m) => m.method === 'session/prompt').length === 1)
 
   // Idle: the turn is over.
   await wait(200)
   expect('after the turn there is nothing to steer', !runner.canSteer)
-  expect('steering while idle is unavailable and asks nothing', (await runner.steer('too late')) === 'unavailable' && sent().filter((m) => m.method === '_session/steering').length === 1)
+  expect('steering while idle is unavailable and asks nothing', (await runner.steer('too late')) === 'unavailable' && (await sent()).filter((m) => m.method === '_session/steering').length === 1)
 } finally {
   await runner.dispose()
 }

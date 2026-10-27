@@ -2,7 +2,6 @@
 // A placeholder until real artwork: Vellum's "V" in the accent on the dark pane, on the macOS
 // icon grid (an 824px rounded square centred on 1024, radius 185).
 //   bun scripts/icon.tsx
-import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { render, useGpuixRequired } from '@gpuix/react'
 import { useEffect } from 'react'
@@ -14,10 +13,12 @@ const BODY = 412
 const RADIUS = 92
 
 if (process.env.VELLUM_ICON_DRAW === '1') {
+  // Read before the first render, so the face is there when the effect registers it.
+  const geist = Buffer.from(await Bun.file(path.join(import.meta.dir, '..', 'assets', 'fonts', 'Geist-SemiBold.ttf')).arrayBuffer())
   function Icon() {
     const renderer = useGpuixRequired()
     useEffect(() => {
-      renderer.registerFont?.(readFileSync(path.join(import.meta.dir, '..', 'assets', 'fonts', 'Geist-SemiBold.ttf')))
+      renderer.registerFont?.(geist)
     }, [renderer])
     return (
       <div testId="icon" style={{ width: SIZE, height: SIZE, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

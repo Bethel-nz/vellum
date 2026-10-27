@@ -3,26 +3,25 @@
 // "Also changed" and in the Changes sheet with its hunk, and the repo's own index and objects
 // are left as they were.
 //   bun scripts/check-git.ts
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
+import { scratchDir } from './scratch'
 
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-git-'))
+const home = await scratchDir('vellum-git-')
 const repo = path.join(home, 'repo')
 const sh = (...argv: string[]) => Bun.spawnSync(argv, { cwd: repo }).stdout.toString()
-mkdirSync(repo)
+await Bun.$`mkdir -p ${repo}`.quiet()
 sh('git', 'init', '-q')
-writeFileSync(path.join(repo, 'README.md'), '# Demo\n')
+await Bun.write(path.join(repo, 'README.md'), '# Demo\n')
 sh('git', 'add', 'README.md')
 sh('git', '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'base')
 const before = { status: sh('git', 'status', '--porcelain'), objects: sh('git', 'count-objects', '-v') }
 
 const id = '20261024-git001'
-mkdirSync(path.join(home, 'threads'))
-writeFileSync(path.join(home, 'profiles.json'), JSON.stringify([{ id: 'main', name: 'Default', color: '#1447e6', configDir: null, workspaces: [repo], loggedIn: true }]))
-writeFileSync(path.join(home, 'threads', `${id}.jsonl`), JSON.stringify({ type: 'vellum/meta', meta: { id, title: 'Codegen', profileId: 'main', workspace: repo, createdAt: '2026-10-24T09:00:00.000Z' } }) + '\n')
-writeFileSync(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: id }))
+await Bun.$`mkdir -p ${path.join(home, 'threads')}`.quiet()
+await Bun.write(path.join(home, 'profiles.json'), JSON.stringify([{ id: 'main', name: 'Default', color: '#1447e6', configDir: null, workspaces: [repo], loggedIn: true }]))
+await Bun.write(path.join(home, 'threads', `${id}.jsonl`), JSON.stringify({ type: 'vellum/meta', meta: { id, title: 'Codegen', profileId: 'main', workspace: repo, createdAt: '2026-10-24T09:00:00.000Z' } }) + '\n')
+await Bun.write(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: id }))
 
 const app = await launch({
   command: 'bun',

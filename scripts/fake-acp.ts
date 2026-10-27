@@ -17,8 +17,8 @@
 // browser was still signed in to that account), else one made from the account's folder.
 //   VELLUM_AGENT=scripts/fake-acp.ts (scripts/check-approval.ts sets it)
 import { STREAMED } from './fake-stream'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { present, remove } from './scratch'
 
 if (process.argv.includes('--cli')) {
   const args = process.argv.slice(2).filter((a) => a !== '--cli')
@@ -26,8 +26,8 @@ if (process.argv.includes('--cli')) {
   const marker = path.join(dir, '.fake-login')
   log({ cli: args, dir })
   if (args[0] === 'auth' && args[1] === 'status') {
-    const loggedIn = existsSync(marker)
-    const email = loggedIn ? readFileSync(marker, 'utf8').trim() || `${path.basename(path.dirname(dir))}@example.com` : undefined
+    const loggedIn = await present(marker)
+    const email = loggedIn ? (await Bun.file(marker).text()).trim() || `${path.basename(path.dirname(dir))}@example.com` : undefined
     process.stdout.write(JSON.stringify(loggedIn ? { loggedIn, authMethod: 'claude.ai', apiProvider: 'firstParty', email, subscriptionType: 'max' } : { loggedIn, authMethod: 'none' }) + '\n')
     process.exit(loggedIn ? 0 : 1)
   }
@@ -36,27 +36,47 @@ if (process.argv.includes('--cli')) {
     await Bun.sleep(600)
     const next = process.env.FAKE_NEXT_LOGIN
     const given = args.includes('--email') ? args[args.indexOf('--email') + 1] : undefined
-    const email = given ?? (next && existsSync(next) ? readFileSync(next, 'utf8').trim() : undefined) ?? `${path.basename(path.dirname(dir))}@example.com`
-    if (next && !given) rmSync(next, { force: true })
-    mkdirSync(dir, { recursive: true })
-    writeFileSync(marker, email)
+    const email = given ?? (next && await present(next) ? (await Bun.file(next).text()).trim() : undefined) ?? `${path.basename(path.dirname(dir))}@example.com`
+    if (next && !given) await remove(next)
+    await Bun.write(marker, email)
     process.stdout.write('Login successful.\r\n')
     process.exit(0)
   }
   if (args[0] === 'auth' && args[1] === 'logout') {
-    rmSync(marker, { force: true })
+    await remove(marker)
     process.exit(0)
   }
   process.exit(2)
 }
 
+/**
+ * One line onto the check's log. Several fake agents can share it, and Bun's writes replace a file,
+ * so the shell's `>>` appends: in order, whole lines, whichever agent writes.
+ */
 function log(o: unknown) {
-  if (process.env.FAKE_ACP_LOG) appendFileSync(process.env.FAKE_ACP_LOG, JSON.stringify(o) + '\n')
+  if (process.env.FAKE_ACP_LOG) Bun.spawnSync(['/bin/sh', '-c', 'cat >> "$1"', 'sh', process.env.FAKE_ACP_LOG], { stdin: new TextEncoder().encode(JSON.stringify(o) + '\n') })
 }
 const out = (o: unknown) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...(o as object) }) + '\n')
 const update = (sessionId: string, u: unknown) => out({ method: 'session/update', params: { sessionId, update: u } })
 
-const config: any[] = [
+// FAKE_ACP_AS=codex or opencode: that agent's options and capabilities, as spikes/acp-agents.ts
+// recorded them, instead of Claude's.
+const as = process.env.FAKE_ACP_AS ?? 'claude'
+const select = (id: string, category: string, currentValue: string, values: string[]) => ({ id, name: id, category, type: 'select', currentValue, options: values.map((value) => ({ value, name: value })) })
+const looks: Record<string, any[]> = {
+  codex: [
+    select('mode', 'mode', 'agent', ['read-only', 'workspace-write', 'agent', 'agent-full-access']),
+    select('collaboration_mode', 'collaboration_mode', 'default', ['default', 'plan']),
+    select('model', 'model', 'gpt-6.1-sol', ['gpt-6.1-sol', 'gpt-6-luna']),
+    select('reasoning_effort', 'thought_level', 'high', ['low', 'medium', 'high', 'xhigh', 'max', 'ultra']),
+  ],
+  opencode: [
+    select('model', 'model', 'opencode/big-pickle', ['opencode/big-pickle']),
+    select('effort', 'thought_level', 'default', ['high', 'default']),
+    select('mode', 'mode', 'build', ['build', 'plan']),
+  ],
+}
+const config: any[] = looks[as] ?? [
   {
     // Starts in auto, as the real adapter does when ~/.claude's settings say so.
     id: 'mode', name: 'Mode', category: 'mode', type: 'select', currentValue: 'auto',
@@ -74,7 +94,8 @@ const config: any[] = [
     options: ['default', 'low', 'medium', 'high', 'max'].map((value) => ({ value, name: value })),
   },
 ]
-const resolved = () => (config[1].currentValue === 'haiku' ? 'claude-haiku-5-5' : 'claude-opus-5-5')
+// Only Claude's adapter reports the model it resolved to (`_claude/model`).
+const resolved = () => (as !== 'claude' ? undefined : config[1].currentValue === 'haiku' ? 'claude-haiku-5-5' : 'claude-opus-5-5')
 
 let seq = 0
 const waiting = new Map<number, (r: any) => void>()
@@ -95,6 +116,24 @@ let rejectedAt = 0
 
 async function prompt(sessionId: string, text: string) {
   turn++
+  // "leave plan": the agent changes its own mode, as Claude does when you accept its plan.
+  if (/\bleave plan\b/i.test(text)) {
+    const set = (id: string, value: string) => {
+      const o = config.find((x) => x.id === id)
+      if (o) o.currentValue = value
+    }
+    if (as === 'codex') {
+      set('collaboration_mode', 'default')
+      set('mode', 'workspace-write')
+      update(sessionId, { sessionUpdate: 'config_option_update', configOptions: config })
+    } else {
+      const to = as === 'opencode' ? 'build' : 'acceptEdits'
+      set('mode', to)
+      update(sessionId, { sessionUpdate: 'current_mode_update', currentModeId: to })
+    }
+    update(sessionId, { sessionUpdate: 'agent_message_chunk', messageId: `m${turn}`, content: { type: 'text', text: 'Leaving plan mode.' } })
+    return { stopReason: 'end_turn' }
+  }
   if (text.trim() === '/compact') {
     update(sessionId, { sessionUpdate: 'compaction_update', compactionId: `c${turn}`, status: 'in_progress' })
     update(sessionId, { sessionUpdate: 'compaction_update', compactionId: `c${turn}`, status: 'completed' })
@@ -122,6 +161,13 @@ async function prompt(sessionId: string, text: string) {
     : codegen
       ? { toolCallId: callId, name: 'Bash', _meta: { claudeCode: { toolName: 'Bash' } }, kind: 'execute', title: 'bun run codegen', rawInput: { command: 'bun run codegen', description: 'Generate the types' }, status: 'pending' }
       : { toolCallId: callId, name: 'Bash', _meta: { claudeCode: { toolName: 'Bash' } }, kind: 'execute', title: 'bun test ui/theme.test.ts', rawInput: { command: 'bun test ui/theme.test.ts', description: 'Run the theme tests' }, status: 'pending' }
+  // Codex's adapter names its tools its own way and gives only ACP's kind; an edit comes as a diff.
+  if (as !== 'claude') {
+    delete (toolCall as any)._meta
+    if (edit) {
+      Object.assign(toolCall, { name: 'apply_patch', rawInput: {}, locations: [{ path: `${process.cwd()}/ui/theme.ts` }], content: [{ type: 'diff', path: `${process.cwd()}/ui/theme.ts`, oldText: 'export const radiusXl = 14\n', newText: 'export const radiusXl = 16\n' }] })
+    } else Object.assign(toolCall, { name: 'exec_command', rawInput: { command: toolCall.rawInput.command, cwd: process.cwd() } })
+  }
   update(sessionId, { sessionUpdate: 'tool_call', ...toolCall })
   const answer = await ask({
     sessionId,
@@ -139,8 +185,7 @@ async function prompt(sessionId: string, text: string) {
     return { stopReason: answer?.outcome?.outcome === 'cancelled' ? 'cancelled' : 'end_turn' }
   }
   if (codegen) {
-    mkdirSync(path.join(process.cwd(), 'src'), { recursive: true })
-    writeFileSync(path.join(process.cwd(), 'src/generated.ts'), 'export type Id = string\nexport type Name = string\n')
+    await Bun.write(path.join(process.cwd(), 'src/generated.ts'), 'export type Id = string\nexport type Name = string\n')
   }
   update(sessionId, { sessionUpdate: 'tool_call_update', toolCallId: callId, status: 'completed', rawOutput: edit ? 'The file has been updated.' : codegen ? 'Wrote src/generated.ts' : '2 pass' })
   update(sessionId, { sessionUpdate: 'agent_message_chunk', messageId: `m${turn}`, content: { type: 'text', text: edit ? 'Changed it.' : 'Ran it: 2 pass.' } })
@@ -159,9 +204,10 @@ async function handle(msg: any) {
     case 'initialize':
       return reply({
         protocolVersion: 1,
-        agentCapabilities: { loadSession: true, sessionCapabilities: { resume: {}, systemPrompt: {} }, promptCapabilities: { image: true } },
+        // Only Claude's adapter takes a systemPrompt; OpenCode doesn't steer.
+        agentCapabilities: { loadSession: true, sessionCapabilities: { resume: {}, ...(as === 'claude' ? { systemPrompt: {} } : {}) }, promptCapabilities: { image: true } },
         agentInfo: { name: 'fake-acp', version: '0' },
-        _meta: { steering: { supported: true } },
+        _meta: as === 'opencode' ? {} : { steering: { supported: true } },
         authMethods: msg.params?.clientCapabilities?.auth?.terminal
           ? [{ id: 'claude-ai-login', name: 'Claude Subscription', type: 'terminal', args: ['--cli', 'auth', 'login', '--claudeai'] }]
           : [],

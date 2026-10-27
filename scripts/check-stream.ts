@@ -3,13 +3,12 @@
 // first words show soon after the first delta; a code fence only ever shows whole lines; and the
 // finished reply becomes one block.
 //   bun scripts/check-stream.ts
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
 import { STREAMED } from './fake-stream'
+import { scratchDir } from './scratch'
 
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-stream-'))
+const home = await scratchDir('vellum-stream-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 const app = await launch({
   command: 'bun',

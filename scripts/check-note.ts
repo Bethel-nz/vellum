@@ -1,18 +1,16 @@
 // Self-check for the note: two tabs, editing your own text, editing a reply, the title menu,
 // rename, ⇧⌘W / ⌘1, and the trust warning for a folder with project config.
 //   bun scripts/check-note.ts
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-note-'))
+import { scratchDir } from './scratch'
+const home = await scratchDir('vellum-note-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 // A third note in a folder that ships an MCP config, so it shows up under recent folders.
 const risky = path.join(home, 'risky-project')
-mkdirSync(risky, { recursive: true })
-writeFileSync(path.join(risky, '.mcp.json'), '{"mcpServers":{}}\n')
+await Bun.write(path.join(risky, '.mcp.json'), '{"mcpServers":{}}\n')
 const meta = { id: '20261001-risky', title: 'Risky folder', profileId: 'main', workspace: risky, createdAt: '2026-10-01T09:00:00.000Z' }
-writeFileSync(path.join(home, 'threads', `${meta.id}.jsonl`), JSON.stringify({ type: 'vellum/meta', meta }) + '\n')
+await Bun.write(path.join(home, 'threads', `${meta.id}.jsonl`), JSON.stringify({ type: 'vellum/meta', meta }) + '\n')
 const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } })
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const shot = (n: string) => app.screenshot({ path: 'screenshots/note-' + n + '.png' })
@@ -21,10 +19,10 @@ try {
   await c.waitFor({ timeoutMs: 60_000 })
   await wait(1500)
   await shot('1-note')
-  // open the second note from the switcher so there are two tabs
-  await app.getByTestId('open-switcher').click()
+  // open the second note from Library so there are two tabs
+  await app.getByTestId('open-history').click()
   await wait(1500)
-  await app.getByTestId('thread-20261022-demo02').click()
+  await app.getByTestId('history-20261022-demo02').click()
   await wait(1200)
   await shot('2-two-tabs')
   // back to the first tab, edit an earlier paragraph of mine
@@ -68,7 +66,8 @@ try {
   await wait(1500)
   // Rows show the last two path segments; the full path is in the tooltip.
   await app.getByText(`…/${path.basename(home)}/risky-project`).click()
-  await wait(800)
+  // The folder's config is checked off the frame (ui/dialogs.tsx): give it a moment to land.
+  for (let i = 0; i < 30 && !(await app.getByTestId('trust-warning').count()); i++) await wait(100)
   console.log('trust warning shown:', await app.getByTestId('trust-warning').count())
   await shot('7-trust-warning')
 } finally {

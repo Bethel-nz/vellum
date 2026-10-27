@@ -3,14 +3,13 @@
 // through itself (`--run`), and opens a terminal through its own holder (`--termd`) and the
 // ghostty wasm it carries. Shots go to screenshots/app-*.png.
 //   bun scripts/build-app.ts && bun scripts/check-app.ts
-import { existsSync, mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
+import { present, scratchDir } from './scratch'
 
 const binary = path.resolve(import.meta.dir, '../dist/bundle/Vellum.app/Contents/MacOS/Vellum')
-if (!existsSync(binary)) throw new Error('no Vellum.app: run bun scripts/build-app.ts first')
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-app-'))
+if (!await present(binary)) throw new Error('no Vellum.app: run bun scripts/build-app.ts first')
+const home = await scratchDir('vellum-app-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 const app = await launch({
   command: binary,

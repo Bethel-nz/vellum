@@ -1,12 +1,11 @@
 // Spike: what paints while a dropdown opens? Opens the title menu and the model menu on the
 // fixture and shoots frames at 0, 60, 150, 400 and 1200ms, so any extra fading panel shows.
 //   bun spikes/menu-fade-run.ts
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
+import { scratchDir } from '../scripts/scratch'
 
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-fade-'))
+const home = await scratchDir('vellum-fade-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home } }).exited
 const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home } })
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))

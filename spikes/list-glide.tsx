@@ -3,12 +3,13 @@
 // what an anchor past an item's height, past the last item, or stepped every frame does, and
 // whether followTail picks up again after a jump to the end. Results go to the file in
 // SPIKE_OUT, one JSON line per step (spikes/list-glide-run.ts drives it).
-import { appendFileSync } from 'node:fs'
 import { useRef, useState } from 'react'
 import { render, useGpuixRequired, type PublicInstance } from '@gpuix/react'
+import { appender } from '../scripts/scratch'
 
 const out = process.env.SPIKE_OUT ?? '/dev/null'
-const log = (step: string, value: unknown) => appendFileSync(out, JSON.stringify({ step, value }) + '\n')
+const record = appender(out)
+const log = (step: string, value: unknown) => record(JSON.stringify({ step, value }) + '\n')
 const height = (i: number) => 40 + ((i * 37) % 160)
 
 function Spike() {

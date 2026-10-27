@@ -3,12 +3,11 @@
 // narrows the list, and the timings say how long opening and typing take. Shots go to
 // screenshots/history-*.png.
 //   bun scripts/check-history.ts
-import { mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
+import { scratchDir } from './scratch'
 
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-history-'))
+const home = await scratchDir('vellum-history-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 const workspace = path.resolve(import.meta.dir, '..')
 const N = 400
@@ -20,13 +19,10 @@ for (let i = 0; i < N; i++) {
   const id = `2026${String(i).padStart(6, '0')}-hist`
   ids.push(id)
   const topic = words[i % words.length]!
-  writeFileSync(
-    path.join(home, 'threads', `${id}.jsonl`),
-    [
+  await Bun.write(path.join(home, 'threads', `${id}.jsonl`), [
       { type: 'vellum/meta', meta: { id, title: `Note ${i} about the ${topic}`, profileId: 'main', workspace, createdAt: at, updatedAt: at } },
       { type: 'vellum/user', text: `Look at the ${topic} again. `.repeat(40), tags: [], at },
-    ].map((l) => JSON.stringify(l)).join('\n') + '\n',
-  )
+    ].map((l) => JSON.stringify(l)).join('\n') + '\n')
 }
 
 const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } })

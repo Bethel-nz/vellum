@@ -3,14 +3,14 @@
 // Bash (answering request_permission with allow) → then a fresh process does session/load to see the
 // replay. Every message in both directions is written to spikes/out/acp-turn.jsonl as a fixture.
 //   bun spikes/acp-turn.ts
-import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { appender, scratchDir } from '../scripts/scratch'
 
 const out = path.join(import.meta.dir, 'out', 'acp-turn.jsonl')
-mkdirSync(path.dirname(out), { recursive: true })
-writeFileSync(out, '')
-const cwd = mkdtempSync(path.join(tmpdir(), 'vellum-acp-'))
+await Bun.$`mkdir -p ${path.dirname(out)}`.quiet()
+const record = appender(out)
+const recordStderr = appender(out + '.stderr')
+const cwd = await scratchDir('vellum-acp-')
 const adapter = path.join(import.meta.dir, '..', 'node_modules/@agentclientprotocol/claude-agent-acp/dist/index.js')
 const claude = Bun.which('claude')!
 
@@ -24,7 +24,7 @@ function start(tag: string) {
   })
   let seq = 0
   const pending = new Map<number, (r: any) => void>()
-  const log = (dir: string, msg: unknown) => appendFileSync(out, JSON.stringify({ tag, dir, at: Date.now(), msg }) + '\n')
+  const log = (dir: string, msg: unknown) => record(JSON.stringify({ tag, dir, at: Date.now(), msg }) + '\n')
   const write = (msg: any) => {
     log('out', msg)
     proc.stdin.write(JSON.stringify(msg) + '\n')
@@ -67,7 +67,7 @@ function start(tag: string) {
   })()
   ;(async () => {
     const dec = new TextDecoder()
-    for await (const chunk of proc.stderr) appendFileSync(out + '.stderr', dec.decode(chunk))
+    for await (const chunk of proc.stderr) recordStderr(dec.decode(chunk))
   })()
   return { proc, request }
 }
