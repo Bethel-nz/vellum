@@ -17,7 +17,8 @@
 //   → write {id, data} / resize {id, cols, rows} / kill {id} / detach {id}
 //                                        ← data {id, data} / exit {id, code}
 
-import { chmodSync, existsSync, lstatSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
+// The socket's folder, its permissions and the exit-time cleanup are node:fs's work.
+import { chmodSync, existsSync, lstatSync, mkdirSync, unlinkSync } from 'node:fs'
 import path from 'node:path'
 
 export const TERMD_VERSION = 1
@@ -202,7 +203,7 @@ export async function serve(sock: string) {
   })
   process.umask(umask)
   chmodSync(sock, 0o600)
-  writeFileSync(sock + '.pid', String(process.pid))
+  await Bun.write(sock + '.pid', String(process.pid))
   process.on('exit', () => {
     try {
       unlinkSync(sock + '.pid')

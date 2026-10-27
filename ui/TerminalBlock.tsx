@@ -8,6 +8,7 @@ import { isTerminalLeave, keys, pasteText, terminalPrimary } from '../core/platf
 import type { TermSession } from '../core/term'
 import { Icon, Meta, Quiet, useM } from './kit'
 import { concentric, font, radiusBase, type Material } from './theme'
+import { useAgent } from '../components/AgentContext'
 
 const FONT_SIZE = 12
 const LINE = 17
@@ -119,7 +120,6 @@ export function GridView({ grid, focused, mode }: { grid: Grid; focused: boolean
 
 export function TerminalBlock({
   session,
-  title,
   mode = 'inline',
   autoFocus,
   onReturnFocus,
@@ -131,12 +131,11 @@ export function TerminalBlock({
   bare,
 }: {
   session?: TermSession
-  title: string
   /** Shown instead of "running · click to type" (e.g. what to do in a login). */
   hint?: string
-  /** A ✕ on the header that ends the program and closes the terminal. */
+  /** A ✕ that ends the program and closes the terminal: in a pane it floats over the corner. */
   onClose?: () => void
-  /** No header at all: the terminal view, whose tab already names it and closes it. */
+  /** No chrome: the pane terminal — its tab names it and closes it. */
   bare?: boolean
   mode?: 'inline' | 'full'
   autoFocus?: boolean
@@ -147,6 +146,7 @@ export function TerminalBlock({
   testId?: string
 }) {
   const m = useM()
+  const agent = useAgent()
   const renderer = useGpuixRequired()
   const [, redraw] = useReducer((n: number) => n + 1, 0)
   const [focused, setFocused] = useState(false)
@@ -237,47 +237,16 @@ export function TerminalBlock({
         borderColor: focused ? m.accent : m.border,
         backgroundColor: pure ? '#00000000' : m.termBg,
         overflow: 'hidden',
+        position: 'relative',
       }}
     >
-      {bare ? null : (
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 8,
-          height: 30,
-          paddingLeft: PAD,
-          paddingRight: 4,
-          borderBottomWidth: 1,
-          borderColor: m.borderFaint,
-          userSelect: 'none',
-        }}
-      >
-        <text style={{ flexGrow: 1, minWidth: 0, color: m.text, fontFamily: font.mono, fontSize: 12, lineHeight: 16, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-          {title}
-        </text>
-        {running ? (
-          <Meta>{hint ?? (focused ? keys('running · ⌘Esc to leave') : 'running · click to type')}</Meta>
-        ) : exitCode !== undefined ? (
-          <Meta color={exitCode === 0 ? m.textFaint : m.danger}>{`exit ${exitCode}`}</Meta>
-        ) : null}
-        {!running && onSendOutput && (session || frozen) ? (
-          <Quiet onPress={() => onSendOutput((session?.text() ?? frozen?.output ?? '').trim())}>
-            <Meta color={m.textMuted}>Send output to Claude</Meta>
-          </Quiet>
-        ) : null}
-        {onClose ? (
-          <Quiet testId={testId ? `${testId}-close` : undefined} onPress={onClose} title={running ? 'End it and close' : 'Close'}>
-            <Icon name="x" size={12} />
-          </Quiet>
-        ) : running ? (
-          <Quiet testId={testId ? `${testId}-kill` : undefined} onPress={() => session?.kill()}>
-            <Meta color={m.textMuted}>Kill</Meta>
-          </Quiet>
-        ) : null}
-      </div>
-      )}
+      {/* A pane that wants one line of guidance (a login, Claude Code) says it above the run —
+          no title bar anywhere. */}
+      {bare && hint ? (
+        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', flexShrink: 0, paddingLeft: PAD, paddingRight: 30, paddingTop: 6, userSelect: 'none' }}>
+          <Meta color={m.textMuted}>{keys(hint)}</Meta>
+        </div>
+      ) : null}
       <div
         ref={ref}
         testId={running ? 'term-running' : undefined}
@@ -308,6 +277,41 @@ export function TerminalBlock({
           <GridView grid={grid} focused={focused && running} mode={mode} />
         ) : null}
       </div>
+      {bare && onClose ? (
+        // The pane's ✕, floating over the run's corner: it ends the program and closes the tab.
+        <Quiet
+          testId={testId ? `${testId}-close` : undefined}
+          onPress={onClose}
+          title={running ? 'End it and close' : 'Close'}
+          style={{ position: 'absolute', top: 3, right: 4, width: 20, height: 20, minHeight: 20, borderRadius: 10, paddingLeft: 0, paddingRight: 0 }}
+        >
+          <Icon name="x" size={11} />
+        </Quiet>
+      ) : null}
+      {!bare ? (
+        // What a run in the note shows instead of a title bar: its state and its ways out.
+        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0, paddingLeft: PAD - 2, paddingRight: 4, marginTop: -4, paddingBottom: 4, userSelect: 'none' }}>
+          {running ? (
+            <Meta>{hint ?? (focused ? keys('running · ⌘Esc to leave') : keys('running · click to type'))}</Meta>
+          ) : exitCode !== undefined ? (
+            <Meta color={exitCode === 0 ? m.textFaint : m.danger}>{`exit ${exitCode}`}</Meta>
+          ) : null}
+          {!running && onSendOutput && (session || frozen) ? (
+            <Quiet onPress={() => onSendOutput((session?.text() ?? frozen?.output ?? '').trim())}>
+              <Meta color={m.textMuted}>{`Send output to ${agent.title}`}</Meta>
+            </Quiet>
+          ) : null}
+          {onClose ? (
+            <Quiet testId={testId ? `${testId}-close` : undefined} onPress={onClose} title={running ? 'End it and close' : 'Close'}>
+              <Icon name="x" size={12} />
+            </Quiet>
+          ) : running ? (
+            <Quiet testId={testId ? `${testId}-kill` : undefined} onPress={() => session?.kill()}>
+              <Meta color={m.textMuted}>Kill</Meta>
+            </Quiet>
+          ) : null}
+        </div>
+      ) : null}
       {mode === 'inline' && !running && visibleRows === 0 && !showAll ? (
         <div style={{ paddingLeft: PAD, paddingBottom: 8, marginTop: -6 }}>
           <Meta>Full-screen program ended; nothing was left on screen.</Meta>
