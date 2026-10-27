@@ -84,8 +84,9 @@ clicking the surrounding page still dismisses the composer.
 
 Removed the disabled microphone and the check/up icon switch: the save action always
 uses an up arrow. A single line stays in a compact pill. Multiline comments expand
-into a 26px rounded panel: settings at the top left, a full-width textarea beneath,
-and a separate footer with the circular arrow at the bottom right. A hidden, inert
+into a 26px rounded panel: settings at the top left, the textarea between the icon
+columns, and the circular arrow at the bottom right. The input has no border, shadow
+or focus outline; the surrounding panel supplies its surface. A hidden, inert
 textarea measures wrapping at the compact width, avoiding an expand/collapse loop
 when the expanded body becomes wider. Text scrolls within 180px. The shared morph
 spring animates panel size; reduced motion disables the size/radius transitions.
