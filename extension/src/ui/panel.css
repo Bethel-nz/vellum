@@ -132,7 +132,8 @@ kbd { font: 400 11px/1.5 var(--font-body); color: var(--text-secondary); }
 .vellum-inspector-heading { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
 .vellum-inspector-heading code { flex: 1; min-width: 0; overflow-wrap: anywhere; font: 12px/1.5 var(--font-mono); }
 .vellum-inspector-number { display: grid; place-items: center; width: 23px; height: 23px; border-radius: 50% 50% 50% 5px; background: var(--focus-outline); color: var(--background); font-size: 11px; }
-.vellum-inspector-navigation { flex-shrink: 0; display: flex; align-items: center; gap: 3px; padding: 4px 12px; }
+.vellum-inspector-navigation { flex-shrink: 0; display: flex; align-items: center; gap: 3px; padding: 4px 12px; cursor: grab; user-select: none; touch-action: none; }
+.vellum-inspector-navigation:active { cursor: grabbing; }
 .vellum-inspector-navigation > span { flex: 1; color: var(--text-muted); font-size: 12px; }
 .vellum-inspector-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .vellum-inspector-footer { flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-top: 1px solid var(--border); }
