@@ -3,7 +3,7 @@
 // 1px dashed blue rule, with `:42` in muted. Skills are violet text on a violet rule.
 
 import type { ReactNode } from 'react'
-import { diffInk, font } from '../ui/theme'
+import { diffInk, font, radiusBase } from '../ui/theme'
 import { FileIcon } from './FileIcon'
 import { Icon } from './Icon'
 import { useM } from './theme'
@@ -84,7 +84,7 @@ export function HunkPill({ path, added, removed, notes = 0, line, onHover, testI
         height: 20,
         paddingLeft: 6,
         paddingRight: 7,
-        borderRadius: 10,
+        borderRadius: radiusBase,
         borderWidth: 1,
         borderColor: m.border,
         backgroundColor: m.codeBg,

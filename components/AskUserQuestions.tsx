@@ -6,7 +6,7 @@ import { motion } from './spring'
 import { Button as Base } from '@gpuix/react/button'
 import type { Ask } from '../core/asks'
 import { questionError, type QuestionContent, type UserQuestion } from '../core/questions'
-import { concentric, elevation, radiusXl, shellInset, windowRadius } from '../ui/theme'
+import { concentric, elevation, radiusBase, radiusXl, shellInset, windowRadius } from '../ui/theme'
 import { Button, Label } from './Button'
 import { Field } from './Field'
 import { Kbd } from './Kbd'
@@ -99,7 +99,7 @@ function Questions({ questions, onAnswer }: { questions: UserQuestion[]; onAnswe
                 <text style={{ fontSize: 13, lineHeight: 18, fontWeight: 500, color: m.textUi }}>{option.title}</text>
                 {option.description ? <text style={{ fontSize: 12, lineHeight: 17, color: m.textMuted }}>{option.description}</text> : null}
               </div>
-              <div style={{ width: 22, height: 22, flexShrink: 0, borderRadius: 6, backgroundColor: selected ? m.textUi : m.chipBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><text style={{ fontSize: 11, lineHeight: 15, fontWeight: 500, color: selected ? m.pane : m.textMuted }}>{question.multi && selected ? '✓' : String(optionIndex + 1)}</text></div>
+              <div style={{ width: 22, height: 22, flexShrink: 0, borderRadius: concentric(radiusBase, 4), backgroundColor: selected ? m.textUi : m.chipBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><text style={{ fontSize: 11, lineHeight: 15, fontWeight: 500, color: selected ? m.pane : m.textMuted }}>{question.multi && selected ? '✓' : String(optionIndex + 1)}</text></div>
             </Base>
           })}
           {!question.options.length || question.customId ? <div style={{ display: 'flex', flexDirection: 'row', paddingTop: question.options.length ? 4 : 0 }}>

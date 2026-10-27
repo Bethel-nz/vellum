@@ -7,7 +7,7 @@ import { Button as Base } from '@gpuix/react/button'
 import { FloatingLayer } from '@gpuix/react/floating'
 import type { Think } from '../core/asks'
 import { effortLabel, fallbackEfforts, shortModel, type EffortOption, type ModelOption } from '../core/models'
-import { elevation, radiusXl } from '../ui/theme'
+import { concentric, elevation, radiusBase, radiusXl } from '../ui/theme'
 import { useAgent } from './AgentContext'
 import { Icon } from './Icon'
 import { Button } from './Button'
@@ -116,7 +116,7 @@ export function ModelPicker({ models, model, resolvedModel, efforts = fallbackEf
         <div ref={main} role="menu" tabIndex={0} testId="model-menu" onKeyDown={(event) => navigate(event)} onMouseEnter={keep} onMouseMove={(event) => { allowHover([event.x, event.y]) }} onMouseLeave={leave} style={{ position: 'relative', keyboardFocusDim: false, pointerEvents: 'auto' }}>
           <Surface />
           <PopupBody>
-            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, height: 34, paddingLeft: 10, paddingRight: 6, margin: 4, marginBottom: 8, borderRadius: 8, backgroundColor: m.chipBg, flexShrink: 0 }}>
+            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, height: 34, paddingLeft: 10, paddingRight: 6, margin: 4, marginBottom: 8, borderRadius: concentric(radiusBase, 2), backgroundColor: m.chipBg, flexShrink: 0 }}>
               <Icon name="search" size={13} color={m.textMuted} />
               <input ref={search} testId="model-search" value={query} placeholder="Search models…" onChange={(event) => { keyboardNav.current = true; setQuery(event.value ?? ''); setActive(0); setSub(null) }} onSubmit={() => activate(active)} onKeyDown={(event) => {
                 if (event.key === 'escape') { event.preventDefault(); if (sub) setSub(null); else onClose() }
