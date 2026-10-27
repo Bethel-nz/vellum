@@ -3,7 +3,7 @@
 // Two materials with identical keys, both opaque (no glass, no blurred window):
 //   dark  — the default: near-black from the user's Zed / Ghostty theme (groknight,
 //           ~/dotfiles/themes/editors/zed/groknight.json), violet for agent identity, blue for
-//           selection and focus
+//           links and focus; primary controls use Groknight violet
 //   light — off-white frame, white page, near-black text; its oklch sources were converted with
 //           culori (scripts/oklch.ts)
 
@@ -40,7 +40,7 @@ export const headerHeight = 36
 /** Space from the top of the pane to the first line of the note: the header band plus 16. Set once. */
 export const contentInset = headerHeight + 16
 
-const nerd = nerdFamily()
+const nerd = await nerdFamily()
 const hasTermFont = nerd === preferredTerminalFamily
 
 export const font = {
@@ -112,6 +112,8 @@ export type Material = {
   accent: string
   /** Links, permission, selection family. */
   blue: string
+  /** Primary controls: Groknight violet in dark, neutral ink in light. */
+  action: { background: string; hover: string; pressed: string; text: string }
   focusRing: string
   /** Text selection wash. */
   selection: string
@@ -135,10 +137,29 @@ export type Material = {
   scrollbar: string
   scrollbarHover: string
   shadow: string
-  /** Syntax colours for <code>, <markdown> and <diff>. */
-  syntax: { keyword: string; function: string; string: string; comment: string; number: string; typeName: string; constant: string; tag: string; variable: string; punctuation: string; link: string; special: string }
+  /** Pierre syntax for <code>, fenced Markdown and <diff>; interface/prose stay Groknight. */
+  syntax: typeof pierre.dark.syntax
   /** Account dots, in profile order. */
   accents: string[]
+}
+
+const pierre = {
+  dark: {
+    text: '#fafafa', lineNumber: '#737373', addInk: '#60d199', delInk: '#ff6762',
+    syntax: {
+      keyword: '#ff678d', function: '#9d6afb', string: '#5ecc71', comment: '#737373', number: '#68cdf2',
+      typeName: '#d568ea', constant: '#ffd452', tag: '#ff855e', variable: '#ffa359', punctuation: '#636363', link: '#9d6afb', special: '#ffab16',
+      operator: '#08c0ef', parameter: '#a3a3a3', attribute: '#60d199', escape: '#61d5c0',
+    },
+  },
+  light: {
+    text: '#0a0a0a', lineNumber: '#737373', addInk: '#07c480', delInk: '#ff2e3f',
+    syntax: {
+      keyword: '#d32a61', function: '#693acf', string: '#199f43', comment: '#737373', number: '#1ca1c7',
+      typeName: '#a631be', constant: '#d5a910', tag: '#d5512f', variable: '#d47628', punctuation: '#636363', link: '#693acf', special: '#d5901c',
+      operator: '#08c0ef', parameter: '#636363', attribute: '#18a46c', escape: '#16a994',
+    },
+  },
 }
 
 const accents = ['#BBB0FF', '#7aa2f7', '#9ece6a', '#ff9e64', '#7dcfff', '#e0af68', '#f7768e', '#1abc9c']
@@ -169,6 +190,7 @@ export const dark: Material = {
   codeBg: '#1c1c1c',
   accent: '#BBB0FF',
   blue: '#7aa2f7',
+  action: { background: '#BBB0FF', hover: '#d4ccff', pressed: '#a89ee6', text: '#141414' },
   focusRing: '#7aa2f7aa',
   selection: '#7aa2f744',
   lineWash: '#7aa2f728',
@@ -191,11 +213,7 @@ export const dark: Material = {
   scrollbar: '#242424',
   scrollbarHover: '#363636',
   shadow: '#00000099',
-  syntax: {
-    keyword: '#BBB0FF', function: '#FFA86B', string: '#C8E997', comment: '#60e67d', number: '#f8ca73',
-    typeName: '#f8ca73', constant: '#f8ca73', tag: '#fe6767', variable: '#ffffff', punctuation: '#d6d3d1', link: '#f6a9ff',
-    special: '#fe6767',
-  },
+  syntax: pierre.dark.syntax,
   accents,
 }
 
@@ -223,6 +241,7 @@ export const light: Material = {
   codeBg: '#0000000a',
   accent: '#1447e6',
   blue: '#1447e6',
+  action: { background: '#171717', hover: '#27272a', pressed: '#57575f', text: '#ffffff' },
   focusRing: '#1447e699',
   selection: '#1447e633',
   lineWash: '#1447e61a',
@@ -245,10 +264,7 @@ export const light: Material = {
   scrollbar: '#0000001f',
   scrollbarHover: '#00000033',
   shadow: '#0000001f',
-  syntax: {
-    keyword: '#8040b0', function: '#2457c5', string: '#1f7a4a', comment: '#8a8a92', number: '#8a6200',
-    typeName: '#1a7680', constant: '#8a6200', tag: '#b4372d', variable: '#171717', punctuation: '#57575f', special: '#8a6200', link: '#2457c5',
-  },
+  syntax: pierre.light.syntax,
   accents,
 }
 
@@ -260,9 +276,9 @@ function syntaxTheme(m: Material): GpuixTheme['syntax'] {
   return {
     keyword: x.keyword, function: x.function, functionBuiltin: x.function, string: x.string, stringSpecial: x.string,
     comment: x.comment, number: x.number, boolean: x.number, typeName: x.typeName, typeBuiltin: x.typeName,
-    attribute: x.number, constant: x.constant, tag: x.tag, variable: x.variable, property: x.variable,
-    punctuation: x.punctuation, operator: x.punctuation, escape: x.number, variableSpecial: x.special, label: x.link,
-    ['constructor' as string]: x.special,
+    attribute: x.attribute, constant: x.constant, tag: x.tag, variable: x.variable, property: x.variable,
+    punctuation: x.punctuation, operator: x.operator, escape: x.escape, variableSpecial: x.special, label: x.link, parameter: x.parameter,
+    ['constructor' as string]: x.typeName,
   } as unknown as GpuixTheme['syntax']
 }
 
@@ -375,30 +391,10 @@ function mix(a: string, b: string, t: number) {
  * add/delete washes and syntax are tuned for reviewing changes, which the dark material's
  * editor colours are not. Everything else in the card stays the material's.
  */
-const pierre = {
-  dark: {
-    text: '#fafafa', lineNumber: '#737373', addInk: '#60d199', delInk: '#ff6762',
-    syntax: {
-      keyword: '#ff678d', function: '#9d6afb', string: '#5ecc71', comment: '#737373', number: '#68cdf2',
-      typeName: '#d568ea', constant: '#ffd452', tag: '#ff855e', variable: '#ffa359', punctuation: '#636363', link: '#9d6afb', special: '#ffab16',
-      operator: '#08c0ef', parameter: '#a3a3a3', attribute: '#60d199', escape: '#61d5c0',
-    },
-  },
-  light: {
-    text: '#0a0a0a', lineNumber: '#737373', addInk: '#07c480', delInk: '#ff2e3f',
-    syntax: {
-      keyword: '#d32a61', function: '#693acf', string: '#199f43', comment: '#737373', number: '#1ca1c7',
-      typeName: '#a631be', constant: '#d5a910', tag: '#d5512f', variable: '#d47628', punctuation: '#636363', link: '#693acf', special: '#d5901c',
-      operator: '#08c0ef', parameter: '#636363', attribute: '#18a46c', escape: '#16a994',
-    },
-  },
-}
-
 /** Theme for <diff>: the native theme with Pierre's ink, washes and syntax, and a tight gutter. */
 export function diffTheme(m: Material): GpuixTheme {
   const p = m.appearance === 'dark' ? pierre.dark : pierre.light
   const base = nativeTheme(m)
-  const x = p.syntax
   return {
     ...base,
     text: p.text,
@@ -407,13 +403,6 @@ export function diffTheme(m: Material): GpuixTheme {
     // Native diff applies its own row/word washes; solid ink keeps markers and gutters legible.
     diffAdd: p.addInk,
     diffDel: p.delInk,
-    syntax: {
-      keyword: x.keyword, function: x.function, functionBuiltin: x.function, string: x.string, stringSpecial: x.string,
-      comment: x.comment, number: x.number, boolean: x.number, typeName: x.typeName, typeBuiltin: x.typeName,
-      attribute: x.attribute, constant: x.constant, tag: x.tag, variable: x.variable, property: x.variable,
-      punctuation: x.punctuation, operator: x.operator, escape: x.escape, variableSpecial: x.special, label: x.link,
-      parameter: x.parameter, ['constructor' as string]: x.typeName,
-    } as unknown as GpuixTheme['syntax'],
     metrics: {
       ...base.metrics,
       // One narrow column per side and a slim marker: the gutter was most of the card's width.

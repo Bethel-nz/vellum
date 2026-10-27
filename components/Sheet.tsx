@@ -11,7 +11,8 @@
 // Dialog alive for the scrim to lift over `exit`. Reduced motion skips the hold.
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Dialog, DialogBackdrop, DialogPopup, DialogPortal, motion, type PublicInstance } from '@gpuix/react'
+import { Dialog, DialogBackdrop, DialogPopup, DialogPortal, type PublicInstance } from '@gpuix/react'
+import { motion } from './spring'
 import { radiusXl } from '../ui/theme'
 import { Button } from './Button'
 import { Icon } from './Icon'

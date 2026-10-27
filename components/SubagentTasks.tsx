@@ -1,7 +1,7 @@
 // A lead-and-branches view of delegation, backed by recorded calls and results.
 // A completed background launch means "Started", not that the agent finished its work.
 import { useState } from 'react'
-import { motion } from '@gpuix/react'
+import { motion } from './spring'
 import { Button as Base } from '@gpuix/react/button'
 import type { ToolCall } from '../core/threads'
 import { modelName } from '../core/models'
@@ -14,7 +14,7 @@ import { useM } from './theme'
 export const isSubagentCall = (call: ToolCall) => /^(Agent|Task)$/i.test(call.name)
 type State = ToolCall['status'] | 'started'
 const taskState = (call: ToolCall): State => call.status === 'ok' && call.input?.run_in_background === true ? 'started' : call.status
-const labels: Record<State, string> = { running: 'Working', ok: 'Returned', error: 'Failed', started: 'Started in background' }
+const labels: Record<State, string> = { running: 'Thinking', ok: 'Returned', error: 'Failed', started: 'Started in background' }
 const textInput = (call: ToolCall, key: string) => typeof call.input?.[key] === 'string' ? call.input[key] as string : undefined
 const taskTitle = (call: ToolCall) => textInput(call, 'description') || call.title || call.detail
 const elapsed = (call: ToolCall) => {
@@ -42,7 +42,7 @@ export function SubagentTasks({ items }: { items: ToolCall[] }) {
       <text style={{ ...type.title, fontWeight: 600, color: m.textUi }}>Claude</text>
       <text style={{ ...type.title, color: m.textMuted }}>Lead</text>
       <div style={{ flexGrow: 1 }} />
-      <text testId="subagent-working" style={{ ...type.meta, color: m.textMuted }}>{working ? `${working} working` : started ? `${started} started` : 'Delegation finished'}</text>
+      <text testId="subagent-working" style={{ ...type.meta, color: m.textMuted }}>{working ? `${working} thinking` : started ? `${started} started` : 'Delegation finished'}</text>
     </div>
     <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 12, paddingLeft: 28 }}>
       <div style={{ position: 'absolute', left: 8, top: 0, bottom: 0, width: 1, backgroundColor: m.borderFocused, pointerEvents: 'none' }} />

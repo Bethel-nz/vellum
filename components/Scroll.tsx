@@ -5,8 +5,8 @@
 // carries no padding: an inner column that never shrinks holds it, and keeps a gutter on the
 // right wide enough for the 6px thumb plus air.
 
-import type { ReactNode } from 'react'
-import type { StyleDesc } from '@gpuix/react'
+import type { ReactNode, Ref } from 'react'
+import type { PublicInstance, StyleDesc } from '@gpuix/react'
 import { useM } from './theme'
 
 const THUMB = 6
@@ -19,6 +19,7 @@ export function Scroll({
   gap,
   gutter = THUMB + AIR * 2,
   testId,
+  scrollRef,
 }: {
   children: ReactNode
   /** The box: size, background, border. Not padding; use `padding`. */
@@ -28,11 +29,12 @@ export function Scroll({
   /** Room on the right for the thumb. Narrower only where the rows' own padding can take it. */
   gutter?: number
   testId?: string
+  scrollRef?: Ref<PublicInstance>
 }) {
   const m = useM()
   const p = typeof padding === 'number' ? { top: padding, right: padding, bottom: padding, left: padding } : padding
   return (
-    <div testId={testId} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflowY: 'scroll', scrollbarColor: m.scrollbar, scrollbarWidth: THUMB, ...style }}>
+    <div ref={scrollRef} testId={testId} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflowY: 'scroll', scrollbarColor: m.scrollbar, scrollbarWidth: THUMB, pointerEvents: 'auto', ...style }}>
       <div
         style={{
           display: 'flex',

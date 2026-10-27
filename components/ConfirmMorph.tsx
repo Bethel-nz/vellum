@@ -1,7 +1,8 @@
 // Arc's press-to-confirm pill. Width reveals each face; text and corners never scale.
 // Pending/result faces follow real callbacks. No elevation, blur, rotation or spring physics.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { motion, useGpuixRequired, type PublicInstance } from '@gpuix/react'
+import { useGpuixRequired, type PublicInstance } from '@gpuix/react'
+import { motion } from './spring'
 import { Button as Base } from '@gpuix/react/button'
 import { Dot } from './Dot'
 import { Icon } from './Icon'
@@ -30,7 +31,7 @@ type Props = {
 const ARM_MS = 280
 const HEIGHT = 32
 
-export function ConfirmMorph({ label, prompt, confirmLabel = 'Confirm', pendingLabel = 'Working…', doneLabel = 'Done', errorLabel = 'Couldn’t finish', onConfirm, onUndo, onCancel, onStateChange, defaultState = 'idle', autoFocus = false, confirmTimeout = 6000, resultTimeout = 5000, testId = 'confirm-morph' }: Props) {
+export function ConfirmMorph({ label, prompt, confirmLabel = 'Confirm', pendingLabel = 'Thinking…', doneLabel = 'Done', errorLabel = 'Couldn’t finish', onConfirm, onUndo, onCancel, onStateChange, defaultState = 'idle', autoFocus = false, confirmTimeout = 6000, resultTimeout = 5000, testId = 'confirm-morph' }: Props) {
   const m = useM()
   const renderer = useGpuixRequired()
   const reduced = useReducedMotion()

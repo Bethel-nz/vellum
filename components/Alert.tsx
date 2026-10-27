@@ -1,10 +1,12 @@
 // Arc's persistent, in-flow alert. The flat surface can collapse with its content;
 // elevated wrappers (such as tab attention) still close atomically.
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { motion, useGpuixRequired, useWindowSize, type PublicInstance } from '@gpuix/react'
+import { useGpuixRequired, useWindowSize, type PublicInstance } from '@gpuix/react'
+import { motion } from './spring'
 import { radiusBase } from '../ui/theme'
 import { Button } from './Button'
 import { Icon } from './Icon'
+import type { IconName } from '../ui/icons'
 import { duration, enter, leave, offset, spring, tween, useReducedMotion } from './motion'
 import { useM } from './theme'
 
@@ -16,9 +18,12 @@ export type AlertProps = {
   open?: boolean
   onDismiss?: () => void
   testId?: string
+  icon?: IconName
+  singleLine?: boolean
+  action?: ReactNode
 }
 
-export function Alert({ title, tone = 'info', children, open, onDismiss, testId }: AlertProps) {
+export function Alert({ title, tone = 'info', children, open, onDismiss, testId, icon: customIcon, singleLine, action }: AlertProps) {
   const m = useM()
   const renderer = useGpuixRequired()
   const reduced = useReducedMotion()
@@ -53,14 +58,15 @@ export function Alert({ title, tone = 'info', children, open, onDismiss, testId 
   const details = typeof children === 'string' ? children : undefined
   return (
     <motion.div initial={reduced ? false : { opacity: 0 }} animate={{ opacity: visible ? 1 : 0, ...(height === undefined ? {} : { height: visible ? height : 0 }) }} transition={visible ? tween(spring.smooth) : leave()} style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
-      <div ref={body} testId={testId} role={tone === 'danger' ? 'alert' : 'status'} style={{ display: 'flex', flexDirection: 'row', alignItems: 'start', gap: 12, padding: 16, flexShrink: 0, borderWidth: 1, borderColor: m.border, borderRadius: radiusBase, backgroundColor: m.panel }}>
-        <motion.div key={tone} initial={reduced ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={enter('fast')} style={{ width: 18, height: 18, marginTop: 1, flexShrink: 0, pointerEvents: 'none' }}><Icon name={icon[tone]} size={18} color={color} /></motion.div>
+      <div ref={body} testId={testId} role={tone === 'danger' ? 'alert' : 'status'} style={{ display: 'flex', flexDirection: 'row', alignItems: singleLine ? 'center' : 'start', gap: 12, padding: singleLine ? 12 : 16, flexShrink: 0, borderWidth: 1, borderColor: m.border, borderRadius: radiusBase, backgroundColor: m.panel }}>
+        <motion.div key={tone} initial={reduced ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={enter('fast')} style={{ width: 18, height: 18, marginTop: singleLine ? 0 : 1, flexShrink: 0, pointerEvents: 'none' }}><Icon name={customIcon ?? icon[tone]} size={18} color={color} /></motion.div>
         <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0, gap: 4 }}>
           <motion.div key={title} initial={reduced ? false : { opacity: 0, top: offset.tooltip }} animate={{ opacity: 1, top: 0 }} transition={enter()} style={{ position: 'relative', pointerEvents: 'none' }}>
-            <text style={{ fontSize: 13, lineHeight: 19, fontWeight: 500, color: tone === 'danger' ? m.danger : m.text }}>{title}</text>
+            <text style={{ minWidth: 0, fontSize: 13, lineHeight: 19, fontWeight: 500, color: tone === 'danger' ? m.danger : m.text, ...(singleLine ? { whiteSpace: 'nowrap', textOverflow: 'ellipsis' } : {}) }}>{title}</text>
           </motion.div>
           {details ? <motion.div key={details} initial={reduced ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={enter()}><text style={{ fontSize: 12, lineHeight: 18, color: m.textMuted }}>{details}</text></motion.div> : children}
         </div>
+        {action}
         {onDismiss ? <Button title={`Dismiss: ${title}`} testId={testId ? `${testId}-dismiss` : 'alert-dismiss'} onPress={() => open === undefined ? setDismissed(true) : onDismiss()} style={{ width: 28, height: 28, minHeight: 28, paddingLeft: 0, paddingRight: 0, marginTop: -5, marginRight: -6, marginBottom: -5, borderRadius: 14 }}><Icon name="x" size={16} color={m.textFaint} /></Button> : null}
       </div>
     </motion.div>

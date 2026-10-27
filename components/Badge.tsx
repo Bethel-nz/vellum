@@ -1,7 +1,7 @@
 // A count or short label. Arc's badge swaps its value with a rise; GPUIX can't move text inside
 // a box without a wrapper per value, so a new value fades in over `instant`.
 
-import { motion } from '@gpuix/react'
+import { motion } from './spring'
 import { font } from '../ui/theme'
 import { enter } from './motion'
 import { useM } from './theme'

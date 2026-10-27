@@ -11,7 +11,8 @@
 // Render it inside a `position: relative` wrapper next to its trigger; it anchors to that wrapper.
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { DismissableLayer, motion, type KeyEvent, type PublicInstance } from '@gpuix/react'
+import { DismissableLayer, type KeyEvent, type PublicInstance } from '@gpuix/react'
+import { motion } from './spring'
 import { FloatingLayer } from '@gpuix/react/floating'
 import { Button as Base } from '@gpuix/react/button'
 import { concentric, elevation, radiusBase } from '../ui/theme'
@@ -51,6 +52,9 @@ const PAD = 5
 const heightOf = (it: MenuItem) => (it.kind === 'separator' ? SEPARATOR : it.kind === 'label' ? LABEL : ROW)
 const selectable = (it: MenuItem) => (it.kind ?? 'item') === 'item' && !(it as { disabled?: boolean }).disabled
 
+/** Search inputs use their native submit event to choose the keyboard-highlighted item. */
+type MenuHeader = ReactNode | ((submit: () => void) => ReactNode)
+
 let outsideCloseAt = 0
 let outsideCloseKey: string | null = null
 /**
@@ -86,7 +90,7 @@ export function Menu({
   open: boolean
   onClose: () => void
   items: MenuItem[]
-  header?: ReactNode
+  header?: MenuHeader
   width?: number
   side?: 'top' | 'bottom'
   align?: 'start' | 'end'
@@ -98,7 +102,7 @@ export function Menu({
   return <MenuPanel key="menu" onClose={onClose} items={items} header={header} width={width} side={side} align={align} testId={testId} closeKey={closeKey} />
 }
 
-function MenuPanel({ onClose, items, header, width, side, align, testId }: { onClose: () => void; items: MenuItem[]; header?: ReactNode; width: number; side: 'top' | 'bottom'; align: 'start' | 'end'; testId?: string; closeKey?: string }) {
+function MenuPanel({ onClose, items, header, width, side, align, testId }: { onClose: () => void; items: MenuItem[]; header?: MenuHeader; width: number; side: 'top' | 'bottom'; align: 'start' | 'end'; testId?: string; closeKey?: string }) {
   const m = useM()
   const panel = useRef<PublicInstance>(null)
   const [active, setActive] = useState(-1)
@@ -181,7 +185,7 @@ function MenuPanel({ onClose, items, header, width, side, align, testId }: { onC
           />
           {header ? (
             <div onLayout={(e) => setHeaderHeight(e.height ?? 0)} style={{ display: 'flex', flexDirection: 'column' }}>
-              {header}
+              {typeof header === 'function' ? header(() => pick(active < 0 ? items.findIndex(selectable) : active)) : header}
             </div>
           ) : null}
           {items.map((it, i) => {
