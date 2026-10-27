@@ -11,9 +11,10 @@ import path from 'node:path'
 import type { Profile } from '../core/profiles'
 import { agentChoices, agentFor, type AgentId } from '../core/agents'
 import { Dot, FileIcon, Icon, Meta, Quiet, useM } from './kit'
-import { closedByOutsidePress, Field, Label, Menu, Segmented, Sheet } from '../components'
+import { closedByOutsidePress, Field, Label, Menu, Scroll, Segmented, Sheet } from '../components'
 import { keys, primary } from '../core/platform'
 import { accentFor, concentric, radiusBase, radiusXl, shortPath, type } from './theme'
+import { langIcons } from './langIcons'
 import { useLoaded } from './useLoaded'
 
 /** A folder's own mark, then its stack's language glyph, then its initials. Never a mystery box. */
@@ -22,7 +23,7 @@ const MANIFESTS: Array<[file: string, stack: string]> = [
   ['package.json', 'Node'], ['deno.json', 'Deno'], ['bunfig.toml', 'Bun'],
   ['Cargo.toml', 'Rust'], ['go.mod', 'Go'], ['Package.swift', 'Swift'],
   ['pyproject.toml', 'Python'], ['requirements.txt', 'Python'], ['setup.py', 'Python'],
-  ['Gemfile', 'Ruby'], ['pom.xml', 'Java'], ['build.gradle', 'JVM'], ['build.gradle.kts', 'JVM'],
+  ['Gemfile', 'Ruby'], ['pom.xml', 'Maven'], ['build.gradle', 'Gradle'], ['build.gradle.kts', 'Gradle'],
   ['composer.json', 'PHP'], ['CMakeLists.txt', 'C++'], ['Makefile', 'C'],
 ]
 
@@ -94,6 +95,10 @@ function ProjectTile({ folder, selected, onPick, onMove, nodeRef, testId }: {
     >
       {mark.icon ? (
         <img src={mark.icon} objectFit="cover" style={{ width: 40, height: 40, borderRadius: 10, borderWidth: 1, borderColor: m.border }} />
+      ) : mark.stack && langIcons[mark.stack] ? (
+        <div style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: '#ffffff', borderWidth: 1, borderColor: m.border, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <img src={langIcons[mark.stack]} objectFit="contain" style={{ width: 28, height: 28 }} />
+        </div>
       ) : mark.manifest ? (
         <div style={{ width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><FileIcon path={mark.manifest} size={30} /></div>
       ) : (
@@ -200,7 +205,7 @@ export function NewThreadDialog({
     initialFolder ? initialProfileId : (recentFolders[0] && suggestProfile(recentFolders[0])) || initialProfileId || profiles[0]?.id,
   )
   const [query, setQuery] = useState('')
-  const shownFolders = [...new Set([initialFolder, ...recentFolders].filter((item): item is string => Boolean(item)))].slice(0, 5)
+  const shownFolders = [...new Set([initialFolder, ...recentFolders].filter((item): item is string => Boolean(item)))]
   const folders = folder && !shownFolders.includes(folder) ? [folder, ...shownFolders] : shownFolders
   // The grid filters as you type; a hidden selection follows the first match (ModelPicker precedent).
   const visible = folders.filter((item) => {
@@ -219,7 +224,10 @@ export function NewThreadDialog({
     const item = visible[next]
     if (item && item !== folder) void chooseFolder(item)
     const node = tiles.current.get(next)
-    if (node) renderer.focusElement?.(node.id)
+    if (node) {
+      renderer.focusElement?.(node.id)
+      renderer.scrollIntoView?.(node.id)
+    }
   }
   const config = useLoaded(() => (folder ? projectConfig(folder) : Promise.resolve([])), [folder]) ?? []
   const [adding, setAdding] = useState(false)
@@ -276,6 +284,7 @@ export function NewThreadDialog({
             </div>
             <Quiet onPress={browse} testId="choose-folder" title="Choose another project folder" style={{ height: 34, paddingLeft: 10, paddingRight: 10 }}><Icon name="folderPlus" size={13} /><Meta>Browse</Meta></Quiet>
           </div>
+          <Scroll testId="new-note-grid-scroll" style={{ maxHeight: 340 }}>
           <div testId="new-note-grid" role="radiogroup" aria-label="Projects" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {rows.map((row, r) => (
               <div key={r} style={{ display: 'flex', flexDirection: 'row', gap: 8 }}>
@@ -289,7 +298,8 @@ export function NewThreadDialog({
             {!folders.length ? <div style={{ padding: 14, borderRadius: radiusBase, borderWidth: 1, borderColor: m.border }}><Meta>Choose a folder to start your first project note.</Meta></div> : null}
             {folders.length && !visible.length ? <div style={{ padding: 14 }}><Meta>{`No projects match “${query.trim()}”.`}</Meta></div> : null}
           </div>
-          <Meta>↑↓←→ move · ↵ select</Meta>
+          </Scroll>
+          <Meta>{query.trim() ? `${visible.length} of ${folders.length} · ` : ''}↑↓←→ move · ↵ select</Meta>
           {config.length ? <div testId="trust-warning" style={{ padding: 10, borderRadius: concentric(radiusBase, 2), backgroundColor: m.dangerBg }}><text style={{ fontSize: 12, lineHeight: 17, color: m.danger }}>{`This folder has ${config.join(', ')}. Its hooks and MCP servers can run without approval. Continue only if you trust this folder.`}</text></div> : null}
         </div>
 
