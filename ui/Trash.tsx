@@ -3,24 +3,26 @@
 // and Empty Trash removes them all.
 
 import path from 'node:path'
-import { useState } from 'react'
-import { Button, Dot, Icon, Label, SheetSection } from '../components'
+import { useEffect, useState } from 'react'
+import { Button, Dot, Icon, Label } from '../components'
 import { ConfirmMorph } from '../components/ConfirmMorph'
 import type { Profile } from '../core/profiles'
 import type { Thread } from '../core/threads'
-import { daysLeft, deleteForever, emptyTrash, restoreNote, trashed, TRASH_DAYS } from '../core/trash'
+import { daysLeft, deleteForever, emptyTrash, restoreNote, trashed, TRASH_DAYS, type Trashed } from '../core/trash'
 import { ago } from './dialogs'
 import { useM } from './kit'
+import { SettingsSection as SheetSection } from './settings/controls'
 import { accentFor, shortPath } from './theme'
 
 export function TrashSettings({ profiles, onRestore }: { profiles: Profile[]; onRestore: (thread: Thread) => void }) {
   const m = useM()
   // Read on open, which also clears out what is past its 30 days; each change reads it again.
-  const [items, setItems] = useState(() => trashed())
+  const [items, setItems] = useState<Trashed[]>([])
   const [confirming, setConfirming] = useState<string>()
-  const reload = () => setItems(trashed())
-  const restore = (id: string) => {
-    const thread = restoreNote(id)
+  const reload = () => void trashed().then(setItems)
+  useEffect(reload, [])
+  const restore = async (id: string) => {
+    const thread = await restoreNote(id)
     if (thread) onRestore(thread)
     setConfirming(undefined)
     reload()
@@ -32,7 +34,8 @@ export function TrashSettings({ profiles, onRestore }: { profiles: Profile[]; on
   }
 
   return (
-    <SheetSection label="Trash" hint={`Deleted notes stay here for ${TRASH_DAYS} days, then they’re gone for good.`}>
+    <SheetSection label="Deleted notes" hint={`Deleted notes stay here for ${TRASH_DAYS} days, then they’re gone for good.`}>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
       {items.length ? (
         <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', minHeight: 34 }}>
           <text testId="trash-count" style={{ fontSize: 13, lineHeight: 17, color: m.textUi, flexGrow: 1 }}>{items.length === 1 ? '1 note' : `${items.length} notes`}</text>
@@ -43,8 +46,7 @@ export function TrashSettings({ profiles, onRestore }: { profiles: Profile[]; on
             confirmLabel="Empty Trash"
             doneLabel="Trash emptied"
             onConfirm={() => {
-              emptyTrash()
-              reload()
+              void emptyTrash().then(reload)
             }}
             testId="trash-empty"
           />
@@ -89,6 +91,7 @@ export function TrashSettings({ profiles, onRestore }: { profiles: Profile[]; on
           )}
         </div>
       ))}
+      </div>
     </SheetSection>
   )
 }

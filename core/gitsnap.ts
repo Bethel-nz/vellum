@@ -13,8 +13,8 @@
 // snapshot never runs a command the repo's config names: no fsmonitor, no hooks, and every
 // filter driver's clean/smudge/process is blanked (files are hashed as they are on disk).
 
-import { createHash } from 'node:crypto'
-import { mkdirSync, realpathSync, rmSync } from 'node:fs'
+// Folders and realpath are node:fs's work; a stale lock file goes through Bun.file.
+import { mkdirSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import { paths } from './store'
 
@@ -50,14 +50,14 @@ export async function snapshot(cwd: string): Promise<Snapshot | undefined> {
   const where = (await git(cwd, ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-path', 'objects', '--show-prefix'])).out
   if (!where) return
   const [root = '', objects = '', prefix = ''] = where.split('\n')
-  const store = path.join(paths.home, 'git', createHash('sha1').update(root).digest('hex').slice(0, 16))
+  const store = path.join(paths.home, 'git', new Bun.CryptoHasher('sha1').update(root).digest('hex').slice(0, 16))
   mkdirSync(path.join(store, 'objects'), { recursive: true })
   const env = { GIT_INDEX_FILE: path.join(store, 'index'), GIT_OBJECT_DIRECTORY: path.join(store, 'objects'), GIT_ALTERNATE_OBJECT_DIRECTORIES: objects }
   // Not only `add`: `write-tree` runs a clean filter too (core/gitsnap.test.ts), so every call gets them.
   const config = await noFilters(root)
   const add = await git(root, [...config, 'add', '-A', '--', prefix || '.'], env, ADD_LIMIT_MS)
   // A killed `git add` leaves its lock behind, and every later snapshot would fail on it.
-  if (add.killed) rmSync(env.GIT_INDEX_FILE + '.lock', { force: true })
+  if (add.killed) await Bun.file(env.GIT_INDEX_FILE + '.lock').delete().catch(() => {})
   if (add.out === undefined) return
   const tree = (await git(root, [...config, 'write-tree'], env)).out?.trim()
   return tree ? { root, prefix, tree, env, config } : undefined

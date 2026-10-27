@@ -55,19 +55,19 @@ export function RecipesView({
     setError(undefined)
     setDraft(r ? { name: r.name, description: r.description ?? '', mode: r.mode ?? '', body: r.body, scope: r.scope, file: r.file } : blank('yours'))
   }
-  const save = () => {
+  const save = async () => {
     if (!draft) return
     try {
-      saveRecipe({ ...draft, name: draft.name, description: draft.description.trim() || undefined, mode: draft.mode || undefined }, folder)
+      await saveRecipe({ ...draft, name: draft.name, description: draft.description.trim() || undefined, mode: draft.mode || undefined }, folder)
       setDraft(null)
       onChanged()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
   }
-  const remove = () => {
+  const remove = async () => {
     if (!draft?.file) return
-    deleteRecipe({ file: draft.file })
+    await deleteRecipe({ file: draft.file })
     setDraft(null)
     onChanged()
   }
@@ -91,10 +91,10 @@ export function RecipesView({
           <Labelled label="Name" hint={name ? `Run it with $${name}` : 'Letters, numbers and dashes'}>
             <Field testId="recipe-name" value={draft.name} autoFocus={!draft.file} placeholder="review" mono onChange={(name) => setDraft({ ...draft, name })} onKeyDown={onKeyDown} />
           </Labelled>
-          <Labelled label="What it's for">
+          <Labelled label="Description">
             <Field testId="recipe-description" value={draft.description} placeholder="Review the uncommitted changes" onChange={(description) => setDraft({ ...draft, description })} onKeyDown={onKeyDown} />
           </Labelled>
-          <Labelled label="Where it lives" hint={draft.scope === 'project' ? 'In the project’s .vellum/recipes, shared through the repo' : 'In ~/.vellum/recipes, for every note'}>
+          <Labelled label="Save to" hint={draft.scope === 'project' ? 'Shared with this project.' : 'Available in all your notes.'}>
             <Segmented<Recipe['scope']>
               testId="recipe-scope"
               value={draft.scope}
@@ -103,10 +103,10 @@ export function RecipesView({
               options={folder ? [{ value: 'yours', label: 'Yours' }, { value: 'project', label: 'This project' }] : [{ value: 'yours', label: 'Yours' }]}
             />
           </Labelled>
-          <Labelled label="Mode" hint="The permission mode the note switches to when it runs">
+          <Labelled label="Mode" hint="Mode used when this recipe runs.">
             <Segmented<'' | PermissionMode> testId="recipe-mode" value={draft.mode} width={64} onChange={(mode) => setDraft({ ...draft, mode })} options={modeOptions(draft.scope)} />
           </Labelled>
-          <Labelled label="Prompt" hint="{{input}} is what you type after the name; {{folder}}, {{branch}} and {{date}} fill in">
+          <Labelled label="Prompt" hint="Use {{input}} for your text. {{folder}}, {{branch}} and {{date}} fill in automatically.">
             <textarea
               testId="recipe-body"
               value={draft.body}
@@ -159,14 +159,14 @@ export function RecipesView({
         </div>
         <Button testId="recipe-new" onPress={() => edit()} title="New recipe" style={{ height: 38, paddingLeft: 12, paddingRight: 14, borderRadius: 19, borderWidth: 1, borderColor: m.border, gap: 6 }}>
           <Icon name="plus" size={14} />
-          <Label>New</Label>
+          <Label>New recipe</Label>
         </Button>
       </div>
       <Scroll style={{ flexGrow: 1 }} padding={6}>
         {shown.length === 0 ? (
           <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
             <text style={{ fontSize: 13, lineHeight: 18, color: m.textMuted }}>{recipes.length ? `No recipes match “${query.trim()}”.` : 'No recipes yet.'}</text>
-            {recipes.length ? null : <Meta>A recipe is a prompt you keep. Type $ and its name in a note to run it.</Meta>}
+            {recipes.length ? null : <Meta>Save a prompt as a recipe. Run it with $name.</Meta>}
           </div>
         ) : null}
         {groups.map(([scope, rs]) => (
@@ -193,7 +193,7 @@ export function RecipesView({
         ))}
       </Scroll>
       <div style={{ paddingLeft: 16, paddingBottom: 12, paddingTop: 6, flexShrink: 0 }}>
-        <Meta>{keys('↩ puts it in the note · type $ in a note to pick one')}</Meta>
+        <Meta>{keys('↩ insert · $ find recipes')}</Meta>
       </div>
     </>
   )

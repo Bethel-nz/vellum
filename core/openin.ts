@@ -5,7 +5,8 @@
 // indexing off still finds them. Icons come from each bundle's .icns, converted once with sips and
 // kept under ~/.vellum/cache/app-icons. macOS only for now; elsewhere there is only the file manager.
 
-import { appendFileSync, existsSync, mkdirSync, statSync } from 'node:fs'
+// App bundles and the icon folder are folders, and the log appends: node:fs's work. Files are Bun.file's.
+import { appendFileSync, existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { os, revealFolder, revealLabel } from './platform'
@@ -102,12 +103,13 @@ export function appIcon(target: OpenTarget): Promise<string | undefined> {
     const name = (await Bun.$`plutil -extract CFBundleIconFile raw ${plist}`.quiet().nothrow().text()).trim()
     if (!name) return undefined
     const icns = path.join(app, 'Contents', 'Resources', name.endsWith('.icns') ? name : `${name}.icns`)
-    if (!existsSync(icns)) return undefined
+    const source = Bun.file(icns)
+    if (!(await source.exists())) return undefined
     mkdirSync(iconDir(), { recursive: true })
     // Named by the .icns's mtime too, so an app update brings its new icon.
-    const png = path.join(iconDir(), `${target.id}-${Math.floor(statSync(icns).mtimeMs)}.png`)
-    if (!existsSync(png)) await Bun.$`sips -s format png -Z 64 ${icns} --out ${png}`.quiet().nothrow()
-    return existsSync(png) ? png : undefined
+    const png = path.join(iconDir(), `${target.id}-${Math.floor(source.lastModified)}.png`)
+    if (!(await Bun.file(png).exists())) await Bun.$`sips -s format png -Z 64 ${icns} --out ${png}`.quiet().nothrow()
+    return (await Bun.file(png).exists()) ? png : undefined
   })()
   pending.set(app, job)
   return job

@@ -17,7 +17,8 @@
 // `{{input}}` is what you type after `$name`; without it, that text goes after the recipe.
 // {{folder}}, {{branch}} and {{date}} fill themselves in.
 
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+// Bun.file has no lstat, readdir, mkdir or realpath: those, and the link check, stay on node:fs.
+import { lstatSync, mkdirSync, readdirSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import type { PermissionMode } from './asks'
 import { paths } from './store'
@@ -89,37 +90,41 @@ function insideFolder(dir: string, folder: string): boolean {
   }
 }
 
-function readDir(scope: Recipe['scope'], dir: string, folder?: string): Recipe[] {
-  if (!existsSync(dir)) return []
+async function readDir(scope: Recipe['scope'], dir: string, folder?: string): Promise<Recipe[]> {
   if (scope === 'project' && (!folder || !insideFolder(dir, folder))) return []
-  const out: Recipe[] = []
-  for (const f of readdirSync(dir).sort()) {
-    if (!f.endsWith('.md')) continue
+  let names: string[]
+  try {
+    names = readdirSync(dir).sort()
+  } catch {
+    return []
+  }
+  const read = names.map(async (f): Promise<Recipe | undefined> => {
+    if (!f.endsWith('.md')) return
     const name = recipeName(f.slice(0, -3))
-    if (!name) continue
+    if (!name) return
     const file = path.join(dir, f)
     // Plain files only: not a link (it could point at any file of yours), a FIFO or a folder.
     const st = lstatSync(file, { throwIfNoEntry: false })
-    if (!st?.isFile() || st.size > MAX_BYTES) continue
+    if (!st?.isFile() || st.size > MAX_BYTES) return
     try {
-      const r = parseRecipe(readFileSync(file, 'utf8'))
+      const r = parseRecipe(await Bun.file(file).text())
       if (scope === 'project' && r.mode && !PROJECT_MODES.includes(r.mode)) r.mode = undefined
-      out.push({ name, scope, file, ...r })
+      return { name, scope, file, ...r }
     } catch {}
-  }
-  return out
+  })
+  return (await Promise.all(read)).filter((r) => r !== undefined)
 }
 
 /** Your recipes and the project's, by name; yours wins a clash. */
-export function loadRecipes(folder?: string): Recipe[] {
+export async function loadRecipes(folder?: string): Promise<Recipe[]> {
+  const [project, yours] = await Promise.all([folder ? readDir('project', recipeDir('project', folder), folder) : [], readDir('yours', recipeDir('yours'))])
   const byName = new Map<string, Recipe>()
-  if (folder) for (const r of readDir('project', recipeDir('project', folder), folder)) byName.set(r.name, r)
-  for (const r of readDir('yours', recipeDir('yours'))) byName.set(r.name, r)
+  for (const r of [...project, ...yours]) byName.set(r.name, r)
   return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
 
 /** Write a recipe (new or edited); a rename moves the file. Returns where it went. */
-export function saveRecipe(r: Pick<Recipe, 'name' | 'description' | 'mode' | 'model' | 'body' | 'scope'> & { file?: string }, folder?: string): string {
+export async function saveRecipe(r: Pick<Recipe, 'name' | 'description' | 'mode' | 'model' | 'body' | 'scope'> & { file?: string }, folder?: string): Promise<string> {
   const name = recipeName(r.name)
   if (!name) throw new Error('A recipe needs a name')
   if (!r.body.trim()) throw new Error('A recipe needs a prompt')
@@ -130,13 +135,13 @@ export function saveRecipe(r: Pick<Recipe, 'name' | 'description' | 'mode' | 'mo
   const file = path.join(dir, `${name}.md`)
   // Never write through a link: it could lead to any file of yours.
   if (lstatSync(file, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error(`${name}.md is a link, not a recipe file`)
-  writeFileSync(file, formatRecipe(r))
-  if (r.file && r.file !== file && existsSync(r.file)) rmSync(r.file)
+  await Bun.write(file, formatRecipe(r))
+  if (r.file && r.file !== file) await Bun.file(r.file).delete().catch(() => {})
   return file
 }
 
-export function deleteRecipe(r: Pick<Recipe, 'file'>) {
-  rmSync(r.file, { force: true })
+export async function deleteRecipe(r: Pick<Recipe, 'file'>) {
+  await Bun.file(r.file).delete().catch(() => {})
 }
 
 /**
