@@ -9,17 +9,22 @@
 // own records (type "vellum/..."). Replaying the file through `reduce` rebuilds
 // the thread exactly. <id>.md is a readable copy, rewritten on change.
 
-import { appendFileSync, existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+// Appends stay synchronous so a record survives a quit; readdir and realpath have no Bun.file form.
+import { appendFileSync, readdirSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import { createTwoFilesPatch } from 'diff'
 import type { Grid } from './ghostty'
 import type { GitFile } from './gitsnap'
 import { paths } from './store'
+import type { BrowserSession, SavedCapture } from './capture'
 import type { Decision, PermissionMode, Think } from './asks'
+import { normalizeToolCall, type ToolCall } from './tools'
+export type { ToolCall } from './tools'
 import { contextFromUsage, windowFromResult, type ContextUse } from './models'
+import { usageLimitFromInfo, usageLimitFromText, type UsageLimit } from './usage'
 
 /**
- * A context token in your text. Files are written `#path` or `#path:42`; skills `@skill:name`;
+ * A context token in your text. Files are written `#path` or `#path:42`; skills `@name` (once `@skill:name`);
  * folders `@dir/`. A line-scoped file tag means Claude sees only that line unless the note
  * widened it to the whole file (`vellum/tag-scope`).
  */
@@ -43,23 +48,12 @@ export type HunkNote = { side: 'old' | 'new'; line: number; endSide?: 'old' | 'n
 /** Key for a line-scoped file tag: `path:line`. */
 export const scopeKey = (file: string, line: number) => `${file}:${line}`
 
-export type ToolCall = {
-  id: string
-  name: string
-  detail: string
-  status: 'running' | 'ok' | 'error'
-  error?: string
-  title?: string
-  input?: Record<string, unknown>
-  output?: string
-  startedAt?: string
-  finishedAt?: string
-}
-
 export type Block =
+  | { kind: 'capture'; id: string; saved: SavedCapture }
+  | { kind: 'browser'; id: string; browser: BrowserSession; at: string }
   | { kind: 'user'; id: string; text: string; tags: Tag[]; at: string; seen?: string; images?: string[] }
   | { kind: 'assistant'; id: string; markdown: string; at: string; streaming: boolean; seen?: string }
-  | { kind: 'activity'; id: string; summary: string; thoughts: number; items: ToolCall[] }
+  | { kind: 'activity'; id: string; summary: string; thoughts: number; thinking?: string; items: ToolCall[] }
   | { kind: 'edit'; id: string; path: string; patch: string; added: number; removed: number; status: 'running' | 'ok' | 'error'; error?: string }
   | {
       kind: 'shell'
@@ -70,10 +64,12 @@ export type Block =
       exitCode?: number
       /** Agent commands: the tool_result text. User commands: plain text once exited. */
       output?: string
+      /** The normalized call retains arguments and timing even when ACP calls it execute. */
+      call?: ToolCall
       /** User commands: the last grid, frozen on exit. */
       grid?: Grid
     }
-  | { kind: 'error'; id: string; text: string; login?: boolean }
+  | { kind: 'error'; id: string; text: string; login?: boolean; usageLimit?: UsageLimit }
   /** The CLI summarized the conversation so far to free up context (/compact, or on its own when full). */
   | { kind: 'compact'; id: string; trigger: 'manual' | 'auto'; preTokens?: number; at: string }
   /** You moved the note to another account: Claude carries on there in a new session. */
@@ -104,6 +100,8 @@ export type Thread = ThreadMeta & {
   modelPick?: string
   /** How full the conversation is, from the last reply's usage. */
   context?: ContextUse
+  /** The latest subscription warning reported by this conversation's account. */
+  usageLimit?: UsageLimit
   mode?: PermissionMode
   think?: Think
   blocks: Block[]
@@ -130,6 +128,9 @@ export type Thread = ThreadMeta & {
 // ---------------------------------------------------------------- records
 
 export type VellumRecord =
+  | { type: 'vellum/tool-call'; parentId?: string; call: ToolCall; at: string }
+  | ({ type: 'vellum/capture'; at: string } & SavedCapture)
+  | { type: 'vellum/browser'; browser: BrowserSession; at: string }
   | { type: 'vellum/meta'; meta: ThreadMeta }
   | { type: 'vellum/title'; title: string }
   /** A turn. `text` is what was newly written; it may be empty when only earlier text was edited. */
@@ -289,6 +290,9 @@ export function patchFromInput(name: string, input: any): string {
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
 
+/** An edit that brings a whole file and nothing to replace is a write (OpenCode's `write`). */
+export const writesWhole = (input: any) => input?.content !== undefined && input?.old_string === undefined && !Array.isArray(input?.edits)
+
 function toolDetail(workspace: string, name: string, input: any): string {
   const p = input?.file_path ?? input?.path ?? input?.notebook_path
   if (p) return relPath(workspace, String(p))
@@ -323,7 +327,52 @@ export function summarize(thoughts: number, items: ToolCall[]): string {
   const failed = n((t) => t.status === 'error')
   if (failed) parts.push(`${failed} failed`)
   const s = parts.join(', ')
-  return s ? s[0]!.toUpperCase() + s.slice(1) : 'Working'
+  return s ? s[0]!.toUpperCase() + s.slice(1) : 'Thinking'
+}
+
+/** Tools whose `detail` is the file they touch, from the note's folder (toolDetail). */
+const FILE_TOOLS = new Set(['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
+
+/** What a running tool is doing to a file, in one word, or nothing. */
+const doing: Record<string, string> = { Read: 'Reading', Edit: 'Editing', Write: 'Writing', MultiEdit: 'Editing', NotebookEdit: 'Editing' }
+
+/** Markdown to one line of prose, the way zcode's shredder works: fences become a space,
+ * links their label, headings, list bullets and emphasis off, whitespace squashed. */
+export function stripMarkdown(md: string): string {
+  return md
+    .replace(/```[\s\S]*?(?:```|$)/g, ' ')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^[-*+]\s+/gm, '')
+    .replace(/(\*\*|__)(.*?)\1/g, '$2')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * What the agent is on, and what it just said, for a card that sits beside what you read:
+ * while the turn runs, first the running tool that touches `file` (a path from the note's
+ * folder, undefined matches nothing) as "Reading routers/rides.ts", then any running tool,
+ * then the activity's summary; when it settles, the last reply's first paragraph as prose,
+ * with its time for the card to show if it's fresh. Nothing, if it never ran.
+ */
+export function liveWork(thread: Thread, file?: string): { text: string; running: boolean; at?: string } | undefined {
+  if (thread.running) {
+    for (const b of [...thread.blocks].reverse()) {
+      if (b.kind !== 'activity') continue
+      const running = b.items.filter((t) => t.status === 'running')
+      const onFile = file ? running.find((t) => FILE_TOOLS.has(t.name) && (t.detail === file || t.detail === path.basename(file))) : undefined
+      const pick = onFile ?? running.at(-1)
+      const text = pick ? (doing[pick.name] ? `${doing[pick.name]} ${pick.detail}` : `${pick.name} ${pick.detail}`) : b.summary
+      return { text, running: true }
+    }
+    return { text: 'thinking', running: true }
+  }
+  const last = [...thread.blocks].reverse().find((b) => b.kind === 'assistant')
+  if (!last) return undefined
+  const text = stripMarkdown(last.markdown.split(/\n\s*\n/).find(Boolean) ?? '')
+  return text ? { text, running: false, at: last.at } : undefined
 }
 
 /**
@@ -354,7 +403,7 @@ export function reduce(thread: Thread, ev: any): Thread {
   const activity = () => {
     if (r.activityId && indexOf(r.activityId) >= 0) return r.activityId
     const id = bid('act')
-    push({ kind: 'activity', id, summary: 'Working', thoughts: 0, items: [] })
+    push({ kind: 'activity', id, summary: 'Thinking', thoughts: 0, items: [] })
     r.activityId = id
     return id
   }
@@ -362,6 +411,36 @@ export function reduce(thread: Thread, ev: any): Thread {
     patchBlock(id, (b) => ({ ...b, summary: summarize(b.thoughts, b.items) }))
 
   switch (ev?.type) {
+    case 'vellum/tool-call': {
+      const parent = ev.parentId ? blocks[indexOf(r.tools[ev.parentId] ?? '')] : undefined
+      const merge = (items: ToolCall[]) => items.some(item => item.id === ev.call.id) ? items.map(item => item.id === ev.call.id ? { ...item, ...ev.call } : item) : [...items, ev.call]
+      if (parent?.kind === 'shell' && parent.call) patchBlock(parent.id, block => ({ ...block, call: { ...block.call, children: merge(block.call?.children ?? []) } }))
+      else if (parent?.kind === 'activity') patchBlock(parent.id, block => ({ ...block, items: block.items.map((item: ToolCall) => item.id === ev.parentId ? { ...item, children: merge(item.children ?? []) } : item) }))
+      else {
+        const old = blocks.find(block => block.kind === 'activity' && block.items.some(item => item.id === ev.call.id))
+        const id = old?.id ?? activity()
+        patchBlock(id, block => ({ ...block, items: merge(block.items) })); resummarize(id)
+      }
+      t.updatedAt = ev.at
+      break
+    }
+    case 'vellum/capture': {
+      const id = `capture-${ev.capture.id}`
+      const saved: SavedCapture = { capture: ev.capture, noteId: ev.noteId, status: ev.status, summary: ev.summary, reply: ev.reply, delivery: ev.delivery }
+      if (indexOf(id) >= 0) patchBlock(id, (block) => ({ ...block, saved }))
+      else push({ kind: 'capture', id, saved })
+      t.updatedAt = ev.at
+      break
+    }
+    case 'vellum/browser': {
+      const id = `browser-${ev.browser.session}`
+      const previous = blocks[indexOf(id)]
+      const browser = { ...(previous?.kind === 'browser' ? previous.browser : {}), ...ev.browser }
+      if (indexOf(id) >= 0) patchBlock(id, (block) => ({ ...block, browser }))
+      else push({ kind: 'browser', id, browser, at: ev.at })
+      t.updatedAt = ev.at
+      break
+    }
     case 'vellum/meta':
       Object.assign(t, ev.meta)
       break
@@ -405,6 +484,7 @@ export function reduce(thread: Thread, ev: any): Thread {
       t.claudeSessionId = undefined
       t.model = undefined
       t.context = undefined
+      t.usageLimit = undefined
       t.handoff = true
       t.updatedAt = ev.at
       break
@@ -440,9 +520,9 @@ export function reduce(thread: Thread, ev: any): Thread {
       const text = ev.text.trim().replace(/^Internal error:\s*(?=\S)/i, '')
       const last = blocks[blocks.length - 1]
       // The adapter may stream the failure as a reply before reporting the same error.
-      if (last?.kind === 'assistant' && last.streaming && last.markdown.trim() === text) mut().pop()
+      if (last?.kind === 'assistant' && (last.streaming || usageLimitFromText(text)) && last.markdown.trim() === text) mut().pop()
       for (const b of blocks) if (b.kind === 'assistant' && b.streaming) patchBlock(b.id, (x) => ({ ...x, streaming: false }))
-      push({ kind: 'error', id: bid('err'), text, login: ev.login })
+      push({ kind: 'error', id: bid('err'), text, login: ev.login, usageLimit: usageLimitFromText(text, t.usageLimit) })
       t.running = false
       break
     }
@@ -508,9 +588,9 @@ export function reduce(thread: Thread, ev: any): Thread {
           break
         }
         case 'agent_thought_chunk': {
-          if (prev === 'agent_thought_chunk') break
           const id = activity()
-          patchBlock(id, (b) => ({ ...b, thoughts: b.thoughts + 1 }))
+          const text = u.content?.type === 'text' ? u.content.text : ''
+          patchBlock(id, (b) => ({ ...b, thoughts: b.thoughts + (prev === 'agent_thought_chunk' ? 0 : 1), ...(text ? { thinking: `${b.thinking ?? ''}${prev !== 'agent_thought_chunk' && b.thinking ? '\n\n' : ''}${text}` } : {}) }))
           resummarize(id)
           break
         }
@@ -526,11 +606,13 @@ export function reduce(thread: Thread, ev: any): Thread {
         case 'tool_call_update': {
           const callId: string = u.toolCallId
           if (!callId) break
-          const name: string = u._meta?.claudeCode?.toolName ?? r.toolNames?.[callId] ?? u.name ?? (u.kind === 'execute' ? 'Bash' : u.kind === 'edit' ? 'Edit' : u.kind ?? 'Tool')
+          const priorId = r.tools[callId]
+          const prior = priorId ? blocks[indexOf(priorId)] : undefined
+          const priorOutput = prior?.kind === 'shell' ? prior.output : prior?.kind === 'activity' ? prior.items.find((item) => item.id === callId)?.output : undefined
+          const call = normalizeToolCall(u, { name: r.toolNames?.[callId], output: priorOutput })
+          const { name, input, output } = call
           if (!r.toolNames?.[callId]) r.toolNames = { ...r.toolNames, [callId]: name }
-          const input = u.rawInput && Object.keys(u.rawInput).length ? u.rawInput : undefined
-          const status = u.status === 'completed' ? 'ok' : u.status === 'failed' ? 'error' : undefined
-          const output = typeof u.rawOutput === 'string' ? u.rawOutput : u.rawOutput != null ? JSON.stringify(u.rawOutput, null, 2) : (u.content ?? []).flatMap((c: any) => c.type === 'content' && c.content?.type === 'text' ? [c.content.text] : []).join('\n') || undefined
+          const status = call.status === 'running' ? undefined : call.status
           let id = r.tools[callId]
           if (!id) {
             id = EDIT_TOOLS.has(name) ? bid('ed') : name === 'Bash' ? bid('sh') : activity()
@@ -539,7 +621,7 @@ export function reduce(thread: Thread, ev: any): Thread {
               push({ kind: 'edit', id, path: '', patch: '', added: 0, removed: 0, status: 'running' })
               r.activityId = undefined
             } else if (name === 'Bash') {
-              push({ kind: 'shell', id, command: '', source: 'agent', termId: callId })
+              push({ kind: 'shell', id, command: '', source: 'agent', termId: callId, call: { id: callId, name, detail: name, status: 'running', startedAt: ev.at } })
               r.activityId = undefined
             } else {
               patchBlock(id, (b) => ({ ...b, items: [...b.items, { id: callId, name, detail: name, status: 'running', startedAt: ev.at }] }))
@@ -556,7 +638,7 @@ export function reduce(thread: Thread, ev: any): Thread {
             const patch =
               (response && patchFromToolResponse(rel, response)) ||
               (diff && !b.patch ? createTwoFilesPatch(rel, rel, String(diff.oldText ?? ''), String(diff.newText ?? ''), '', '', { context: 3 }) : undefined) ||
-              (input && !b.patch ? patchFromInput(name, input) : undefined)
+              (input && !b.patch ? patchFromInput(writesWhole(input) ? 'Write' : name, input) : undefined)
             patchBlock(id, (x) => ({
               ...x,
               path: rel,
@@ -564,17 +646,21 @@ export function reduce(thread: Thread, ev: any): Thread {
               ...(status ? { status, error: status === 'error' ? output : undefined } : {}),
             }))
           } else if (b?.kind === 'shell') {
+            const command = Array.isArray(input?.command) ? input.command.join(' ') : input?.command
             patchBlock(id, (x) => ({
               ...x,
-              ...(input?.command ? { command: String(input.command) } : {}),
-              ...(status ? { output: output ?? '', exitCode: status === 'error' ? 1 : 0 } : {}),
+              call: { ...x.call, ...call, detail: input ? toolDetail(t.workspace, name, input) : x.call?.detail ?? name, status: call.status ?? x.call?.status ?? 'running', ...(status ? { finishedAt: ev.at } : {}) },
+              // Codex puts the command in the title too; a call that comes without its input still shows it.
+              ...(command ? { command: String(command) } : !x.command && u.title ? { command: String(u.title) } : {}),
+              ...(output !== undefined ? { output } : {}),
+              ...(status ? { exitCode: status === 'error' ? call.exitCode || 1 : call.exitCode ?? 0 } : {}),
             }))
           } else if (b?.kind === 'activity') {
             patchBlock(id, (x) => ({
               ...x,
               items: x.items.map((it: ToolCall) =>
                 it.id === callId
-                  ? { ...it, ...(u.title ? { title: String(u.title) } : {}), ...(input ? { detail: toolDetail(t.workspace, name, input), input } : {}), ...(output !== undefined ? { output } : {}), ...(status ? { status, finishedAt: ev.at, error: status === 'error' ? (output ?? '').slice(0, 400) : undefined } : {}) }
+                  ? { ...it, ...call, ...(u.title ? { title: String(u.title) } : {}), ...(input ? { detail: toolDetail(t.workspace, name, input), input } : {}), ...(output !== undefined ? { output } : {}), ...(call.exitCode !== undefined ? { exitCode: call.exitCode } : {}), ...(status ? { status, finishedAt: ev.at, error: status === 'error' ? (output ?? '').slice(0, 400) : undefined } : {}) }
                   : it,
               ),
             }))
@@ -585,6 +671,11 @@ export function reduce(thread: Thread, ev: any): Thread {
         case 'usage_update':
           if (typeof u.used === 'number') t.context = { used: u.used, window: typeof u.size === 'number' ? u.size : t.context?.window }
           if (typeof u._meta?.['_claude/model'] === 'string') t.model = u._meta['_claude/model']
+          {
+            const info = u._meta?.['_claude/rateLimit']
+            if (info?.status === 'allowed') t.usageLimit = undefined
+            else t.usageLimit = usageLimitFromInfo(info) ?? t.usageLimit
+          }
           break
         case 'compaction_update':
           if (u.status === 'completed') {
@@ -646,7 +737,7 @@ export function reduce(thread: Thread, ev: any): Thread {
           }
         } else if (c.type === 'thinking' || c.type === 'redacted_thinking') {
           const id = activity()
-          patchBlock(id, (b) => ({ ...b, thoughts: b.thoughts + 1 }))
+          patchBlock(id, (b) => ({ ...b, thoughts: b.thoughts + 1, ...(c.type === 'thinking' && c.thinking ? { thinking: [b.thinking, c.thinking].filter(Boolean).join('\n\n') } : {}) }))
           resummarize(id)
         } else if (c.type === 'tool_use') {
           const name: string = c.name
@@ -660,12 +751,12 @@ export function reduce(thread: Thread, ev: any): Thread {
             r.activityId = undefined
           } else if (name === 'Bash') {
             const id = bid('sh')
-            push({ kind: 'shell', id, command: String(input.command ?? ''), source: 'agent', termId: c.id })
+            push({ kind: 'shell', id, command: String(input.command ?? ''), source: 'agent', termId: c.id, call: { id: c.id, name, detail: String(input.command ?? name), input, arguments: input, status: 'running', startedAt: ev.at } })
             r.tools = { ...r.tools, [c.id]: id }
             r.activityId = undefined
           } else {
             const id = activity()
-            const call: ToolCall = { id: c.id, name, detail: toolDetail(t.workspace, name, input), input, status: 'running' }
+            const call: ToolCall = { id: c.id, name, detail: toolDetail(t.workspace, name, input), input, arguments: input, status: 'running' }
             patchBlock(id, (b) => ({ ...b, items: [...b.items, call] }))
             resummarize(id)
             r.tools = { ...r.tools, [c.id]: id }
@@ -695,7 +786,7 @@ export function reduce(thread: Thread, ev: any): Thread {
           patchBlock(b.id, (x) => ({
             ...x,
             items: x.items.map((it: ToolCall) =>
-              it.id === c.tool_use_id ? { ...it, output: text, status: failed ? 'error' : 'ok', error: failed ? text.slice(0, 400) : undefined } : it,
+              it.id === c.tool_use_id ? { ...it, output: text, result: text, status: failed ? 'error' : 'ok', error: failed ? text.slice(0, 400) : undefined } : it,
             ),
           }))
           resummarize(b.id)
@@ -711,8 +802,10 @@ export function reduce(thread: Thread, ev: any): Thread {
       for (const b of blocks) if (b.kind === 'assistant' && b.streaming) patchBlock(b.id, (x) => ({ ...x, streaming: false }))
       const failed = ev.is_error || (ev.subtype && ev.subtype !== 'success')
       if (failed) {
-        const text = String(ev.result ?? ev.subtype ?? 'The turn failed')
-        push({ kind: 'error', id: bid('err'), text, login: /not logged in|\/login/i.test(text) })
+        const text = String(ev.result ?? ev.subtype ?? 'The turn failed').trim().replace(/^Internal error:\s*(?=\S)/i, '')
+        const last = blocks[blocks.length - 1]
+        if (usageLimitFromText(text) && last?.kind === 'assistant' && last.markdown.trim() === text) mut().pop()
+        push({ kind: 'error', id: bid('err'), text, login: /not logged in|\/login/i.test(text), usageLimit: usageLimitFromText(text, t.usageLimit) })
       }
       t.updatedAt = now
       break
@@ -737,20 +830,21 @@ export function appendRecord(id: string, rec: VellumRecord) {
   appendLine(id, JSON.stringify(rec))
 }
 
-export function loadThreads(): Thread[] {
-  if (!existsSync(paths.threads)) return []
-  const out: Thread[] = []
-  for (const file of readdirSync(paths.threads)) {
-    if (!file.endsWith('.jsonl')) continue
-    const thread = readThread(path.join(paths.threads, file))
-    if (thread) out.push(thread)
+/** Every note, newest first. The files are read side by side. */
+export async function loadThreads(): Promise<Thread[]> {
+  let files: string[]
+  try {
+    files = readdirSync(paths.threads).filter((file) => file.endsWith('.jsonl'))
+  } catch {
+    return []
   }
-  return out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  const all = await Promise.all(files.map((file) => readThread(path.join(paths.threads, file)).catch(() => undefined)))
+  return all.filter((t) => t !== undefined).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
 
 /** One note from its records; undefined when the file doesn't start with its meta. */
-export function readThread(file: string): Thread | undefined {
-  const lines = readFileSync(file, 'utf8').split('\n')
+export async function readThread(file: string): Promise<Thread | undefined> {
+  const lines = (await Bun.file(file).text()).split('\n')
   let thread: Thread | undefined
   for (const line of lines) {
     if (!line.trim()) continue
@@ -791,6 +885,12 @@ export function toMarkdown(t: Thread): string {
   ]
   for (const b of t.blocks) {
     switch (b.kind) {
+      case 'capture':
+        out.push(`### Browser capture (${b.saved.status})`, '', b.saved.capture.page.url, ...b.saved.capture.elements.map((element) => element.note || element.selector), '')
+        break
+      case 'browser':
+        out.push(`*Browser: ${b.browser.url || b.browser.session}*`, ...(b.browser.screenshot ? [`![Browser screenshot](${b.browser.screenshot})`] : []), '')
+        break
       case 'user':
         out.push(b.text, '')
         break
@@ -846,8 +946,16 @@ export function handoffContext(t: Thread, max = HANDOFF_MAX): string {
   ].join('\n')
 }
 
-export function writeMarkdown(t: Thread) {
-  writeFileSync(mdPath(t.id), toMarkdown(t))
+const mdWrites = new Map<string, Promise<unknown>>()
+
+/** Rewrites the note's .md copy; writes for one note land in the order they were asked for. */
+export function writeMarkdown(t: Thread): Promise<unknown> {
+  const body = toMarkdown(t)
+  const next = (mdWrites.get(t.id) ?? Promise.resolve()).then(() => Bun.write(mdPath(t.id), body))
+  const settled = next.catch(() => {})
+  mdWrites.set(t.id, settled)
+  void settled.then(() => mdWrites.get(t.id) === settled && mdWrites.delete(t.id))
+  return next
 }
 
 /** A provisional title: the first line, cut at a word near 48 characters. */

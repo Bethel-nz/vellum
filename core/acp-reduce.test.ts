@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { changeCount, collectChanges } from './changes'
 import { newThread, reduce, type Block, type Thread } from './threads'
+import { normalizeToolCall } from './tools'
 
 const records = readFileSync(path.join(import.meta.dir, 'fixtures/acp-turn.jsonl'), 'utf8')
   .split('\n')
@@ -20,6 +21,18 @@ function replay(extra: unknown[] = []): Thread {
 }
 
 const kinds = (bs: Block[]) => bs.map((b) => b.kind)
+
+test('Claude, Codex and OpenCode normalize to the same tool interface', () => {
+  const shapes = [
+    { _meta: { claudeCode: { toolName: 'Bash' } }, rawInput: { command: 'printf hello' }, rawOutput: 'hello' },
+    { name: 'exec_command', kind: 'execute', rawInput: { command: ['printf', 'hello'] }, rawOutput: { output: 'hello', exit_code: 0 } },
+    { kind: 'execute', rawInput: { command: 'printf hello' }, rawOutput: { metadata: { exit: 0 } }, content: [{ type: 'content', content: { type: 'text', text: 'hello' } }] },
+  ]
+  for (const shape of shapes) {
+    const call = normalizeToolCall({ ...shape, toolCallId: 'call', status: 'completed' })
+    expect({ id: call.id, name: call.name, command: call.input?.command, output: call.output, status: call.status }).toEqual({ id: 'call', name: 'Bash', command: 'printf hello', output: 'hello', status: 'ok' })
+  }
+})
 
 test('a turn becomes your paragraph, an edit, a shell run and the reply', () => {
   const t = replay()
@@ -45,6 +58,51 @@ test('the shell run has its command, output and exit code', () => {
   expect(sh.output).toBe('hi')
   expect(sh.exitCode).toBe(0)
   expect(sh.source).toBe('agent')
+})
+
+test('OpenCode content is the result, rather than its completion metadata', () => {
+  const t = replay([
+    { type: 'acp/update', update: { sessionUpdate: 'tool_call', toolCallId: 'oc-shell', kind: 'execute', rawInput: { command: 'printf hello' }, status: 'pending' } },
+    { type: 'acp/update', update: { sessionUpdate: 'tool_call_update', toolCallId: 'oc-shell', status: 'completed', rawOutput: { metadata: { status: 'completed', exit: 0, truncated: false } }, content: [{ type: 'content', content: { type: 'text', text: 'hello' } }] } },
+  ])
+  const shell = t.blocks.find((b) => b.kind === 'shell' && b.termId === 'oc-shell')
+  expect(shell?.kind === 'shell' && shell.command).toBe('printf hello')
+  expect(shell?.kind === 'shell' && shell.output).toBe('hello')
+})
+
+test('metadata-only completion keeps streamed shell output and the actual exit code', () => {
+  const t = replay([
+    { type: 'acp/update', update: { sessionUpdate: 'tool_call', toolCallId: 'oc-stream', kind: 'execute', rawInput: { command: 'failing-command' }, status: 'pending' } },
+    { type: 'acp/update', update: { sessionUpdate: 'tool_call_update', toolCallId: 'oc-stream', status: 'in_progress', content: [{ type: 'content', content: { type: 'text', text: 'Something failed' } }] } },
+    { type: 'acp/update', update: { sessionUpdate: 'tool_call_update', toolCallId: 'oc-stream', status: 'failed', rawOutput: { metadata: { exit: 2 } } } },
+  ])
+  const shell = t.blocks.find((b) => b.kind === 'shell' && b.termId === 'oc-stream')
+  expect(shell?.kind === 'shell' && shell.output).toBe('Something failed')
+  expect(shell?.kind === 'shell' && shell.exitCode).toBe(2)
+})
+
+test('Codex terminal deltas append and exit metadata keeps the command output', () => {
+  const t = replay([
+    { type: 'acp/update', update: { sessionUpdate: 'tool_call', toolCallId: 'codex-stream', kind: 'execute', rawInput: { command: ['printf', 'hello'] }, status: 'pending' } },
+    { type: 'acp/update', update: { sessionUpdate: 'tool_call_update', toolCallId: 'codex-stream', _meta: { terminal_output_delta: { data: 'hel', terminal_id: 'codex-stream' } } } },
+    { type: 'acp/update', update: { sessionUpdate: 'tool_call_update', toolCallId: 'codex-stream', _meta: { terminal_output_delta: { data: 'lo', terminal_id: 'codex-stream' } } } },
+    { type: 'acp/update', update: { sessionUpdate: 'tool_call_update', toolCallId: 'codex-stream', status: 'completed', rawOutput: { exit_code: 0 } } },
+  ])
+  const shell = t.blocks.find((b) => b.kind === 'shell' && b.termId === 'codex-stream')
+  expect(shell?.kind === 'shell' && shell.command).toBe('printf hello')
+  expect(shell?.kind === 'shell' && shell.output).toBe('hello')
+  expect(shell?.kind === 'shell' && shell.exitCode).toBe(0)
+})
+
+test('generic tools keep input and human-readable output separately', () => {
+  const t = replay([
+    { type: 'acp/update', update: { sessionUpdate: 'tool_call', toolCallId: 'oc-read', kind: 'read', name: 'Read', rawInput: { path: '/ws/hello.txt' }, status: 'pending' } },
+    { type: 'acp/update', update: { sessionUpdate: 'tool_call_update', toolCallId: 'oc-read', status: 'completed', rawOutput: { metadata: { truncated: false } }, content: [{ type: 'content', content: { type: 'text', text: 'file contents' } }] } },
+  ])
+  const activity = t.blocks.find((b) => b.kind === 'activity' && b.items.some((item) => item.id === 'oc-read'))
+  const call = activity?.kind === 'activity' ? activity.items.find((item) => item.id === 'oc-read') : undefined
+  expect(call?.input.file_path).toBe('/ws/hello.txt')
+  expect(call?.output).toBe('file contents')
 })
 
 test('the reply stops streaming when the turn ends, and context comes from usage', () => {
@@ -79,6 +137,7 @@ test('a run of thought chunks counts as one thought', () => {
   for (let i = 0; i < 5; i++) t = reduce(t, thought)
   const act = t.blocks[t.blocks.length - 1]!
   expect(act.kind === 'activity' && act.thoughts).toBe(1)
+  expect(act.kind === 'activity' && act.thinking).toBe('……………')
 })
 
 test('a cancelled turn marks unfinished tools as stopped', () => {
