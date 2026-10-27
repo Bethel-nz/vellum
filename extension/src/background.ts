@@ -3,6 +3,29 @@ import { bridge, saveBridgeSettings, settings, uploadCapture } from './bridge'
 import type { CaptureResult, ContentMessage, PageScreenshotResult, SnapshotResult, SnapshotStateResult, Upload, WorkerMessage } from './messages'
 
 const busy = new Set<number>()
+
+const openToolbars = new Map<number, { toolbarId: string; installationId: string; windowId: number }>()
+let installation: Promise<string> | undefined
+function installationId() {
+  return installation ??= chrome.storage.local.get('browserInstallationId').then(async saved => {
+    if (typeof saved.browserInstallationId === 'string') return saved.browserInstallationId
+    const id = crypto.randomUUID(); await chrome.storage.local.set({ browserInstallationId: id }); return id
+  })
+}
+async function toolbarPresence(tab: chrome.tabs.Tab, toolbarId: string, open: boolean) {
+  if (tab.id === undefined || tab.windowId === undefined || !/^[\w-]{1,100}$/.test(toolbarId)) throw new Error('Invalid toolbar identity')
+  const id = await installationId()
+  const target = (await chrome.debugger.getTargets()).find(target => target.tabId === tab.id && target.type === 'page')
+  if (open) openToolbars.set(tab.id, { toolbarId, installationId: id, windowId: tab.windowId }); else openToolbars.delete(tab.id)
+  return bridge('/browser/targets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ installationId: id, toolbarId, tabId: tab.id, windowId: tab.windowId, targetId: target?.id, url: tab.url ?? '', title: tab.title ?? '', open }) })
+}
+async function captureLease(tabId: number) {
+  const result = await bridge<{ lease?: string }>('/browser/capture', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ installationId: await installationId(), tabId }) })
+  return async () => { if (result.lease) await bridge('/browser/capture', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lease: result.lease }) }) }
+}
+chrome.tabs.onRemoved.addListener(tabId => { const open = openToolbars.get(tabId); if (open) void toolbarPresence({ id: tabId, windowId: open.windowId } as chrome.tabs.Tab, open.toolbarId, false).catch(() => {}) })
+chrome.tabs.onUpdated.addListener((tabId, change, tab) => { const open = openToolbars.get(tabId); if (open && change.status === 'loading') void toolbarPresence(tab, open.toolbarId, false).catch(() => {}) })
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 async function content<T>(tabId: number, message: ContentMessage): Promise<T> {
   const result = await chrome.tabs.sendMessage(tabId, message)
@@ -58,7 +81,9 @@ async function capture(tabId: number, options: Extract<WorkerMessage, { type: 'c
   if (busy.has(tabId)) throw new Error('A capture is already being prepared.')
   busy.add(tabId)
   let attached = false
+  let release: (() => Promise<void>) | undefined
   try {
+    release = await captureLease(tabId)
     try {
       await chrome.debugger.attach({ tabId }, '1.3')
       attached = true
@@ -114,6 +139,7 @@ async function capture(tabId: number, options: Extract<WorkerMessage, { type: 'c
     await content(tabId, { type: 'restore-animations' }).catch(() => {})
     await content(tabId, { type: 'visibility', hidden: false }).catch(() => {})
     if (attached) await chrome.debugger.detach({ tabId }).catch(() => {})
+    await release?.().catch(() => {})
     busy.delete(tabId)
   }
 }
@@ -122,8 +148,12 @@ async function handle(message: WorkerMessage, sender: chrome.runtime.MessageSend
   if (sender.id !== chrome.runtime.id) throw new Error('This request did not come from Vellum Snapshot.')
   // Page-side scripts can request capture operations, but cannot read connection credentials.
   const popup = sender.url === chrome.runtime.getURL('popup.html')
-  if (sender.tab && !popup && message.type !== 'capture' && message.type !== 'snapshot' && message.type !== 'page-screenshot' && message.type !== 'capture-status' && message.type !== 'appearance' && message.type !== 'notes' && message.type !== 'settings' && message.type !== 'target' && message.type !== 'bridge-settings') throw new Error('This action is only available in the extension popup.')
+  if (sender.tab && !popup && message.type !== 'toolbar-presence' && message.type !== 'capture' && message.type !== 'snapshot' && message.type !== 'page-screenshot' && message.type !== 'capture-status' && message.type !== 'appearance' && message.type !== 'notes' && message.type !== 'settings' && message.type !== 'target' && message.type !== 'bridge-settings') throw new Error('This action is only available in the extension popup.')
   switch (message.type) {
+    case 'toolbar-presence': {
+      if (!sender.tab || sender.frameId !== 0) throw new Error('Toolbar presence requires the top-frame extension sender')
+      return toolbarPresence(sender.tab, message.toolbarId, message.open)
+    }
     case 'settings': return settings()
     case 'bridge-settings': return saveBridgeSettings(message.url, message.port)
     case 'notes': return bridge('/notes')
@@ -136,7 +166,9 @@ async function handle(message: WorkerMessage, sender: chrome.runtime.MessageSend
       if (busy.has(tabId)) throw new Error('A capture is already being prepared.')
       busy.add(tabId)
       let attached = false
+      let release: (() => Promise<void>) | undefined
       try {
+        release = await captureLease(tabId)
         await chrome.debugger.attach({ tabId }, '1.3'); attached = true
         await command(tabId, 'Page.enable')
         await command(tabId, 'DOM.enable')
@@ -152,6 +184,7 @@ async function handle(message: WorkerMessage, sender: chrome.runtime.MessageSend
         await content(tabId, { type: 'restore-animations' }).catch(() => {})
         await content(tabId, { type: 'visibility', hidden: false }).catch(() => {})
         if (attached) await chrome.debugger.detach({ tabId }).catch(() => {})
+    await release?.().catch(() => {})
         busy.delete(tabId)
       }
     }
@@ -160,7 +193,9 @@ async function handle(message: WorkerMessage, sender: chrome.runtime.MessageSend
       if (busy.has(tabId)) throw new Error('A capture is already being prepared.')
       busy.add(tabId)
       let attached = false
+      let release: (() => Promise<void>) | undefined
       try {
+        release = await captureLease(tabId)
         await chrome.debugger.attach({ tabId }, '1.3'); attached = true
         await command(tabId, 'Page.enable')
         await content(tabId, { type: 'visibility', hidden: true })
@@ -169,6 +204,7 @@ async function handle(message: WorkerMessage, sender: chrome.runtime.MessageSend
       } finally {
         await content(tabId, { type: 'visibility', hidden: false }).catch(() => {})
         if (attached) await chrome.debugger.detach({ tabId }).catch(() => {})
+    await release?.().catch(() => {})
         busy.delete(tabId)
       }
     }

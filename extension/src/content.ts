@@ -40,6 +40,10 @@ function install() {
   const selections: Selection[] = []
   let undoSelection: Selection[] | undefined
   let hovered: Element | null = null
+  const toolbarId = crypto.randomUUID()
+  let presenceTimer: ReturnType<typeof setInterval> | undefined
+  const reportPresence = (open: boolean) => { void worker({ type: 'toolbar-presence', toolbarId, open }).catch(() => {}) }
+  addEventListener('pagehide', () => { clearInterval(presenceTimer); reportPresence(false) })
   let enabled = false
   let recording = false
   let recordDuration = 2
@@ -515,6 +519,9 @@ function install() {
     if ((capturing || recording) && !next) return
     if (next && !enabled) returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
     enabled = next
+    clearInterval(presenceTimer)
+    reportPresence(next)
+    if (next) presenceTimer = setInterval(() => reportPresence(true), 15_000)
     cancelAnimationFrame(trackingFrame)
     if (next) trackingFrame = requestAnimationFrame(trackGeometry)
     if (next) { picking = true; viewOriginal(false) }
