@@ -30,11 +30,11 @@ export function concentric(parentRadius: number, inset: number) {
 
 export const readingWidth = 720
 /**
- * The note's column for a window this wide: 720 in a small window, growing with it so a wide one
- * isn't mostly margin, up to 960, where lines are still short enough to read.
+ * The note's column: capped at 720 + 28px gutters so prose stays scannable.
+ * Terminal grid sizing keeps its own wider calc at the call site (app.tsx).
  */
-export function readingWidthFor(windowWidth: number) {
-  return Math.round(Math.min(960, Math.max(readingWidth, windowWidth * 0.66)))
+export function readingWidthFor(_windowWidth: number) {
+  return readingWidth
 }
 export const headerHeight = 36
 /** Space from the top of the pane to the first line of the note: the header band plus 16. Set once. */
@@ -63,7 +63,11 @@ export const type = {
   body: { fontSize: 14, lineHeight: 22 },
   user: { fontSize: 14.5, lineHeight: 23 },
   meta: { fontSize: 11.5, lineHeight: 16 },
-  title: { fontSize: 13, lineHeight: 18 },
+  title: { fontSize: 15, lineHeight: 22 },
+  titleLg: { fontSize: 17, lineHeight: 23 },
+  label: { fontSize: 12.5, lineHeight: 16 },
+  caption: { fontSize: 10.5, lineHeight: 14 },
+  badge: { fontSize: 10.5, lineHeight: 12 },
   mono: { fontSize: 12, lineHeight: 18 },
 }
 
@@ -239,7 +243,7 @@ export const light: Material = {
   popupHover: '#f0f0f3',
   scrim: '#0000001f',
   codeBg: '#0000000a',
-  accent: '#1447e6',
+  accent: '#693acf',
   blue: '#1447e6',
   action: { background: '#171717', hover: '#27272a', pressed: '#57575f', text: '#ffffff' },
   focusRing: '#1447e699',

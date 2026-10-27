@@ -12,7 +12,7 @@ import { daysLeft, deleteForever, emptyTrash, restoreNote, trashed, TRASH_DAYS, 
 import { ago } from './dialogs'
 import { useM } from './kit'
 import { SettingsSection as SheetSection } from './settings/controls'
-import { accentFor, shortPath } from './theme'
+import { accentFor, shortPath, type } from './theme'
 
 export function TrashSettings({ profiles, onRestore }: { profiles: Profile[]; onRestore: (thread: Thread) => void }) {
   const m = useM()
@@ -38,7 +38,7 @@ export function TrashSettings({ profiles, onRestore }: { profiles: Profile[]; on
       <div style={{ display: 'flex', flexDirection: 'column' }}>
       {items.length ? (
         <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', minHeight: 34 }}>
-          <text testId="trash-count" style={{ fontSize: 13, lineHeight: 17, color: m.textUi, flexGrow: 1 }}>{items.length === 1 ? '1 note' : `${items.length} notes`}</text>
+          <text testId="trash-count" style={{ ...type.label, color: m.textUi, flexGrow: 1 }}>{items.length === 1 ? '1 note' : `${items.length} notes`}</text>
           <ConfirmMorph
             key={items.length}
             label="Empty Trash"
@@ -53,18 +53,18 @@ export function TrashSettings({ profiles, onRestore }: { profiles: Profile[]; on
         </div>
       ) : (
         <div testId="trash-empty-state" style={{ display: 'flex', flexDirection: 'column', gap: 3, paddingTop: 10, paddingBottom: 10 }}>
-          <text style={{ fontSize: 13, lineHeight: 17, color: m.textUi }}>Trash is empty</text>
-          <text style={{ fontSize: 11.5, lineHeight: 15, color: m.textFaint }}>Notes you delete from Past notes wait here, so you can bring them back.</text>
+          <text style={{ ...type.label, color: m.textUi }}>Trash is empty</text>
+          <text style={{ fontSize: 11.5, lineHeight: 15, color: m.textMuted }}>Notes you delete from Past notes wait here, so you can bring them back.</text>
         </div>
       )}
       {items.map((t) => (
         <div key={t.id} testId={`trash-${t.id}`} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48, paddingTop: 6, paddingBottom: 6, borderTopWidth: 1, borderColor: m.border }}>
-          <Icon name="notes" size={15} color={m.textFaint} />
+          <Icon name="notes" size={14} color={m.textMuted} />
           <div style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <text style={{ fontSize: 13, lineHeight: 17, color: m.textUi, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{t.title}</text>
+            <text style={{ ...type.label, color: m.textUi, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{t.title}</text>
             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Dot color={accentFor(m, profiles, t.profileId)} size={5} />
-              <text style={{ fontSize: 11.5, lineHeight: 15, color: m.textFaint, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+              <text style={{ fontSize: 11.5, lineHeight: 15, color: m.textMuted, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
                 {`${path.basename(t.workspace) || shortPath(t.workspace)} · ${deletedAgo(t.deletedAt)} · ${daysLeft(t) === 1 ? '1 day left' : `${daysLeft(t)} days left`}`}
               </text>
             </div>
