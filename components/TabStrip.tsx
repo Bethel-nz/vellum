@@ -14,8 +14,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { motion } from './spring'
 import { Button as Base } from '@gpuix/react/button'
-import { font } from '../ui/theme'
-import { Button } from './Button'
+import { concentric, font, radiusBase } from '../ui/theme'
+import { Button, controlRadius } from './Button'
 import { Dot } from './Dot'
 import { Alerts } from './Alerts'
 import { TabIndicator } from './TabIndicator'
@@ -51,7 +51,7 @@ export type StripTab = {
 export type StripTerm = { id: string; title: string; running: boolean }
 
 /** The pill fits its title, within reason. Geist 12.5/500 averages ~6.9px a character. */
-const pillWidth = (t: StripTab) => Math.round(Math.min(280, Math.max(124, t.title.length * 6.9 + 30 + 54)))
+const pillWidth = (t: StripTab, cap = 280) => Math.round(Math.min(cap, Math.max(124, t.title.length * 6.9 + 30 + 54)))
 
 export function TabStrip({
   tabs,
@@ -104,9 +104,13 @@ export function TabStrip({
   const [bandWidth, setBandWidth] = useState(0)
   const [centreWidth, setCentreWidth] = useState(0)
   const [trailingWidth, setTrailingWidth] = useState(0)
+  // Under ~1100px the centred row collides with the leading/trailing clusters:
+  // cap the pill, hide the changes summary, let the account collapse to its dot (app.tsx).
+  const collapsed = bandWidth > 0 && (bandWidth - centreWidth) < 320
+  const cap = collapsed ? 180 : 280
   const noteIndex = view === 'notes' ? tabs.findIndex((tab) => tab.id === activeId) : -1
   const termIndex = view === 'terminal' ? terms.findIndex((tab) => tab.id === activeTermId) : -1
-  const noteWidth = tabs.reduce((sum, tab, i) => sum + (i === noteIndex ? pillWidth(tab) : BOX) + HIT_X * 2, 0)
+  const noteWidth = tabs.reduce((sum, tab, i) => sum + (i === noteIndex ? pillWidth(tab, cap) : BOX) + HIT_X * 2, 0)
   const indicatorLeft = noteIndex >= 0 ? 26 + noteIndex * (BOX + HIT_X * 2) + HIT_X : 26 + noteWidth + 26 + 17 + 26 + Math.max(0, termIndex) * (BOX + HIT_X * 2) + HIT_X
   const current = noteIndex >= 0 ? tabs[noteIndex] : termIndex >= 0 ? { ...terms[termIndex]!, time: '' } : undefined
   return (
@@ -129,7 +133,7 @@ export function TabStrip({
       {/* Centred on the whole band, not on the space between the two sides. */}
       <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
         <div onLayout={(event) => setCentreWidth(event.width ?? 0)} style={{ position: 'relative', display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
-          <TabIndicator left={indicatorLeft} width={current ? pillWidth(current) : 0} />
+          <TabIndicator left={indicatorLeft} width={current ? pillWidth(current, cap) : 0} />
           <ViewButton icon="notes" on={view === 'notes'} onPress={onNotes} testId="view-notes" title="Notes" />
           {tabs.map((t) => (
             <Tab
@@ -143,6 +147,7 @@ export function TabStrip({
               </>}
               onPick={() => onPick(t.id)}
               onClose={() => onClose(t.id)}
+              cap={cap}
             />
           ))}
           <Button onPress={onNew} testId="new-thread" title="New note (⌘N)" style={{ width: 22, paddingLeft: 0, paddingRight: 0, marginLeft: 4 }}>
@@ -158,6 +163,7 @@ export function TabStrip({
               active={view === 'terminal' && t.id === activeTermId}
               onPick={() => onPickTerm(t.id)}
               onClose={() => onCloseTerm(t.id)}
+              cap={cap}
             />
           ))}
           {view === 'terminal' && onNewTerm ? (
@@ -169,7 +175,7 @@ export function TabStrip({
       </div>
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>{leading}</div>
       {trailing || changes ? <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-        {changes?.summary.files ? <ChangesSummary key={`${changes.summary.files}:${changes.summary.added}:${changes.summary.removed}`} summary={changes.summary} onPress={changes.onPress} availableWidth={(bandWidth - centreWidth) / 2 - trailingWidth - 18} /> : null}
+        {!collapsed && changes?.summary.files ? <ChangesSummary key={`${changes.summary.files}:${changes.summary.added}:${changes.summary.removed}`} summary={changes.summary} onPress={changes.onPress} availableWidth={(bandWidth - centreWidth) / 2 - trailingWidth - 18} /> : null}
         {trailing ? <div onLayout={(event) => setTrailingWidth(event.width ?? 0)} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 4 }}>{trailing}</div> : null}
       </div> : null}
     </div>
@@ -194,6 +200,7 @@ function Tab({
   onPick,
   onClose,
   term,
+  cap,
 }: {
   tab: StripTab
   active: boolean
@@ -203,6 +210,7 @@ function Tab({
   onClose: () => void
   /** A terminal: no note menu, so no chevron and no title-menu hook. */
   term?: boolean
+  cap?: number
 }) {
   const m = useM()
   const [hover, setHover] = useState(false)
@@ -218,7 +226,7 @@ function Tab({
     <div style={{ height: 28, paddingLeft: HIT_X, paddingRight: HIT_X, display: 'flex', alignItems: 'center' }}>
       <motion.div
         initial={false}
-        animate={{ width: active ? pillWidth(tab) : BOX, height: active ? PILL : BOX, borderRadius: active ? 7 : 3 }}
+        animate={{ width: active ? pillWidth(tab, cap ?? 280) : BOX, height: active ? PILL : BOX, borderRadius: active ? controlRadius : 3 }}
         transition={tween(spring.morph)}
         style={{
           // A motion.div keeps presses to itself; let them reach the tab button.
@@ -260,7 +268,7 @@ function Tab({
       // ⌃click closes, like a middle click in a browser.
       onClick={(e) => (e.modifiers?.ctrl ? onClose() : onPick())}
       onAuxClick={(e) => (e.button === 1 ? onClose() : undefined)}
-      style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, cursor: 'default', borderRadius: 7, focusVisible: { outlineWidth: 2, outlineColor: m.focusRing, outlineOffset: -2 } }}
+      style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, cursor: 'default', borderRadius: controlRadius, focusVisible: { outlineWidth: 2, outlineColor: m.focusRing, outlineOffset: -2 } }}
     />
     {active && (hover || bare) ? <div style={{ position: 'absolute', right: 6, top: 5 }}><Button onPress={onClose} testId={`close-${tab.id}`} title={term ? 'Close terminal' : 'Close tab (⇧⌘W)'} style={{ width: 18, height: 18, minHeight: 18, paddingLeft: 0, paddingRight: 0 }}><Icon name="x" size={11} /></Button></div> : null}
       {/* Its own hover label: the shared Tooltip's trigger eats the click a box needs. */}
@@ -270,7 +278,7 @@ function Tab({
             initial={{ opacity: 0, top: -offset.tooltip }}
             animate={{ opacity: 1, top: 0 }}
             transition={enter('instant')}
-            style={{ position: 'relative', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, height: 24, paddingLeft: 8, paddingRight: 8, backgroundColor: m.popup, borderRadius: 6, borderWidth: 1, borderColor: m.border }}
+            style={{ position: 'relative', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, height: 24, paddingLeft: 8, paddingRight: 8, backgroundColor: m.popup, borderRadius: concentric(radiusBase, 4), borderWidth: 1, borderColor: m.border }}
           >
             <text style={{ fontSize: 12, lineHeight: 16, color: m.textUi, whiteSpace: 'nowrap' }}>{tab.title}</text>
             {tab.time ? <text style={{ fontSize: 10.5, lineHeight: 14, color: m.textFaint, fontFamily: font.mono }}>{tab.time}</text> : null}

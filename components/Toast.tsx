@@ -35,8 +35,8 @@ function Toast({ shown }: { shown: Shown | null }) {
       {shown ? (
         <motion.div
           key={shown.id}
-          initial={reduced ? false : { opacity: 0, bottom: 16 - offset.toast }}
-          animate={{ opacity: 1, bottom: 16 }}
+          initial={reduced ? false : { opacity: 0, bottom: 50 - offset.toast }}
+          animate={{ opacity: 1, bottom: 50 }}
           transition={enter()}
           style={{
             position: 'absolute',

@@ -6,11 +6,11 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useWindowSize } from '@gpuix/react'
 import { AnimatePresence, motion } from './spring'
-import { concentric, elevation, font, radiusXl } from '../ui/theme'
+import { concentric, elevation, font, radiusBase, radiusXl, type } from '../ui/theme'
 import { Button, Label } from './Button'
 import { Field } from './Field'
 import { useAgent } from './AgentContext'
-import { Icon } from './Icon'
+import { Icon, brandMarks } from './Icon'
 import { Kbd } from './Kbd'
 import { Menu } from './Menu'
 import { Scroll } from './Scroll'
@@ -30,7 +30,8 @@ export type ApprovalView = {
 }
 
 export type ApprovalPreview = ReactNode
-const CARD_BOTTOM = 46
+// Above the status bar (28) with 22px clearance: one focal line with toasts.
+const CARD_BOTTOM = 50
 
 function waited(at: string, now: number) {
   const seconds = Math.max(0, Math.floor((now - new Date(at).getTime()) / 1000))
@@ -76,7 +77,7 @@ function Card({ ask, preview, more = 0, workspace, model, denying, onDenying, on
         <div testId="approval" style={{ pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: 16, padding: 18, backgroundColor: m.popup, borderRadius: radiusXl, borderWidth: 1, borderColor: m.borderFocused, boxShadow: elevation(m, 'card') }}>
           <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}><text style={{ fontSize: 13, lineHeight: 18, fontWeight: 500, color: m.text }}>Approval</text><text style={{ fontSize: 11.5, lineHeight: 16, color: m.textMuted }}>{`${more + 1} pending`}</text></div>
           <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Icon name={agent.id} size={15} color={m.accent} />
+            <Icon name={agent.id} size={15} color={brandMarks.has(agent.id) ? undefined : m.accent} />
             <text style={{ fontSize: 12.5, lineHeight: 17, fontWeight: 500, color: m.text }}>{agent.title}</text>
             {ask.tool?.startsWith('mcp__') ? <text style={{ minWidth: 0, fontSize: 11.5, lineHeight: 16, color: m.textMuted }}>{ask.tool.split('__')[1]}</text> : null}
             {model ? <text style={{ fontSize: 11.5, lineHeight: 16, color: m.textMuted }}>{model}</text> : null}
@@ -84,7 +85,7 @@ function Card({ ask, preview, more = 0, workspace, model, denying, onDenying, on
             <text style={{ fontSize: 11.5, lineHeight: 16, color: m.textMuted }}>{`${waited(ask.at, now)} waiting`}</text>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'start', gap: 8 }}><Icon name={toolIcon} size={18} color={m.textUi} /><text style={{ flexGrow: 1, minWidth: 0, fontSize: 17, lineHeight: 23, fontWeight: 500, color: m.text }}>{ask.title}</text></div>
+            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'start', gap: 8 }}><Icon name={toolIcon} size={18} color={m.textUi} /><text style={{ flexGrow: 1, minWidth: 0, ...type.titleLg, fontWeight: 500, color: m.text }}>{ask.title}</text></div>
             {ask.reason ? <text style={{ fontSize: 12, lineHeight: 18, color: m.textMuted, lineClamp: 3 }}>{ask.reason}</text> : null}
           </div>
           {preview ? (
@@ -122,7 +123,7 @@ function Card({ ask, preview, more = 0, workspace, model, denying, onDenying, on
                 {ask.alwaysLabel ? <div onKeyDown={(event) => { if (event.key === 'escape' && rulesOpen) { event.preventDefault(); event.stopPropagation(); setRulesOpen(false) } }} style={{ position: 'relative' }}><Button onPress={() => setRulesOpen((open) => !open)} testId="approval-always" title={ask.alwaysLabel}><Label muted>Always allow</Label><Icon name="chevronDown" size={12} /></Button><Menu open={rulesOpen} onClose={() => setRulesOpen(false)} align="end" side="top" width={300} testId="approval-rules" items={[{ kind: 'label', label: 'Allow this exact rule' }, { label: ask.alwaysLabel, testId: 'approval-always-confirm', icon: 'check', onSelect: onAlways }]} /></div> : null}
                 <Button variant="solid" onPress={onAllow} testId="approval-allow" style={{ height: 32, minHeight: 32, paddingLeft: 13, paddingRight: 9, borderRadius: 16, gap: 8 }}>
                   <Label variant="solid">Approve</Label>
-                  <div style={{ width: 20, height: 20, borderRadius: 6, borderWidth: 1, borderColor: `${m.pane.slice(0, 7)}44`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><text style={{ fontSize: 12, lineHeight: 15, color: m.pane }}>↵</text></div>
+                  <div style={{ width: 20, height: 20, borderRadius: concentric(radiusBase, 4), borderWidth: 1, borderColor: `${m.pane.slice(0, 7)}44`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><text style={{ fontSize: 12, lineHeight: 15, color: m.pane }}>↵</text></div>
                 </Button>
               </>
             )}

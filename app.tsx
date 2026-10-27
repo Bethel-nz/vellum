@@ -91,6 +91,7 @@ import { CELL_W, TerminalBlock } from './ui/TerminalBlock'
 import {
   accentFor,
   concentric,
+  elevation,
   radiusBase,
   contentInset,
   font,
@@ -140,10 +141,11 @@ const shortcuts: { current?: (e: KeyEvent) => void } = {}
 // ---------------------------------------------------------------- document
 
 function Paragraph({ children, kind, nodeRef }: { children: React.ReactNode; kind?: Block['kind'] | 'title' | 'status' | 'composer' | 'stream'; nodeRef?: React.Ref<PublicInstance> }) {
-  const top = kind === 'user' || kind === 'composer' ? 18 : kind === 'title' ? 28 : 6
+  const top = kind === 'user' || kind === 'composer' ? 12 : kind === 'title' ? 20 : 12
   const width = readingWidthFor(useWindowSize().width)
+  const bottom = kind === 'composer' ? 52 : 6
   return (
-    <div ref={nodeRef} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', paddingTop: kind === 'stream' ? 0 : top, paddingBottom: kind === 'stream' ? 0 : 6 }}>
+    <div ref={nodeRef} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', paddingTop: kind === 'stream' ? 6 : top, paddingBottom: kind === 'stream' ? 6 : bottom }}>
       <div style={{ width: '100%', maxWidth: width, paddingLeft: 28, paddingRight: 28 }}>{children}</div>
     </div>
   )
@@ -212,7 +214,7 @@ const Document = memo(function Document({
       overdraw={600}
       style={{ flexGrow: 1, minHeight: 0, width: '100%', scrollbarColor: m.scrollbar, scrollbarWidth: 10 }}
     >
-      <div key="head" style={{ height: 28 }} />
+      <div key="head" style={{ height: 16 }} />
       {thread.blocks.map((original) => {
         const grouped = toolGroups.get(original.id)
         if (grouped === null) return <div key={original.id} style={{ height: 0 }} />
@@ -240,7 +242,7 @@ const Document = memo(function Document({
         {composer}
       </Paragraph>
       {/* Room past the end, like an editor; clicking it puts the caret back at the end. */}
-      <div key="tail" onClick={onTailClick} style={{ height: 240, cursor: 'text' }} />
+      <div key="tail" onClick={onTailClick} style={{ height: 160, cursor: 'text' }} />
     </virtual-list>
   )
 })
@@ -276,12 +278,14 @@ function AccountSwitcher({
   colorOf,
   onMove,
   onSettings,
+  compact,
 }: {
   thread?: Thread
   profiles: Profile[]
   colorOf: (id: string) => string
   onMove: (profileId: string) => void
   onSettings: () => void
+  compact?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const profile = profiles.find((p) => p.id === thread?.profileId)
@@ -305,8 +309,7 @@ function AccountSwitcher({
     <div style={{ position: 'relative' }}>
       <Button onPress={() => setOpen((v) => !v && !closedByOutsidePress('account'))} selected={open} testId="account-pill" title="This note's account">
         <Dot color={colorOf(profile.id)} size={7} />
-        <Label muted>{profile.name}</Label>
-        <Icon name="chevronDown" size={11} />
+        {!compact ? <><Label muted>{profile.name}</Label><Icon name="chevronDown" size={11} /></> : null}
       </Button>
       <Menu open={open} onClose={() => setOpen(false)} side="bottom" align="start" width={280} testId="account-menu" closeKey="account" items={items} />
     </div>
@@ -380,7 +383,7 @@ function NoteMenu({
       />
       {renaming ? (
         <FloatingLayer side="bottom" align="start" sideOffset={6} style={{ width: 320, backgroundColor: '#00000000' }}>
-          <div onMouseDownOutside={finishRename} style={{ display: 'flex', padding: 5, backgroundColor: m.popup, borderRadius: concentric(radiusBase + 5, 0), borderWidth: 1, borderColor: m.border, boxShadow: { offsetX: 0, offsetY: 12, blurRadius: 32, spreadRadius: 0, color: m.shadow } }}>
+          <div onMouseDownOutside={finishRename} style={{ display: 'flex', padding: 5, backgroundColor: m.popup, borderRadius: concentric(radiusBase + 5, 0), borderWidth: 1, borderColor: m.border, boxShadow: elevation(m, 'popover') }}>
             <Field
               testId="title-input"
               value={name}
@@ -732,8 +735,8 @@ function App() {
   }, [activeId])
 
   // Writing, sending or coming back to the composer while it's scrolled out of view brings the
-  // note down to it, smoothly (ui/glide.ts). The slack is the 240px of room under the composer
-  // less 80: up to there its last line is still clear of the bottom edge.
+  // note down to it, smoothly (ui/glide.ts). The slack is the 160px of room under the composer:
+  // its last line stays clear of the status bar.
   const glide = useRef<(() => void) | null>(null)
   const revealComposer = useCallback(() => {
     const list = noteList.current?.id
@@ -900,7 +903,7 @@ function App() {
 
   // ---- actions
 
-  const terminalCols = Math.max(40, Math.floor((Math.min(readingWidthFor(windowSize.width), windowSize.width - shellInset * 2) - 56 - 22) / CELL_W))
+  const terminalCols = Math.max(40, Math.floor((Math.min(Math.min(960, Math.max(720, windowSize.width * 0.66)), windowSize.width - shellInset * 2) - 56 - 22) / CELL_W))
 
   const runShell = useCallback(
     (thread: Thread, command: string) => {
@@ -1792,6 +1795,7 @@ function App() {
                     colorOf={(id) => accentFor(m, profiles, id)}
                     onMove={(id) => active && moveNote(active, id)}
                     onSettings={() => setOverlay('settings')}
+                    compact={windowSize.width < 1100}
                   />
                 </>
               }

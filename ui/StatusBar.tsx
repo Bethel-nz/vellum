@@ -77,7 +77,7 @@ export function StatusBar({
   const picked = list.find((x) => x.value === (effectiveModel ?? 'default'))
   const modeLabel = modes.find((x) => x.id === mode)?.label ?? mode
   const risky = mode === 'bypassPermissions'
-  const modeColor = risky ? m.warning : mode === 'plan' ? m.blue : m.textMuted
+  const modeColor = risky ? m.warning : m.textMuted
   const modelTitle = shortModel(picked, effectiveModel ? undefined : resolvedModel)
   const effort = efforts?.find((option) => option.value === think)?.displayName ?? effortLabel(think)
   const contextTitle = context?.used ? `${formatTokens(context.used)}${context.window ? ` / ${formatTokens(context.window)}` : ' tokens'}` : 'Context empty'
@@ -91,7 +91,7 @@ export function StatusBar({
       },
       {
         id: 'model-pill', label: `Model: ${modelTitle} · Effort: ${effort}`, selected: menu === 'model', onPress: () => toggle('model'),
-        content: <><Icon name={agent.id} size={14} color={agent.id === 'claude' ? '#d97757' : m.textMuted} /><Label>{modelTitle}</Label><text style={{ fontSize: 12, lineHeight: 16, color: m.textMuted }}>{effort}</text></>,
+        content: <><Icon name={agent.id} size={14} color={agent.id === 'claude' ? '#d97757' : m.textMuted} /><Label>{modelTitle}</Label><text style={{ fontSize: 11.5, lineHeight: 16, color: m.textMuted }}>{effort}</text></>,
         popover: menu === 'model' ? <ModelPicker models={list} model={effectiveModel} resolvedModel={resolvedModel} efforts={efforts} think={think} onModel={onModel} onThink={onThink} onClose={close} /> : null,
       },
       {
@@ -109,7 +109,7 @@ function contextLabel(c?: ContextUse) {
 }
 
 /** How full the context is: a faint track and an arc, as two tinted SVGs (GPUIX tints a whole SVG one colour). */
-function Ring({ fraction, size = 13 }: { fraction: number; size?: number }) {
+function Ring({ fraction, size = 14 }: { fraction: number; size?: number }) {
   const m = useM()
   const f = Math.max(0, Math.min(1, fraction))
   const color = f >= 0.9 ? m.danger : f >= 0.7 ? m.warning : m.textMuted
@@ -170,8 +170,10 @@ function ContextCard({ context, running, onClose, onCompact }: { context?: Conte
               borderWidth: 1,
               borderColor: m.border,
               boxShadow: elevation(m, 'popover'),
+              pointerEvents: 'none',
             }}
           >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, pointerEvents: 'auto' }}>
             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
               <text style={{ fontSize: 13, lineHeight: 17, fontWeight: 600, color: m.text }}>Context</text>
               <div style={{ flexGrow: 1 }} />
@@ -200,6 +202,7 @@ function ContextCard({ context, running, onClose, onCompact }: { context?: Conte
                 <Icon name="fold" size={13} />
                 <Label>Compact</Label>
               </Button>
+            </div>
             </div>
           </motion.div>
         </div>

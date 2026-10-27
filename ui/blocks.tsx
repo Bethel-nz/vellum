@@ -172,12 +172,12 @@ function PastedImages({ images, onView }: { images: string[]; onView: (images: s
             key={src}
             testId={`user-image-${shown.indexOf(src)}`}
             onClick={() => onView(shown, shown.indexOf(src))}
-            style={{ width: 160, height: 120, borderRadius: 10, borderWidth: 1, borderColor: m.border, cursor: 'pointer', hover: { borderColor: m.textFaint } }}
+            style={{ width: 96, height: 72, borderRadius: 10, borderWidth: 1, borderColor: m.border, cursor: 'pointer', hover: { borderColor: m.textFaint } }}
           >
-            <img src={src} objectFit="cover" style={{ width: 158, height: 118, borderRadius: 9 }} />
+            <img src={src} objectFit="cover" style={{ width: 94, height: 70, borderRadius: 9 }} />
           </div>
         ) : (
-          <div key={src} style={{ width: 160, height: 120, borderRadius: 10, borderWidth: 1, borderColor: m.border, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div key={src} style={{ width: 96, height: 72, borderRadius: 10, borderWidth: 1, borderColor: m.border, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Meta>Image missing</Meta>
           </div>
         ),
