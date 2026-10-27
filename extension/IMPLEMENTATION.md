@@ -128,3 +128,10 @@ lines and clearing back to one line: maximum aspect-ratio error stayed below 0.0
 The textarea reached its 180px limit, scrolled from 155px back to 0, and reported no
 visible scrollbar. The editor background and Central Icons save checkmark were
 visually checked; no browser console errors were recorded. Scoped Biome passed.
+
+The element-name navigation header is the editor's drag handle, with grab/grabbing
+cursors and pointer capture. Dragging starts only with the primary button outside
+the navigation buttons; it keeps the existing threshold and viewport bounds. Pointer
+cancellation or capture loss ends the gesture. Dragging the header in a local component
+fixture moved the panel from (316, 166) to (501, 211); clicking parent navigation then
+incremented its callback without changing the position. No browser errors were recorded.
