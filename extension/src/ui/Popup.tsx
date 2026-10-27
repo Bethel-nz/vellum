@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { IconTarget2 } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconTarget2'
 import { IconSquareArrowTopRight } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconSquareArrowTopRight'
 import { IconArrowRotateClockwise } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowRotateClockwise'
@@ -7,6 +7,7 @@ import SegmentedControl from '../arc/segmented-control/segmented-control'
 import { worker, type CaptureSettings, type Note } from '../messages'
 import { setAppearance, type Appearance } from './appearance'
 import { Panel } from './Panel'
+import { bridgePort } from '../../../core/capture'
 
 type NotesState = { status: 'loading' | 'ready' | 'offline'; notes: Note[]; error?: string }
 export function Popup() {
@@ -14,6 +15,10 @@ export function Popup() {
   const [settings, setSettings] = useState<CaptureSettings>({ target: 'active', mode: 'send', url: 'http://127.0.0.1', port: 47470 })
   const [error, setError] = useState('')
   const [selecting, setSelecting] = useState(false)
+  const [port, setPort] = useState('')
+  useEffect(() => {
+    void worker<CaptureSettings>({ type: 'settings' }).then((saved) => setPort(saved.port === bridgePort ? '' : String(saved.port))).catch(() => {})
+  }, [])
   useEffect(() => {
     let current = true
     let busy = false
@@ -50,6 +55,17 @@ export function Popup() {
     finally { setSelecting(false) }
   }
   const ready = state.status === 'ready'
+  const savePort = async (event: FormEvent) => {
+    event.preventDefault()
+    const value = port.trim()
+    const next = value ? Number(value) : bridgePort
+    if (value && (!/^\d{1,5}$/.test(value) || !Number.isInteger(next) || next < 1 || next > 65535)) { setError('Use a port from 1 to 65535, or leave it blank for Automatic.'); return }
+    try {
+      await worker({ type: 'bridge-settings', url: 'http://127.0.0.1', port: next })
+      setError('')
+      setState({ status: 'loading', notes: [] })
+    } catch (failure) { setError((failure as Error).message) }
+  }
   const selectedNote = state.notes.find((note) => settings.target === 'active' ? note.active : note.id === settings.target)
   return <Panel title="Vellum Snapshot" popup>
     <div className="vellum-popup-content">
@@ -62,6 +78,12 @@ export function Popup() {
         <Button id="select" className="vellum-select-button" size="md" loading={selecting} onClick={select}><IconTarget2 size={15} aria-hidden="true" />Select elements</Button>
         <p className="vellum-popup-help">Select an element, add an instruction, and send.</p>
       </section> : <div className="vellum-empty"><IconSquareArrowTopRight size={19} aria-hidden="true" /><h2>Open a note in Vellum</h2><p>Your open notes will appear here.</p></div> : <div className="vellum-empty"><IconArrowRotateClockwise size={19} aria-hidden="true" /><h2>{state.status === 'loading' ? 'Connecting to the desktop app' : 'Open Vellum to capture'}</h2><p>{state.status === 'loading' ? 'Your open notes will appear here.' : 'The extension connects automatically.'}</p></div>}
+      <details className="vellum-connection-settings"><summary className="vellum-label">Connection settings</summary><form className="vellum-field" onSubmit={savePort}>
+        <label htmlFor="bridge-port">Port</label>
+        <input id="bridge-port" type="text" inputMode="numeric" value={port} placeholder="Automatic" onChange={(event) => setPort(event.target.value)} />
+        <p className="vellum-meta">Match the port in Vellum’s Browser settings. Leave blank for automatic discovery.</p>
+        <Button type="submit" size="sm">Save port</Button>
+      </form></details>
       <p className="vellum-error" role="alert">{error}</p>
     </div>
     <footer className="vellum-popup-footer"><span>Select on this page</span><kbd>⌥ ⇧ V</kbd></footer>
