@@ -131,13 +131,17 @@ export function CapturePanel(props: CapturePanelProps) {
       node.style.height = `${Math.min(180, node.scrollHeight)}px`
     }
     resize()
-    let width = node.getBoundingClientRect().width
+    let width = node.clientWidth, frame = 0
     const observer = new ResizeObserver(() => {
-      const next = node.getBoundingClientRect().width
-      if (next !== width) { width = next; resize() }
+      const next = node.clientWidth
+      if (next !== width) {
+        width = next
+        cancelAnimationFrame(frame)
+        frame = requestAnimationFrame(resize)
+      }
     })
     observer.observe(node)
-    return () => observer.disconnect()
+    return () => { observer.disconnect(); cancelAnimationFrame(frame) }
   }, [active?.note, active?.ref])
   useLayoutEffect(() => {
     const node = composer.current

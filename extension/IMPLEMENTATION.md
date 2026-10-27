@@ -89,6 +89,8 @@ and a separate footer with the circular arrow at the bottom right. A hidden, ine
 textarea measures wrapping at the compact width, avoiding an expand/collapse loop
 when the expanded body becomes wider. Text scrolls within 180px. The shared morph
 spring animates panel size; reduced motion disables the size/radius transitions.
+Width tracking uses the textarea's untransformed client width and schedules resize
+work on the next animation frame. This avoids observer feedback from motion transforms.
 
 Copy sits immediately right of the toolbar check in one compact action group.
 It uses the same capture assembly as sending, across every selection, including saved
@@ -111,3 +113,5 @@ previous empty clipboard was restored. A focused serialization check covered dra
 tweaks, screenshot metadata, image-byte omission and preservation of the source capture.
 Inspected the composer screenshot. Temporary fixtures were removed;
 live bridge delivery and a reloaded unpacked extension were not reverified here.
+Repeated compact/expanded transitions and explicit line breaks passed a follow-up
+browser check with no console errors after fixing a ResizeObserver delivery warning.
