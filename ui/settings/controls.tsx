@@ -37,7 +37,7 @@ export function SettingsRow({ label, detail, children, testId }: { label: string
 export function ThemeCards({ value, onChange }: { value: MaterialName; onChange: (value: MaterialName) => void }) {
   const m = useM()
   return <div testId="set-material" role="radiogroup" aria-label="Theme" style={{ display: 'flex', flexDirection: 'row', gap: 12, marginBottom: 26 }}>
-    {[dark, light].map((theme) => <Base key={theme.name} testId={`set-material-${theme.name}`} aria-label={`${theme.name === 'dark' ? 'Dark' : 'Light'} theme`} aria-selected={value === theme.name} onClick={() => onChange(theme.name)} style={{ display: 'flex', flexDirection: 'column', gap: 10, flexGrow: 1, flexBasis: 0, minWidth: 0, padding: 8, paddingBottom: 10, borderRadius: radiusXl, borderWidth: 1.5, borderColor: value === theme.name ? m.blue : m.border, backgroundColor: value === theme.name ? m.hover : '#00000000', cursor: 'pointer', focusVisible: { outlineWidth: 2, outlineColor: m.focusRing, outlineOffset: 2 } }}>
+    {[dark, light].map((theme) => <Base key={theme.name} testId={`set-material-${theme.name}`} aria-label={`${theme.name === 'dark' ? 'Dark' : 'Light'} theme`} aria-selected={value === theme.name} onClick={() => onChange(theme.name)} style={{ display: 'flex', flexDirection: 'column', gap: 10, flexGrow: 1, flexBasis: 0, minWidth: 0, padding: 8, paddingBottom: 10, borderRadius: radiusXl, borderWidth: 1.5, borderColor: value === theme.name ? m.borderFocused : m.border, backgroundColor: value === theme.name ? m.hover : '#00000000', cursor: 'pointer', focusVisible: { outlineWidth: 2, outlineColor: m.focusRing, outlineOffset: 2 } }}>
       <div style={{ display: 'flex', flexDirection: 'row', gap: 6, height: 84, width: '100%', padding: 8, borderRadius: 9, backgroundColor: theme.rootTint, pointerEvents: 'none' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, width: '28%', paddingTop: 4, pointerEvents: 'none' }}>{[80, 60, 70].map((width) => <div key={width} style={{ height: 5, width: `${width}%`, borderRadius: 3, backgroundColor: theme.textFaint, pointerEvents: 'none' }} />)}</div>
         <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, gap: 5, padding: 8, borderRadius: 6, backgroundColor: theme.pane, pointerEvents: 'none' }}>
@@ -46,7 +46,7 @@ export function ThemeCards({ value, onChange }: { value: MaterialName; onChange:
           <div style={{ height: 5, width: '40%', borderRadius: 3, backgroundColor: theme.accent, pointerEvents: 'none' }} />
         </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, width: '100%', paddingLeft: 4, paddingRight: 4, pointerEvents: 'none' }}><Label>{theme.name === 'dark' ? 'Dark' : 'Light'}</Label>{value === theme.name ? <Icon name="check" size={13} color={m.blue} /> : null}</div>
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, width: '100%', paddingLeft: 4, paddingRight: 4, pointerEvents: 'none' }}><Label>{theme.name === 'dark' ? 'Dark' : 'Light'}</Label>{value === theme.name ? <Icon name="check" size={13} color={m.textUi} /> : null}</div>
     </Base>)}
   </div>
 }
