@@ -91,7 +91,12 @@ export function CapturePanel(props: CapturePanelProps) {
     if (!active || props.picking || props.recording) return
     const closeOnOutsidePointer = (event: PointerEvent) => {
       const node = composer.current
-      if (!node || event.composedPath().includes(node)) return
+      if (!node) return
+      // Document events from our closed shadow root expose the host, not inner controls.
+      // Keep toolbar/settings interactions inside the same annotation session.
+      const root = node.getRootNode()
+      const surface = root instanceof ShadowRoot ? root.host : node.closest('.vellum-snapshot') ?? node
+      if (event.composedPath().includes(surface)) return
       props.onActivate(null)
     }
     document.addEventListener('pointerdown', closeOnOutsidePointer)
