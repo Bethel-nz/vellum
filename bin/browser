@@ -1,0 +1,5 @@
+#!/bin/sh
+if [ "$VELLUM_COMPILED" = "1" ]; then
+  exec "$VELLUM_EXEC_PATH" --browser "$@"
+fi
+exec "${VELLUM_EXEC_PATH:-bun}" "$VELLUM_BROWSER_SCRIPT" "$@"
