@@ -46,12 +46,14 @@ export type CapturePanelProps = {
   getAnchor: () => { x: number; y: number } | null
   onRemoveCapture: (id: string) => void; onRemoveComment: (id: string) => void
   onCapture: () => void; onPageScreenshot: () => void; onRemovePageScreenshot: (id: string) => void; onRecord: () => void; onSend: () => void
+  onCopy: () => Promise<void>
 }
 
 export function CapturePanel(props: CapturePanelProps) {
   const composer = useRef<HTMLDivElement>(null)
   const toolbar = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
+  const inputMeasure = useRef<HTMLTextAreaElement>(null)
   const settingsButton = useRef<HTMLButtonElement>(null)
   const connectionSettingsButton = useRef<HTMLButtonElement>(null)
   const controlsId = useId()
@@ -108,14 +110,18 @@ export function CapturePanel(props: CapturePanelProps) {
   }, [props.bridge.url, props.bridge.port])
   useLayoutEffect(() => {
     const node = input.current
-    if (!node) return
+    const measure = inputMeasure.current
+    if (!node || !measure) return
     const resize = () => {
-      node.style.height = '0px'
-      const style = getComputedStyle(node)
+      // Measure wrapping at the compact width, even after the editor expands.
+      // Otherwise the wider text area can collapse and reopen on every resize.
+      measure.style.height = '0px'
+      const style = getComputedStyle(measure)
       const line = Number.parseFloat(style.lineHeight) || 24
       const padding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom)
-      setMultiline(node.scrollHeight > line + padding + 1)
-      node.style.height = `${Math.min(120, node.scrollHeight)}px`
+      setMultiline(measure.scrollHeight > line + padding + 1)
+      node.style.height = '0px'
+      node.style.height = `${Math.min(180, node.scrollHeight)}px`
     }
     resize()
     let width = node.getBoundingClientRect().width
@@ -200,13 +206,14 @@ export function CapturePanel(props: CapturePanelProps) {
       event.preventDefault()
       setDragPosition({ ref: active.ref, x: event.clientX - offset.x, y: event.clientY - offset.y })
     }} onPointerUp={() => { dragOffset.current = null }} onPointerCancel={() => { dragOffset.current = null }} initial={{ opacity: 0, y: reduced ? 0 : 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={panelTransition}>
-      <div className="vellum-comment-row" data-multiline={multiline}>
+      <motion.div layout="size" className="vellum-comment-row" data-multiline={multiline} transition={reduced ? { duration: 0 } : motionTokens.spring.morph}>
         <button ref={settingsButton} type="button" className="vellum-tool-button" aria-label={props.toolsOpen ? 'Hide element controls' : 'Show element controls'} title="Styles and animation" aria-expanded={props.toolsOpen} aria-controls={controlsId} disabled={props.capturing} onClick={() => props.onToolsOpen(!props.toolsOpen)}><IconSettingsSliderHor size={18} /></button>
-        <textarea ref={input} aria-label="Comment" placeholder="Add a comment…" value={active.note} rows={1} disabled={props.capturing} onChange={(event) => props.onNote(active.ref, event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); props.onSave() } }} />
+        <textarea ref={input} className="vellum-comment-input" aria-label="Comment" placeholder="Add a comment…" value={active.note} rows={1} disabled={props.capturing} onChange={(event) => props.onNote(active.ref, event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); props.onSave() } }} />
+        <textarea ref={inputMeasure} className="vellum-comment-measure" aria-hidden="true" inert tabIndex={-1} value={active.note} rows={1} readOnly />
         <button type="button" className="vellum-tool-button vellum-comment-save" aria-label="Save annotation" title="Save annotation" disabled={props.capturing || !canSave} onClick={props.onSave}>
           <IconArrowUp size={18} />
         </button>
-      </div>
+      </motion.div>
       <motion.div id={controlsId} className="vellum-controls-reveal" inert={!props.toolsOpen || props.capturing} aria-hidden={!props.toolsOpen} initial={false} animate={{ height: props.toolsOpen ? 'auto' : 0, marginTop: props.toolsOpen ? 10 : 0 }} style={{ pointerEvents: props.toolsOpen ? 'auto' : 'none' }} transition={controlsTransition}>
         <motion.div className="vellum-settings-popover" initial={false} animate={{ opacity: props.toolsOpen ? 1 : 0 }} transition={controlsContentTransition}>
           <nav className="vellum-inspector-navigation" aria-label="Select related element"><span title={active.selector}>{active.label}</span>{([['parent', IconArrowUp], ['child', IconArrowDown], ['previous', IconArrowLeft], ['next', IconArrowRight]] as const).map(([direction, Icon]) => <button type="button" className="vellum-tool-button" key={direction} aria-label={`Select ${direction} element`} title={`Select ${direction} element`} disabled={props.capturing} onClick={() => props.onNavigate(direction)}><Icon size={15} /></button>)}</nav>

@@ -106,12 +106,14 @@ kbd { font: 400 11px/1.5 var(--font-body); color: var(--text-secondary); }
 .vellum-send { margin-inline: 3px; background: var(--identity); color: var(--background); border-radius: 9px; }
 .vellum-annotation-popover { display: flex; flex-direction: column; position: fixed; left: 12px; top: 76px; width: 358px; max-width: calc(100vw - 24px); max-height: var(--vellum-editor-room, calc(100dvh - 90px)); overscroll-behavior: contain; pointer-events: none; }
 .vellum-comment-row, .vellum-comment-stack, .vellum-expanded-capture, .vellum-capture-stack { pointer-events: auto; }
-.vellum-comment-row { position: relative; flex-shrink: 0; display: flex; align-items: center; gap: 7px; padding: 7px; border: 1px solid var(--border); border-radius: 24px; background: var(--surface); box-shadow: 0 4px 14px #0002; transition: border-radius .2s cubic-bezier(.22,1,.36,1); }
-.vellum-comment-row[data-multiline='true'] { align-items: flex-end; border-radius: 18px; }
-.vellum-comment-row > .vellum-tool-button:first-child { color: var(--text-muted); border-radius: 50%; }
-.vellum-comment-row textarea { flex: 1; min-width: 0; min-height: 28px; max-height: 120px; resize: none; overflow-x: hidden; overflow-y: auto; border: 0; border-radius: 4px; background: transparent; color: var(--foreground); font: 13px/24px var(--font-body); padding: 2px 0; }
-.vellum-comment-save { border-radius: 50%; background: var(--foreground); color: var(--background); transition: border-radius .2s cubic-bezier(.22,1,.36,1); }
-.vellum-comment-row[data-multiline='true'] .vellum-comment-save { border-radius: 9px; }
+.vellum-comment-row { --comment-gap: 7px; --comment-padding: 7px; --comment-control: 32px; position: relative; flex-shrink: 0; display: grid; grid-template-columns: var(--comment-control) minmax(0, 1fr) var(--comment-control); grid-template-areas: 'settings input send'; align-items: center; gap: var(--comment-gap); padding: var(--comment-padding); border: 1px solid var(--border); border-radius: 24px; background: var(--surface); box-shadow: 0 4px 14px #0002; transition: border-radius .2s cubic-bezier(.22,1,.36,1); }
+.vellum-comment-row[data-multiline='true'] { grid-template-areas: 'settings . .' 'input input input' '. . send'; align-items: start; padding: 12px; border-radius: 26px; }
+.vellum-comment-row > .vellum-tool-button:first-child { grid-area: settings; color: var(--text-muted); border-radius: 50%; }
+.vellum-comment-row textarea { box-sizing: border-box; min-width: 0; width: 100%; min-height: 28px; max-height: 180px; resize: none; overflow-x: hidden; overflow-y: auto; border: 0; border-radius: 4px; background: transparent; color: var(--foreground); font: 13px/24px var(--font-body); padding: 2px 0; }
+.vellum-comment-input { grid-area: input; }
+.vellum-comment-row[data-multiline='true'] .vellum-comment-input { min-height: 48px; padding-inline: 6px; }
+.vellum-comment-row .vellum-comment-measure { position: absolute; inset: 0 auto auto 0; width: calc(100% - 2 * var(--comment-padding) - 2 * var(--comment-control) - 2 * var(--comment-gap)); min-height: 0; max-height: none; height: 0; padding-inline: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
+.vellum-comment-save { grid-area: send; align-self: end; justify-self: end; border-radius: 50%; background: var(--foreground); color: var(--background); }
 @media (prefers-reduced-motion: reduce) { .vellum-comment-row, .vellum-comment-save { transition: none; } }
 .vellum-comment-actions { flex-shrink: 0; display: flex; align-items: center; gap: 3px; padding: 0 10px 7px 18px; font-size: 11px; color: var(--text-muted); }
 .vellum-comment-actions > .vellum-saved-comment { flex: 1; min-width: 0; overflow-wrap: anywhere; }
