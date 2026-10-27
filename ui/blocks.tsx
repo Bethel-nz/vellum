@@ -8,6 +8,7 @@ import { forDiff, summarize, type Block, type Tag, type ToolCall } from '../core
 import type { BrowserSession, SavedCapture } from '../core/capture'
 import { CaptureCard } from './Capture'
 import { BrowserBlock } from './BrowserBlock'
+import { browserVisibleCalls } from '../core/browser-presentation'
 import { getTerm } from '../core/term'
 import { FileIcon, Icon, Meta, Quiet, useM } from './kit'
 import { ToolCallGroup } from '../components/ToolCall'
@@ -322,7 +323,7 @@ export function toolActivityGroups(blocks: Block[]) {
   let current: Extract<Block, { kind: 'activity' }> | undefined
   for (const block of blocks) {
     if (block.kind !== 'activity' && !(block.kind === 'shell' && block.source === 'agent')) { current = undefined; continue }
-    const items = block.kind === 'activity' ? block.items : [shellCall(block)]
+    const items = browserVisibleCalls(block.kind === 'activity' ? block.items : [shellCall(block)])
     const thoughts = block.kind === 'activity' ? block.thoughts : 0
     const thinking = block.kind === 'activity' ? block.thinking : undefined
     if (!current) {
