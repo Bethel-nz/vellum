@@ -39,10 +39,10 @@ function tone(m: Material, t: Tone) {
     case 'blue': return m.ansi[4]
     case 'cyan': return m.ansi[6]
     case 'yellow': return m.ansi[3]
-    case 'orange': return m.syntax.function
+    case 'orange': return m.ansi[11]
     case 'green': return m.ansi[2]
     case 'red': return m.ansi[1]
-    case 'pink': return m.syntax.link
+    case 'pink': return m.ansi[13]
     case 'muted': return m.textMuted
   }
 }
@@ -56,7 +56,7 @@ export function fileGlyph(path: string): [number, Tone] {
 }
 
 /** A file-type glyph sized like an Icon. `muted` drops the colour, for dense rows. */
-export function FileIcon({ path, size = 13, muted }: { path: string; size?: number; muted?: boolean }) {
+export function FileIcon({ path, size = 14, muted }: { path: string; size?: number; muted?: boolean }) {
   const m = useM()
   const [code, t] = fileGlyph(path)
   if (!font.icons) return <Icon name="file" size={size} color={muted ? m.textMuted : m.textFaint} />

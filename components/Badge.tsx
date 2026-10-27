@@ -1,5 +1,8 @@
 // A count or short label. Arc's badge swaps its value with a rise; GPUIX can't move text inside
 // a box without a wrapper per value, so a new value fades in over `instant`.
+//
+// Tone pair with diff counts (`diffInk`): washes here (chipBg/diffAdd/diffDel) carry the label,
+// solid Pierre ink carries the +/- numbers next to a diff. Wash = status, ink = measurement.
 
 import { motion } from './spring'
 import { font } from '../ui/theme'
