@@ -9,6 +9,7 @@ export type PageScreenshot = { id: string; image: string }
 export type PageScreenshotResult = { screenshot: PageScreenshot }
 export type CaptureResult = { capture: Capture; scroll: { x: number; y: number }; files?: Upload[] }
 export type WorkerMessage =
+  | { type: 'toolbar-presence'; toolbarId: string; open: boolean }
   | { type: 'settings' }
   | { type: 'bridge-settings'; url: string; port: number }
   | { type: 'notes' }
