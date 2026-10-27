@@ -4,16 +4,15 @@
 // are shot on a paused clock (0–260ms) into screenshots/motion-<mode>-*, to look at by eye.
 //   bun scripts/check-motion.ts            (full motion)
 //   MOTION=reduce bun scripts/check-motion.ts
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
+import { scratchDir } from './scratch'
 
 const mode = process.env.MOTION === 'reduce' ? 'reduce' : 'full'
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-motion-'))
+const home = await scratchDir('vellum-motion-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 const settings = path.join(home, 'settings.json')
-writeFileSync(settings, JSON.stringify({ ...JSON.parse(readFileSync(settings, 'utf8')), motion: mode }))
+await Bun.write(settings, JSON.stringify({ ...JSON.parse(await Bun.file(settings).text()), motion: mode }))
 
 const app = await launch({
   command: 'bun',
@@ -49,7 +48,7 @@ const surfaces: Surface[] = [
   { name: 'mode-menu', panel: 'mode-menu', open: () => app.getByTestId('mode-pill').click(), close: () => app.getByTestId('mode-pill').click() },
   { name: 'context-card', panel: 'context-card', open: () => app.getByTestId('context-pill').click(), close: () => app.getByTestId('context-pill').click() },
   { name: 'changes', panel: 'changes', open: () => c.press('cmd-shift-d'), close: () => app.getByTestId('changes').press('escape') },
-  { name: 'switcher', panel: 'switcher-input', open: () => c.press('cmd-k'), close: () => app.getByTestId('switcher-input').press('escape') },
+  { name: 'library', panel: 'history-input', open: () => c.press('cmd-k'), close: () => app.getByTestId('history-input').press('escape') },
 ]
 
 try {
@@ -61,7 +60,7 @@ try {
     expect(`${s.name} opens`, (await count(s.panel)) >= 1)
     await frames(`${s.name}-close`, s.close, [0, 40, 120])
     // A Sheet holds one beat for its scrim (0.18s); popovers go at once.
-    await wait(s.panel === 'changes' || s.panel === 'switcher-input' ? 400 : 0)
+    await wait(s.panel === 'changes' || s.panel === 'history-input' ? 400 : 0)
     expect(`${s.name} is gone after closing`, (await count(s.panel)) === 0)
   }
 

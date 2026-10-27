@@ -3,12 +3,11 @@
 // folder, prints every non-stream line type, answers the first permission request with "allow",
 // and logs the turn's result.
 //   bun spikes/permission-host.ts [mode]
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { scratchDir } from '../scripts/scratch'
 
 const mode = process.argv[2] ?? 'manual'
-const cwd = mkdtempSync(path.join(tmpdir(), 'vellum-perm-'))
+const cwd = await scratchDir('vellum-perm-')
 const proc = Bun.spawn(
   ['claude', '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--permission-mode', mode, '--permission-prompts', 'host', '--permission-prompt-tool', 'stdio'],
   { cwd, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },

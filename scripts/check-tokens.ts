@@ -4,29 +4,25 @@
 // its name alone (`#theme.ts`), the tag keeping its path. Writing elsewhere, the draft reads as
 // chips; a chip opens its file, and a click beside it goes back to writing.
 //   bun scripts/check-tokens.ts
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
+import { scratchDir } from './scratch'
 
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-tokens-'))
+const home = await scratchDir('vellum-tokens-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 const workspace = path.resolve(import.meta.dir, '..')
 const id = '20261023-tokens'
 const at = '2026-10-23T15:00:00.000Z'
 const log = path.join(home, 'threads', `${id}.jsonl`)
-writeFileSync(
-  log,
-  [
+await Bun.write(log, [
     { type: 'vellum/meta', meta: { id, title: 'Tokens', profileId: 'main', workspace, createdAt: at } },
     { type: 'vellum/user', text: 'Is #ui/theme.ts:3 right? Compare #core/tags.ts', tags: [{ type: 'file', value: 'ui/theme.ts', line: 3 }, { type: 'file', value: 'core/tags.ts' }], at },
     { type: 'assistant', message: { id: 'm1', content: [{ type: 'text', text: 'It is. See `ui/theme.ts` and `core/tags.ts:10`.' }] } },
     { type: 'result', subtype: 'success', result: 'It is.' },
   ]
     .map((r) => JSON.stringify(r))
-    .join('\n') + '\n',
-)
-writeFileSync(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: id, openTabs: [id] }))
+    .join('\n') + '\n')
+await Bun.write(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: id, openTabs: [id] }))
 
 const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } })
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -60,11 +56,11 @@ try {
   await c.press('tab')
   // drafts.json is written a moment after the draft changes.
   const draft = async (want: string) => {
-    const text = () => {
-      try { return (JSON.parse(readFileSync(path.join(home, 'drafts.json'), 'utf8'))[id] ?? {}) as { text?: string; tags?: { value: string }[] } } catch { return {} }
+    const text = async () => {
+      try { return (JSON.parse(await Bun.file(path.join(home, 'drafts.json')).text())[id] ?? {}) as { text?: string; tags?: { value: string }[] } } catch { return {} }
     }
-    for (let i = 0; i < 30 && !text().text?.includes(want); i++) await wait(100)
-    return text()
+    for (let i = 0; i < 30 && !(await text()).text?.includes(want); i++) await wait(100)
+    return (await text())
   }
   const picked = await draft('#theme.ts ')
   expect('the pick is written by its name alone', picked.text === 'Look at #theme.ts ' && picked.tags?.some((t) => t.value === 'ui/theme.ts') === true, JSON.stringify(picked))

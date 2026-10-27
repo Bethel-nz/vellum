@@ -1,19 +1,18 @@
 // Spike: does Claude get AskUserQuestion over ACP once the client says it can show forms, and does
 // an answer to the form reach it? One tiny haiku turn in a temp folder.
 //   bun spikes/ask-question.ts [account-id]       default: main
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { AcpConnection } from '../core/acp'
 import { agentArgv, agentEnv } from '../core/agent'
 import { loadProfiles } from '../core/profiles'
+import { scratchDir } from '../scripts/scratch'
 
 const profile = loadProfiles().find((p) => p.id === (process.argv[2] ?? 'main'))
 if (!profile) throw new Error('no such account')
-const cwd = mkdtempSync(path.join(tmpdir(), 'vellum-ask-'))
+const cwd = await scratchDir('vellum-ask-')
 let reply = ''
 let form: any
-const conn = new AcpConnection(agentArgv(), { cwd, env: agentEnv(profile) }, {
+const conn = new AcpConnection(agentArgv(profile), { cwd, env: agentEnv(profile) }, {
   request: async (method, params) => {
     if (method === 'elicitation/create') {
       form = params

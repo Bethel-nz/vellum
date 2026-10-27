@@ -2,32 +2,31 @@
 // changed file and a new one, and a note there that changed nothing. The strip offers Changes
 // with the folder's totals, and Changes opens on Uncommitted with both files.
 //   bun scripts/check-uncommitted.ts
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
+import { scratchDir } from './scratch'
 
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-uncommitted-'))
+const home = await scratchDir('vellum-uncommitted-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 
 // The project: one commit, then a change to it and a new file.
 const repo = path.join(home, 'project')
-mkdirSync(repo)
+await Bun.$`mkdir -p ${repo}`.quiet()
 const git = (...args: string[]) => Bun.spawnSync(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: repo })
 git('init', '-q')
-writeFileSync(path.join(repo, 'app.ts'), 'export const a = 1\nexport const b = 2\n')
+await Bun.write(path.join(repo, 'app.ts'), 'export const a = 1\nexport const b = 2\n')
 git('add', '.')
 git('commit', '-qm', 'first')
-writeFileSync(path.join(repo, 'app.ts'), 'export const a = 1\nexport const b = 3\nexport const c = 4\n')
-writeFileSync(path.join(repo, 'notes.md'), '# Notes\n')
+await Bun.write(path.join(repo, 'app.ts'), 'export const a = 1\nexport const b = 3\nexport const c = 4\n')
+await Bun.write(path.join(repo, 'notes.md'), '# Notes\n')
 
 const id = '20261024-uncom1'
 const lines = [
   { type: 'vellum/meta', meta: { id, title: 'A project with edits', profileId: 'main', workspace: repo, createdAt: '2026-10-24T09:00:00.000Z' } },
   { type: 'vellum/user', text: 'What is in this project?', tags: [], at: '2026-10-24T09:00:01.000Z' },
 ]
-writeFileSync(path.join(home, 'threads', `${id}.jsonl`), lines.map((l) => JSON.stringify(l)).join('\n') + '\n')
-writeFileSync(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: id }))
+await Bun.write(path.join(home, 'threads', `${id}.jsonl`), lines.map((l) => JSON.stringify(l)).join('\n') + '\n')
+await Bun.write(path.join(home, 'settings.json'), JSON.stringify({ lastThreadId: id }))
 
 let failed = 0
 const expect = (label: string, ok: boolean, detail = '') => {

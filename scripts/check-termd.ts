@@ -2,9 +2,9 @@
 // the next one gets it back with its output and can type into it, and once nothing is held and
 // nobody is connected the holder leaves by itself.
 //   bun scripts/check-termd.ts
-import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { present, scratchDir } from './scratch'
 
 let failed = 0
 const expect = (label: string, ok: boolean, detail = '') => {
@@ -58,7 +58,7 @@ if (step === 'return') {
   process.exit(failed)
 }
 
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-termd-'))
+const home = await scratchDir('vellum-termd-')
 const sock = path.join(home, 'run', 'termd.sock')
 const run = async (...args: string[]) => {
   const p = Bun.spawn(['bun', import.meta.path, ...args], { env: { ...process.env, VELLUM_HOME: home }, stdout: 'inherit', stderr: 'inherit' })
@@ -67,13 +67,13 @@ const run = async (...args: string[]) => {
 let pid: number | undefined
 try {
   expect('…and quits', await run('start'))
-  pid = existsSync(sock + '.pid') ? Number(readFileSync(sock + '.pid', 'utf8')) : undefined
+  pid = await present(sock + '.pid') ? Number(await Bun.file(sock + '.pid').text()) : undefined
   expect('the holder is still running', pid !== undefined && alive(pid))
-  const mode = (p: string) => (statSync(p).mode & 0o777).toString(8)
-  expect('only you can reach its socket', mode(path.dirname(sock)) === '700' && mode(sock) === '600', `${mode(path.dirname(sock))} ${mode(sock)}`)
+  const mode = async (p: string) => ((await Bun.file(p).stat()).mode & 0o777).toString(8)
+  expect('only you can reach its socket', (await mode(path.dirname(sock))) === '700' && (await mode(sock)) === '600', `${(await mode(path.dirname(sock)))} ${(await mode(sock))}`)
   expect('a quit and another return keep it', (await run('return')) && (await run('return', 'exit')))
   expect('with nothing held and nobody connected, the holder leaves', await until(() => !alive(pid!), 15_000))
-  expect('…and takes its socket with it', !existsSync(sock))
+  expect('…and takes its socket with it', !await present(sock))
 } finally {
   if (pid && alive(pid)) process.kill(pid)
 }

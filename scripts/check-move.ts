@@ -3,27 +3,23 @@
 // the old session is let go, and the next message starts a new session on Work carrying the note
 // so far. The message after that carries only itself.
 //   bun scripts/check-move.ts
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
+import { scratchDir } from './scratch'
 
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-move-'))
+const home = await scratchDir('vellum-move-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 const fake = path.resolve(import.meta.dir, 'fake-acp.ts')
 const bin = path.join(home, 'bin')
-mkdirSync(bin, { recursive: true })
-writeFileSync(path.join(bin, 'claude'), `#!/bin/sh\nexec bun ${fake} --cli "$@"\n`)
-chmodSync(path.join(bin, 'claude'), 0o755)
+await Bun.write(path.join(bin, 'claude'), `#!/bin/sh\nexec bun ${fake} --cli "$@"\n`)
+await Bun.$`chmod 755 ${path.join(bin, 'claude')}`.quiet()
 // Both accounts are logged in.
 const defaultConfig = path.join(home, 'default', 'claude')
-mkdirSync(defaultConfig, { recursive: true })
-writeFileSync(path.join(defaultConfig, '.fake-login'), 'default@example.com')
+await Bun.write(path.join(defaultConfig, '.fake-login'), 'default@example.com')
 const workConfig = path.join(home, 'profiles', 'work', 'claude')
-mkdirSync(workConfig, { recursive: true })
-writeFileSync(path.join(workConfig, '.fake-login'), 'work@example.com')
+await Bun.write(path.join(workConfig, '.fake-login'), 'work@example.com')
 const log = path.join(home, 'fake-acp.log')
-writeFileSync(log, '')
+await Bun.write(log, '')
 
 const app = await launch({
   command: 'bun',
@@ -39,12 +35,12 @@ const expect = (label: string, ok: boolean, detail = '') => {
 }
 const count = (id: string) => app.getByTestId(id).count()
 const ids = async (prefix: string) => (await app.getByType('div').all()).map((n) => n.testId ?? '').filter((t) => t.startsWith(prefix))
-const received = () => readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).flatMap((o) => (o.in ? [o.in] : []))
-const prompts = () => received().filter((m) => m.method === 'session/prompt').map((m) => (m.params.prompt ?? []).map((c: any) => c.text ?? '').join(''))
-const records = (id: string) => readFileSync(path.join(home, 'threads', `${id}.jsonl`), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
+const received = async () => (await Bun.file(log).text()).split('\n').filter(Boolean).map((l) => JSON.parse(l)).flatMap((o) => (o.in ? [o.in] : []))
+const prompts = async () => (await received()).filter((m) => m.method === 'session/prompt').map((m) => (m.params.prompt ?? []).map((c: any) => c.text ?? '').join(''))
+const records = async (id: string) => (await Bun.file(path.join(home, 'threads', `${id}.jsonl`)).text()).split('\n').filter(Boolean).map((l) => JSON.parse(l))
 const type = (keys: string) => app.call('keystrokes' as never, { keys } as never)
 const c = app.getByTestId('composer')
-const ends = () => records('20261023-demo01').filter((r) => r.type === 'acp/end').length
+const ends = async () => (await records('20261023-demo01')).filter((r) => r.type === 'acp/end').length
 const until = async (ok: () => boolean | Promise<boolean>, ms = 8000) => {
   for (const end = Date.now() + ms; Date.now() < end; await wait(100)) if (await ok()) return true
   return false
@@ -53,13 +49,13 @@ const until = async (ok: () => boolean | Promise<boolean>, ms = 8000) => {
 const turnOver = (turns: number) =>
   until(async () => {
     if ((await count('approval-allow')) === 1) await app.getByTestId('approval-allow').click().catch(() => {})
-    return ends() > turns
+    return (await ends()) > turns
   }, 20_000)
 
 try {
   await c.waitFor({ timeoutMs: 60_000 })
   await wait(2500)
-  const note = records('20261023-demo01')
+  const note = (await records('20261023-demo01'))
   expect('the note starts on Default with a session of its own', note[0]?.meta?.profileId === 'main')
 
   await app.getByTestId('account-pill').click()
@@ -70,35 +66,35 @@ try {
   await app.getByTestId('move-work').click()
   await wait(600)
   expect('picking Work closes the menu', (await count('account-menu')) === 0)
-  const moved = records('20261023-demo01').filter((r) => r.type === 'vellum/profile')
+  const moved = (await records('20261023-demo01')).filter((r) => r.type === 'vellum/profile')
   expect('the move is recorded', moved.length === 1 && moved[0].profileId === 'work' && moved[0].from === 'Default' && moved[0].to === 'Work', JSON.stringify(moved))
   expect('the note shows where it moved', (await ids('moved-')).length === 1)
   await shot('2-moved')
 
   // The next message starts a new session on Work and carries the note.
-  const before = received().length
-  let turns = ends()
+  const before = (await received()).length
+  let turns = (await ends())
   await c.click()
   await type('stream')
   await c.press('cmd-enter')
-  const sent = await until(() => prompts().length > 0)
-  const after = received().slice(before)
-  const first = prompts().at(-1) ?? ''
+  const sent = await until(async () => (await prompts()).length > 0)
+  const after = (await received()).slice(before)
+  const first = (await prompts()).at(-1) ?? ''
   expect('the next message starts a new session, not the old one', after.some((m) => m.method === 'session/new') && !after.some((m) => m.method === 'session/resume'), after.map((m) => m.method).join(','))
   expect('…and carries the note so far', sent && first.includes('This note was moved here') && first.includes('concentric') && first.trimEnd().endsWith('stream'), first.slice(0, 120))
   // The turn is over once the note records its end.
   await turnOver(turns)
   await wait(300)
-  const session = records('20261023-demo01').filter((r) => r.type === 'acp/session').at(-1)
+  const session = (await records('20261023-demo01')).filter((r) => r.type === 'acp/session').at(-1)
   expect('the new session is Work’s', session?.profileId === 'work', JSON.stringify(session))
 
-  const n = prompts().length
-  turns = ends()
+  const n = (await prompts()).length
+  turns = (await ends())
   await c.click()
   await type('stream')
   await c.press('cmd-enter')
-  await until(() => prompts().length > n)
-  expect('the message after that carries only itself', !(prompts().at(-1) ?? '').includes('This note was moved here'), (prompts().at(-1) ?? '').slice(0, 80))
+  await until(async () => (await prompts()).length > n)
+  expect('the message after that carries only itself', !((await prompts()).at(-1) ?? '').includes('This note was moved here'), ((await prompts()).at(-1) ?? '').slice(0, 80))
   await turnOver(turns)
 
   // The marker now says Work, and Default is the one to move back to.

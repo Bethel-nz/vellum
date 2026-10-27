@@ -2,13 +2,12 @@
 // people, and a conversation started on one continues on the other through the shared history.
 // Run it after logging the second account in (Settings › Accounts).
 //   bun scripts/check-accounts-live.ts [first-id] [second-id]      default: main work
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { AcpConnection } from '../core/acp'
 import { agentArgv, agentEnv } from '../core/agent'
 import { accountStatus } from '../core/auth'
 import { loadProfiles } from '../core/profiles'
+import { scratchDir } from './scratch'
 
 const [firstId = 'main', secondId = 'work'] = process.argv.slice(2)
 const profiles = loadProfiles()
@@ -29,11 +28,11 @@ expect(`${second.name} is logged in`, Boolean(b?.loggedIn))
 expect('as two different people', Boolean(a?.email && b?.email && a.email.toLowerCase() !== b.email.toLowerCase()), `${a?.email ? 'one' : '?'} vs ${b?.email ? 'another' : '?'}`)
 if (failed) process.exit(1)
 
-const cwd = mkdtempSync(path.join(tmpdir(), 'vellum-accounts-live-'))
+const cwd = await scratchDir('vellum-accounts-live-')
 /** One prompt on one account; returns the session id and the reply text. */
 async function turn(profile: typeof first, text: string, sessionId?: string) {
   let reply = ''
-  const conn = new AcpConnection(agentArgv(), { cwd, env: agentEnv(profile!) }, {
+  const conn = new AcpConnection(agentArgv(profile!), { cwd, env: agentEnv(profile!) }, {
     request: async (_m, params) => ({ outcome: { outcome: 'selected', optionId: params.options.find((o: any) => o.kind === 'allow_once')?.optionId } }),
     notification: (method, params) => {
       if (method === 'session/update' && params.update.sessionUpdate === 'agent_message_chunk') reply += params.update.content?.text ?? ''

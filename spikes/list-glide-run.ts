@@ -1,8 +1,7 @@
 // Drives spikes/list-glide.tsx and prints each step's anchor ([item, offsetInItem, viewport]).
-import { readFileSync, writeFileSync } from 'node:fs'
 import { launch } from '@gpuix/react/automation'
 const out = `${process.env.TMPDIR ?? '/tmp'}/list-glide.jsonl`
-writeFileSync(out, '')
+await Bun.write(out, '')
 const app = await launch({ command: 'bun', args: ['spikes/list-glide.tsx'], env: { GPUIX_BACKGROUND: '1', SPIKE_OUT: out } })
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 try {
@@ -15,7 +14,7 @@ try {
 } finally {
   await app.close()
 }
-for (const line of readFileSync(out, 'utf8').split('\n').filter(Boolean)) {
+for (const line of (await Bun.file(out).text()).split('\n').filter(Boolean)) {
   const { step, value } = JSON.parse(line)
   if (step !== 'range') console.log(step.padEnd(14), JSON.stringify(value))
 }

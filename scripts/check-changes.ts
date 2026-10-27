@@ -2,12 +2,11 @@
 // the sheet, a file row opens to its hunks, selecting a hunk updates the count, a click on a diff
 // line opens a comment for it, and "Add" puts the hunk in the draft as a ± pill with that comment.
 //   bun scripts/check-changes.ts
-import { mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
+import { scratchDir } from './scratch'
 
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-changes-'))
+const home = await scratchDir('vellum-changes-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } })
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -38,6 +37,25 @@ try {
   await app.mouse.click({ x: 120, y: 400 })
   await wait(400)
   expect('a click beside it closes Changes', (await app.getByTestId('changes').count()) === 0)
+
+  // Closing keeps what it shows: the folder's changes stay up until the sheet is gone.
+  await c.press('cmd-shift-d')
+  await app.getByTestId('changes').waitFor({ timeoutMs: 3000 })
+  await app.getByTestId('changes-scope').click()
+  await app.getByTestId('changes-scope-uncommitted').click()
+  for (let i = 0; i < 25 && /Reading/.test(await app.getByTestId('changes').textContent()); i++) await wait(200)
+  const shown = await app.getByTestId('changes').textContent()
+  await app.getByTestId('changes').press('escape')
+  await wait(40)
+  const closing = (await app.getByTestId('changes').count()) ? await app.getByTestId('changes').textContent() : shown
+  expect('closing keeps the uncommitted list', closing === shown, `${JSON.stringify(shown.slice(0, 80))} → ${JSON.stringify(closing.slice(0, 80))}`)
+  await wait(400)
+  await c.press('cmd-shift-d')
+  await app.getByTestId('changes').waitFor({ timeoutMs: 3000 })
+  await app.getByTestId('changes-scope').click()
+  await app.getByTestId('changes-scope-note').click()
+  await app.getByTestId('changes').press('escape')
+  await wait(400)
 
   await c.press('cmd-shift-d')
   await app.getByTestId('changes').waitFor({ timeoutMs: 3000 })
@@ -86,7 +104,7 @@ try {
   let drafts: Record<string, any> = {}
   for (let i = 0; i < 30 && !Object.keys(drafts).length; i++) {
     await wait(100)
-    drafts = JSON.parse(readFileSync(path.join(home, 'drafts.json'), 'utf8'))
+    drafts = JSON.parse(await Bun.file(path.join(home, 'drafts.json')).text())
   }
   const d = Object.values(drafts)[0] as any
   expect('the hunk is a ± pill in the draft, not a diff fence', d.text.includes('±ui/theme.ts:1') && !d.text.includes('```'), JSON.stringify(d.text))
@@ -120,7 +138,7 @@ try {
   let lone: any
   for (let i = 0; i < 30 && !lone; i++) {
     await wait(100)
-    const all = JSON.parse(readFileSync(path.join(home, 'drafts.json'), 'utf8'))
+    const all = JSON.parse(await Bun.file(path.join(home, 'drafts.json')).text())
     lone = (Object.values(all)[0] as any).tags.find((t: any) => t.type === 'hunk' && t.comments)
   }
   expect('…as its line and what you said, without the hunk', lone?.value === 'ui/theme.ts:3' && lone.notes?.length === 1 && lone.notes[0].text === 'why zero', JSON.stringify(lone && { value: lone.value, notes: lone.notes }))

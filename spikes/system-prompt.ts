@@ -1,21 +1,20 @@
 // Spike: Vellum's appended system prompt reaches Claude over ACP, and a resume that sends it
 // again is accepted. Two tiny haiku turns in a temp folder.
 //   bun spikes/system-prompt.ts [account-id]       default: main
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { AcpConnection } from '../core/acp'
 import { agentArgv, agentEnv } from '../core/agent'
 import { loadProfiles } from '../core/profiles'
 import { vellumPrompt } from '../core/prompt'
+import { scratchDir } from '../scripts/scratch'
 
 const profile = loadProfiles().find((p) => p.id === (process.argv[2] ?? 'main'))
 if (!profile) throw new Error('no such account')
-const cwd = mkdtempSync(path.join(tmpdir(), 'vellum-prompt-'))
+const cwd = await scratchDir('vellum-prompt-')
 const systemPrompt = { mode: 'append', content: [{ type: 'text', text: vellumPrompt }] }
 async function turn(text: string, sessionId?: string) {
   let reply = ''
-  const conn = new AcpConnection(agentArgv(), { cwd, env: agentEnv(profile!) }, {
+  const conn = new AcpConnection(agentArgv(profile!), { cwd, env: agentEnv(profile!) }, {
     request: async () => ({ outcome: { outcome: 'cancelled' } }),
     notification: (method, params) => {
       if (method === 'session/update' && params.update.sessionUpdate === 'agent_message_chunk') reply += params.update.content?.text ?? ''

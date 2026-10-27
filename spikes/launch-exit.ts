@@ -1,25 +1,34 @@
 // Spike: why does an automation-launched app sometimes vanish? Same spawn as
 // @gpuix/react/automation's launch(), but stderr is kept and the exit is logged.
 //   bun spikes/launch-exit.ts [cmd-w]
-import { mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { spawn } from 'node:child_process'
 import { connectStdio } from '@gpuix/native/automation'
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-exit-'))
+import { scratchDir } from '../scripts/scratch'
+const home = await scratchDir('vellum-exit-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home } }).exited
-const child = spawn('bun', ['app.tsx'], { env: { ...process.env, GPUIX_BACKGROUND: '1', VELLUM_HOME: home }, stdio: ['pipe', 'pipe', 'pipe'] })
+const child = Bun.spawn(['bun', 'app.tsx'], { env: { ...process.env, GPUIX_BACKGROUND: '1', VELLUM_HOME: home }, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' })
 let stderr = ''
-child.stderr.on('data', (b) => (stderr += b.toString()))
-child.on('exit', (code, signal) => {
-  console.log('app exited', { code, signal })
-  writeFileSync(path.join(home, 'stderr.log'), stderr)
+void (async () => {
+  const dec = new TextDecoder()
+  for await (const b of child.stderr) stderr += dec.decode(b, { stream: true })
+})()
+void child.exited.then(async (code) => {
+  console.log('app exited', { code, signal: child.signalCode })
+  await Bun.write(path.join(home, 'stderr.log'), stderr)
   console.log(stderr.split('\n').slice(-15).join('\n'))
   process.exit(1)
 })
 const app = await connectStdio({
-  write: (chunk: string) => child.stdin.write(chunk),
-  feed: (listener: (s: string) => void) => child.stdout.on('data', (b) => listener(b.toString('utf8'))),
+  write: (chunk: string) => {
+    child.stdin.write(chunk)
+    child.stdin.flush()
+  },
+  feed: (listener: (s: string) => void) => {
+    void (async () => {
+      const dec = new TextDecoder()
+      for await (const b of child.stdout) listener(dec.decode(b, { stream: true }))
+    })()
+  },
   close: async () => void child.kill(),
 })
 const c = app.getByTestId('composer')

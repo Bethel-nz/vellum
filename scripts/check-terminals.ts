@@ -3,11 +3,10 @@
 // comes back as a tab with its output, and the ✕ on its tab ends it and returns to the notes. The
 // view has no header of its own.
 //   bun scripts/check-terminals.ts
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-terms-'))
+import { present, scratchDir } from './scratch'
+const home = await scratchDir('vellum-terms-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home } }).exited
 const start = () => launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } })
 let app = await start()
@@ -91,7 +90,7 @@ try {
   await app.close()
   // A failed run mustn't leave a shell held in the scratch home.
   const pid = path.join(home, 'run', 'termd.sock.pid')
-  if (failed && existsSync(pid)) process.kill(Number(readFileSync(pid, 'utf8')))
+  if (failed && await present(pid)) process.kill(Number(await Bun.file(pid).text()))
 }
 console.log(failed ? `${failed} failed` : 'all passed')
 process.exit(failed ? 1 : 0)

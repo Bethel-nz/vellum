@@ -3,17 +3,16 @@
 // stays in the note as a line; esc opens "what to do instead" and ↵ denies, sending that note as
 // the next message; ⇧⇥ switches the permission mode live; Think max and off set the effort live.
 //   bun scripts/check-approval.ts
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
+import { scratchDir } from './scratch'
 
-const home = mkdtempSync(path.join(tmpdir(), 'vellum-approval-'))
+const home = await scratchDir('vellum-approval-')
 // The fixture's note works in this checkout, so a Bash ask reads `Run in <its folder>/` (not always vellum/).
 const folder = `${path.basename(path.resolve(import.meta.dir, '..'))}/`
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 const log = path.join(home, 'fake-acp.log')
-writeFileSync(log, '')
+await Bun.write(log, '')
 
 const app = await launch({
   command: 'bun',
@@ -23,11 +22,11 @@ const app = await launch({
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const shot = (n: string) => app.screenshot({ path: 'screenshots/approval-' + n + '.png' })
 /** Every JSON-RPC message the agent received. */
-const sent = () => readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l).in)
+const sent = async () => (await Bun.file(log).text()).trim().split('\n').filter(Boolean).map((l) => JSON.parse(l).in)
 /** Answers to permission asks (the fake numbers its asks from 1000). */
-const answers = () => sent().flatMap((m) => (m.method === undefined && m.id >= 1000 ? [m.result?.outcome] : []))
-const configs = () => sent().flatMap((m) => (m.method === 'session/set_config_option' ? [m.params] : []))
-const prompts = () => sent().flatMap((m) => (m.method === 'session/prompt' ? [m.params.prompt.map((c: any) => c.text).join('')] : []))
+const answers = async () => (await sent()).flatMap((m) => (m.method === undefined && m.id >= 1000 ? [m.result?.outcome] : []))
+const configs = async () => (await sent()).flatMap((m) => (m.method === 'session/set_config_option' ? [m.params] : []))
+const prompts = async () => (await sent()).flatMap((m) => (m.method === 'session/prompt' ? [m.params.prompt.map((c: any) => c.text).join('')] : []))
 const ids = async (prefix: string) => (await app.getByType('div').all()).map((n) => n.testId ?? '').filter((id) => id.startsWith(prefix))
 let failed = 0
 const expect = (label: string, ok: boolean, detail = '') => {
@@ -48,19 +47,19 @@ try {
   expect('the card rises', card)
   await c.press('enter')
   await wait(200)
-  expect('a ↵ in its first moments does nothing', answers().length === 0)
+  expect('a ↵ in its first moments does nothing', (await answers()).length === 0)
   await wait(500)
   expect('it shows the command', card && (await app.getByTestId('approval-detail').textContent()).includes('bun test ui/theme.test.ts'))
   expect('always-allow uses the agent’s words', (await app.getByText("Don't ask again for bun test commands").count()) === 1)
-  expect('your mode wins over the agent’s starting one', configs()[0]?.configId === 'mode' && configs()[0]?.value === 'acceptEdits', JSON.stringify(configs()[0]))
-  expect('…and no mode change is recorded for it', !readFileSync(path.join(home, 'threads', '20261023-demo01.jsonl'), 'utf8').includes('"mode":"auto"'))
-  expect('the note’s session is resumed over ACP', sent().some((m) => m.method === 'session/resume' && m.params.sessionId === 'demo-session'))
+  expect('your mode wins over the agent’s starting one', (await configs())[0]?.configId === 'mode' && (await configs())[0]?.value === 'acceptEdits', JSON.stringify((await configs())[0]))
+  expect('…and no mode change is recorded for it', !(await Bun.file(path.join(home, 'threads', '20261023-demo01.jsonl')).text()).includes('"mode":"auto"'))
+  expect('the note’s session is resumed over ACP', (await sent()).some((m) => m.method === 'session/resume' && m.params.sessionId === 'demo-session'))
   await shot('1-card')
 
   // ↵ in the empty composer allows
   await c.press('enter')
   await wait(1200)
-  expect('↵ allows once', answers()[0]?.optionId === 'allow-once', JSON.stringify(answers()[0]))
+  expect('↵ allows once', (await answers())[0]?.optionId === 'allow-once', JSON.stringify((await answers())[0]))
   expect('the card goes', (await app.getByTestId('approval').count()) === 0)
   expect('the note keeps an Allowed line', (await app.getByText(`Allowed · Run in ${folder}`).count()) === 1)
   await shot('2-allowed')
@@ -79,9 +78,9 @@ try {
   await shot('3-denying')
   await field.press('enter')
   await wait(1200)
-  const deny = answers()[1]
+  const deny = (await answers())[1]
   expect('↵ denies', deny?.optionId === 'reject', JSON.stringify(deny))
-  expect('…and the note goes in as the next message', prompts().at(-1) === 'use vitest instead', prompts().at(-1))
+  expect('…and the note goes in as the next message', (await prompts()).at(-1) === 'use vitest instead', (await prompts()).at(-1))
   expect('the note keeps a Denied line', (await app.getByText(`Denied · Run in ${folder}`).count()) === 1)
   await shot('4-denied')
 
@@ -102,7 +101,7 @@ try {
   await c.click()
   await c.press('shift-tab')
   await wait(500)
-  expect('⇧⇥ sets plan mode live', configs().some((r) => r.configId === 'mode' && r.value === 'plan'))
+  expect('⇧⇥ sets plan mode live', (await configs()).some((r) => r.configId === 'mode' && r.value === 'plan'))
   await app.getByTestId('mode-pill').click()
   await wait(400)
   expect('the mode icon opens its menu upward', (await app.getByTestId('mode-menu').count()) === 1 && (await app.getByTestId('mode-menu').bounds()).y < (await app.getByTestId('mode-pill').bounds()).y)
@@ -132,12 +131,12 @@ try {
   }
   await setEffort('max')
   await turn('Think hard')
-  expect('Think max sets effort max', configs().some((r) => r.configId === 'effort' && r.value === 'max'))
-  expect('…on the same process', sent().filter((m) => m.method === 'initialize').length === 1)
+  expect('Think max sets effort max', (await configs()).some((r) => r.configId === 'effort' && r.value === 'max'))
+  expect('…on the same process', (await sent()).filter((m) => m.method === 'initialize').length === 1)
   await setEffort('off')
   await turn('No thinking')
-  expect('Think off sets effort low', configs().some((r) => r.configId === 'effort' && r.value === 'low'))
-  const records = readFileSync(path.join(home, 'threads', `${JSON.parse(readFileSync(path.join(home, 'settings.json'), 'utf8')).lastThreadId}.jsonl`), 'utf8')
+  expect('Think off sets effort low', (await configs()).some((r) => r.configId === 'effort' && r.value === 'low'))
+  const records = await Bun.file(path.join(home, 'threads', `${JSON.parse(await Bun.file(path.join(home, 'settings.json')).text()).lastThreadId}.jsonl`)).text()
   expect('mode and think are recorded', records.includes('"vellum/mode"') && records.includes('"vellum/think"'))
   await shot('5-pills')
 
@@ -149,7 +148,7 @@ try {
   await shot('6-model-menu')
   await app.getByTestId('model-haiku').click()
   await wait(500)
-  expect('picking Haiku sets it live', configs().some((r) => r.configId === 'model' && r.value === 'haiku'))
+  expect('picking Haiku sets it live', (await configs()).some((r) => r.configId === 'model' && r.value === 'haiku'))
   expect('the model reads Haiku 5.5', (await app.getByTestId('model-pill').textContent()).includes('Haiku 5.5'))
 
   // context: the ring's count, the card, and Compact
@@ -162,7 +161,7 @@ try {
   // The agent may first wait for its git snapshot; the completed usage update is authoritative.
   const compactDeadline = Date.now() + 10_000
   while (!(await app.getByTestId('context-pill').textContent()).includes('1.9k') && Date.now() < compactDeadline) await wait(25)
-  const after = readFileSync(path.join(home, 'threads', `${JSON.parse(readFileSync(path.join(home, 'settings.json'), 'utf8')).lastThreadId}.jsonl`), 'utf8')
+  const after = await Bun.file(path.join(home, 'threads', `${JSON.parse(await Bun.file(path.join(home, 'settings.json')).text()).lastThreadId}.jsonl`)).text()
   expect('Compact sends /compact as its own turn', after.includes('"vellum/compact"') && !after.includes('"text":"/compact"'))
   expect('the fold line is in the note', (await ids('compact-')).length === 1)
   expect('the ring drops to the summary', (await app.getByTestId('context-pill').textContent()).includes('1.9k'))
