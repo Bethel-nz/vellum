@@ -25,6 +25,7 @@ import { relabel, suggest, tagsIn, tagText, type Suggestion } from '../core/tags
 import { TokenText, type TokenContext } from './Tokens'
 import type { Tag } from '../core/threads'
 import { FileIcon, Icon, Meta, Quiet, useM } from './kit'
+import { PopoverBackdrop } from '../components/PopoverBackdrop'
 import { motion as m_ } from '../components/spring'
 import { concentric, elevation, font, radiusBase, type } from './theme'
 import { enter, offset, useReducedMotion } from '../components/motion'
@@ -60,11 +61,13 @@ function TagPopup({
   active,
   onPick,
   onHover,
+  onClose,
 }: {
   items: PopupRow[]
   active: number
   onPick: (i: number) => void
   onHover: (i: number) => void
+  onClose: () => void
 }) {
   const m = useM()
   const reduced = useReducedMotion()
@@ -74,8 +77,8 @@ function TagPopup({
       align="start"
       sideOffset={8}
       style={{
-        width: 420,
-        padding: 4,
+        width: 360,
+        padding: 5,
         backgroundColor: m.popup,
         borderRadius: concentric(radiusBase + 4, 0),
         borderWidth: 1,
@@ -83,17 +86,18 @@ function TagPopup({
         boxShadow: elevation(m, 'popover'),
       }}
     >
+      <PopoverBackdrop onClose={onClose} />
       <m_.div
         initial={reduced ? false : { opacity: 0, top: offset.menu }}
         animate={{ opacity: 1, top: 0 }}
         transition={enter('fast')}
-        style={{ display: 'flex', flexDirection: 'column', position: 'relative' }}
+        style={{ display: 'flex', flexDirection: 'column', position: 'relative', pointerEvents: 'none' }}
       >
         {items.map((s, i) => (
           <div
             key={s.key}
             testId={s.testId}
-            onClick={() => onPick(i)}
+            onMouseDown={() => onPick(i)}
             onMouseEnter={() => onHover(i)}
             style={{
               display: 'flex',
@@ -106,6 +110,7 @@ function TagPopup({
               borderRadius: concentric(radiusBase + 4, 4),
               backgroundColor: i === active ? m.popupHover : m.popup,
               cursor: 'pointer',
+              pointerEvents: 'auto',
             }}
           >
             {s.icon}
@@ -232,8 +237,8 @@ export function Composer({
   }
   const pickActive = () => (recipesOpen ? pickRecipe(recipeItems[active]!) : pick(items[active]!))
   const rows: PopupRow[] = recipesOpen
-    ? recipeItems.map((r, i) => ({ key: `recipe:${r.file}`, testId: `recipe-pick-${i}`, icon: <Icon name="library" size={13} />, text: `$${r.name}`, mono: true, hint: r.description ?? (r.scope === 'project' ? 'this project' : undefined) }))
-    : items.map((s, i) => ({ key: `${s.type}:${s.value}`, testId: `tag-${i}`, icon: s.type === 'file' ? <FileIcon path={s.value} size={13} /> : s.type === 'skill' ? <Icon name="zap" size={13} color={m.accent} /> : <Icon name="folder" size={13} />, text: s.type === 'skill' ? s.value : s.label, mono: s.type !== 'skill', hint: s.hint }))
+    ? recipeItems.map((r, i) => ({ key: `recipe:${r.file}`, testId: `recipe-pick-${i}`, icon: <Icon name="library" size={14} />, text: `$${r.name}`, mono: true, hint: r.description ?? (r.scope === 'project' ? 'this project' : undefined) }))
+    : items.map((s, i) => ({ key: `${s.type}:${s.value}`, testId: `tag-${i}`, icon: s.type === 'file' ? <FileIcon path={s.value} size={14} /> : s.type === 'skill' ? <Icon name="zap" size={14} color={m.accent} /> : <Icon name="folder" size={14} />, text: s.type === 'skill' ? s.value : s.label, mono: s.type !== 'skill', hint: s.hint }))
 
   const pick = (s: Suggestion) => {
     const tag = { type: s.type, value: s.value } as Tag
@@ -295,7 +300,7 @@ export function Composer({
     <div onMouseDownOutside={() => setFocused(false)} style={{ display: 'flex', flexDirection: 'column', gap: 6, position: 'relative' }}>
       {open ? (
         <DismissableLayer onEscapeKeyDown={() => setDismissed(recipesOpen ? value : query)}>
-          <TagPopup items={rows} active={active} onPick={(i) => (recipesOpen ? pickRecipe(recipeItems[i]!) : pick(items[i]!))} onHover={setActive} />
+          <TagPopup items={rows} active={active} onPick={(i) => (recipesOpen ? pickRecipe(recipeItems[i]!) : pick(items[i]!))} onHover={setActive} onClose={() => setDismissed(recipesOpen ? value : query)} />
         </DismissableLayer>
       ) : null}
       {queue.length ? <Queued queue={queue} canSteer={canSteer} tokenCtx={tokenCtx} onSteer={onSteerQueued} onRemove={onUnqueue} /> : null}
@@ -375,9 +380,9 @@ function Queued({ queue, canSteer, tokenCtx, onSteer, onRemove }: { queue: Queue
       {queue.map((item, i) => (
         <div key={i} testId={`queued-${i}`} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {item.text && tokenCtx && item.tags?.length ? (
-            <TokenText text={item.text} tags={item.tags} ctx={tokenCtx} color={m.textFaint} onPress={() => {}} chipPrefix={`queued-${i}-chip`} />
+            <TokenText text={item.text} tags={item.tags} ctx={tokenCtx} color={m.textMuted} onPress={() => {}} chipPrefix={`queued-${i}-chip`} />
           ) : (
-            <text style={{ fontFamily: font.sans, ...type.user, fontWeight: 500, color: m.textFaint }}>
+            <text style={{ fontFamily: font.sans, ...type.user, fontWeight: 500, color: m.textMuted }}>
               {item.text || `${item.images?.length ?? 0} ${item.images?.length === 1 ? 'image' : 'images'}`}
             </text>
           )}
@@ -407,8 +412,8 @@ function ImageRow({ images, onRemove }: { images: string[]; onRemove?: (index: n
   return (
     <div testId="draft-images" style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 2 }}>
       {images.map((src, i) => (
-        <div key={src} testId={`draft-image-${i}`} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)} style={{ position: 'relative', width: 64, height: 64, borderRadius: 10, borderWidth: 1, borderColor: m.border }}>
-          <img src={src} objectFit="cover" style={{ width: 62, height: 62, borderRadius: 9 }} />
+        <div key={src} testId={`draft-image-${i}`} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)} style={{ position: 'relative', width: 96, height: 72, borderRadius: 10, borderWidth: 1, borderColor: m.border }}>
+          <img src={src} objectFit="cover" style={{ width: 94, height: 70, borderRadius: 9 }} />
           {hover === i && onRemove ? (
             <Quiet onPress={() => onRemove(i)} testId={`remove-image-${i}`} title="Remove image" style={{ position: 'absolute', top: 3, right: 3, width: 20, height: 20, minHeight: 20, paddingLeft: 0, paddingRight: 0, borderRadius: 10, backgroundColor: m.popup }}>
               <Icon name="x" size={11} color={m.text} />
