@@ -117,5 +117,5 @@ export function resultSummary(call: ToolCall) {
 
 /** Live bridge requests take precedence over static source inspection. */
 export function displayCalls(items: ToolCall[]): ToolCall[] {
-  return items.flatMap(call => call.children?.length ? displayCalls(call.children).map(child => ({ ...child, runner: typeof (call.arguments ?? call.input)?.code === 'string' ? { code: String((call.arguments ?? call.input)!.code), output: call.output } : child.runner })) : [call])
+  return items.flatMap(call => call.children?.length && call.status !== 'error' ? displayCalls(call.children).map(child => ({ ...child, runner: typeof (call.arguments ?? call.input)?.code === 'string' ? { code: String((call.arguments ?? call.input)!.code), output: call.output } : child.runner })) : [call])
 }

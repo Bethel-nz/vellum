@@ -21,6 +21,7 @@ import type { RequestPermissionRequest, SessionConfigOption, SessionNotification
 import { AcpConnection, RpcFailure } from './acp'
 import { bridgeAgent } from './bridge'
 import { closeBrowser, helperDir } from './browser'
+import { beginBrowserRun, endBrowserRun } from './browser-runtime'
 import { defaultClaudeJson, linkAccount, mergeMcpServers } from './accounts'
 import { defaultMode, describe, type Ask, type PermissionMode, type Think } from './asks'
 import { filePatch } from './files'
@@ -223,6 +224,7 @@ export class AgentRunner {
    */
   send(text: string, images: string[] = [], follow = false) {
     this.#turn = true
+    beginBrowserRun(this.#target.threadId)
     const workspace = this.#target.workspace
     // Taken while the agent starts, so it usually costs the turn nothing; before the prompt, so nothing has changed yet.
     if (!follow || !this.#base) this.#base = snapshot(workspace).catch(() => undefined)
@@ -294,7 +296,9 @@ export class AgentRunner {
   /** End the process (closing the note, switching account). Resolves once it has exited. */
   async dispose() {
     live.delete(this)
-    closeBrowser(this.#target.threadId)
+    const browserCleanup = closeBrowser(this.#target.threadId).catch(() => {
+      this.#listener.record({ type: 'vellum/error', text: 'Browser cleanup failed. Reconnect this note and retry disconnect.' })
+    })
     const conn = this.#conn
     this.#dropAsks()
     if (conn) {
@@ -302,6 +306,7 @@ export class AgentRunner {
       await conn.exited
     }
     if (this.#locked) await release(this.#locked)
+    await browserCleanup
   }
 
   // ---------------------------------------------------------------- lifecycle
@@ -326,12 +331,14 @@ export class AgentRunner {
       const holder = await liveHolder(sessionId, this.#target.configDirs)
       if (holder) {
         this.#listener.record({ type: 'vellum/error', text: `This conversation is open in ${holder.where} (pid ${holder.pid}). Close it there first, so only one place writes to it.` })
-        this.#turn = false
+        endBrowserRun(this.#target.threadId)
+    this.#turn = false
         return
       }
       if (!(await acquire(sessionId, { threadId, profileId: profile.id }))) {
         this.#listener.record({ type: 'vellum/error', text: 'This conversation is open in another Vellum window.' })
-        this.#turn = false
+        endBrowserRun(this.#target.threadId)
+    this.#turn = false
         return
       }
       this.#locked = sessionId
@@ -348,7 +355,8 @@ export class AgentRunner {
       this.#conn = undefined
       this.#dropAsks()
       if (this.#turn) {
-        this.#turn = false
+        endBrowserRun(this.#target.threadId)
+    this.#turn = false
         if (this.#stopping) this.#listener.record({ type: 'vellum/stopped' })
         else this.#listener.record({ type: 'vellum/error', text: `The agent exited with code ${code}${conn.stderrTail ? `\n${conn.stderrTail}` : ''}` })
       }
@@ -492,6 +500,7 @@ export class AgentRunner {
   }
 
   #end(rec: Extract<AcpRecord, { type: 'acp/end' }>) {
+    endBrowserRun(this.#target.threadId)
     this.#turn = false
     this.#stopping = false
     this.#toolNames.clear()
@@ -502,6 +511,7 @@ export class AgentRunner {
 
   #fail(e: unknown) {
     if (!this.#turn && !(e instanceof RpcFailure)) return
+    endBrowserRun(this.#target.threadId)
     this.#turn = false
     this.#toolNames.clear()
     this.#activeTools.clear()

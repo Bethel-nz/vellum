@@ -17,6 +17,8 @@ import type { Grid } from './ghostty'
 import type { GitFile } from './gitsnap'
 import { paths } from './store'
 import type { BrowserSession, SavedCapture } from './capture'
+import type { BrowserEvent } from './browser-types'
+import { applyBrowserEvent, browserBlockId } from './browser-presentation'
 import type { Decision, PermissionMode, Think } from './asks'
 import { normalizeToolCall, type ToolCall } from './tools'
 export type { ToolCall } from './tools'
@@ -131,6 +133,7 @@ export type VellumRecord =
   | { type: 'vellum/tool-call'; parentId?: string; call: ToolCall; at: string }
   | ({ type: 'vellum/capture'; at: string } & SavedCapture)
   | { type: 'vellum/browser'; browser: BrowserSession; at: string }
+  | { type: 'vellum/browser-event'; event: BrowserEvent; at: string }
   | { type: 'vellum/meta'; meta: ThreadMeta }
   | { type: 'vellum/title'; title: string }
   /** A turn. `text` is what was newly written; it may be empty when only earlier text was edited. */
@@ -429,6 +432,16 @@ export function reduce(thread: Thread, ev: any): Thread {
       const saved: SavedCapture = { capture: ev.capture, noteId: ev.noteId, status: ev.status, summary: ev.summary, reply: ev.reply, delivery: ev.delivery }
       if (indexOf(id) >= 0) patchBlock(id, (block) => ({ ...block, saved }))
       else push({ kind: 'capture', id, saved })
+      t.updatedAt = ev.at
+      break
+    }
+    case 'vellum/browser-event': {
+      const id = browserBlockId(ev.event)
+      const previous = blocks[indexOf(id)]
+      if (!previous && ev.event.type !== 'action-start') break
+      const browser = applyBrowserEvent(previous?.kind === 'browser' ? previous.browser : undefined, ev.event)
+      if (previous) patchBlock(id, block => ({ ...block, browser }))
+      else push({ kind: 'browser', id, browser, at: ev.at })
       t.updatedAt = ev.at
       break
     }
