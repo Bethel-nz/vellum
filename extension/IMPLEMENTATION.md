@@ -83,16 +83,31 @@ connection settings, element controls and nested DialKit popovers retains the dr
 clicking the surrounding page still dismisses the composer.
 
 Removed the disabled microphone and the check/up icon switch: the save action always
-uses an up arrow. Its own flex column stays separate from the textarea's content.
-Measured text height, including width changes, switches the composer from a 24px pill
-radius to an 18px rounded square; the arrow changes from a circle to a 9px square.
-Long comments scroll within 120px, and reduced motion disables the radius transition.
+uses an up arrow. A single line stays in a compact pill. Multiline comments expand
+into a 26px rounded panel: settings at the top left, a full-width textarea beneath,
+and a separate footer with the circular arrow at the bottom right. A hidden, inert
+textarea measures wrapping at the compact width, avoiding an expand/collapse loop
+when the expanded body becomes wider. Text scrolls within 180px. The shared morph
+spring animates panel size; reduced motion disables the size/radius transitions.
+
+Copy sits immediately right of the toolbar check in one compact action group.
+It uses the same capture assembly as sending, across every selection, including saved
+comments, the current draft, style/motion changes and source context. Copying preserves
+the selections and queue. The clipboard contains readable annotation sections and
+full JSON context; screenshot metadata is retained, while inline image bytes are
+excluded. Async clipboard writes start in the click gesture while extraction resolves;
+ordinary HTTP pages use the native copy-command fallback when needed. Success has a
+brief check/status indication, and failure keeps the annotations available to retry.
 
 Scoped Biome passed the two changed UI files. The production extension build passed
 and refreshed dist/ (existing module-directive and chunk-size warnings remain).
 A temporary local component fixture checked keyboard interaction in a closed shadow
 root and pointer interaction in an open variant: settings and tweak/color popovers
 preserved the draft; outside dismissal/reopen retained text; saving cleared the input
-and restored the single-line shape. Multiline layout measured no text/button overlap
-and no microphone. Inspected the composer screenshot. Temporary fixtures were removed;
+and restored the single-line shape. The revised multiline layout placed the body below
+settings and above the footer, with no overlap and a circular action. A real clipboard
+round-trip from the UI included both fixture annotations, selectors and context; the
+previous empty clipboard was restored. A focused serialization check covered drafts,
+tweaks, screenshot metadata, image-byte omission and preservation of the source capture.
+Inspected the composer screenshot. Temporary fixtures were removed;
 live bridge delivery and a reloaded unpacked extension were not reverified here.
