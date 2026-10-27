@@ -171,12 +171,12 @@ kbd { font: 400 11px/1.5 var(--font-body); color: var(--text-secondary); }
 .vellum-capture-thumbnail[aria-expanded='true'] { outline: 2px solid var(--identity); outline-offset: 2px; }
 .vellum-capture-thumbnail img { display: block; width: 100%; height: 76px; object-fit: contain; border-radius: 7px; }
 .vellum-expanded-capture { position: relative; flex-shrink: 0; max-height: 228px; margin: 4px 8px 0; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-raised); }
-.vellum-expanded-capture-inner { position: relative; display: grid; place-items: center; max-height: 226px; padding: 8px; }
-.vellum-expanded-capture img { display: block; max-width: 100%; max-height: 208px; border-radius: 8px; object-fit: contain; }
+.vellum-expanded-capture-inner { position: relative; display: grid; place-items: center; box-sizing: border-box; height: 226px; padding: 8px; }
+.vellum-expanded-capture img { display: block; width: 100%; height: 208px; border-radius: 8px; object-fit: contain; }
 .vellum-page-captures { position: fixed; z-index: 4; inset-inline: 0; inset-block-end: 14px; box-sizing: border-box; display: flex; flex-direction: column; width: min(760px, calc(100vw - 24px)); max-height: min(440px, calc(100dvh - 90px)); margin-inline: auto; padding: 8px; overflow: hidden; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); box-shadow: 0 8px 32px #0004; pointer-events: auto; }
 .vellum-page-captures-heading { flex: none; display: flex; align-items: center; justify-content: space-between; min-height: 30px; padding-inline: 5px 0; color: var(--text-secondary); font-size: 12px; }
 .vellum-page-capture-expanded { position: relative; flex: none; display: grid; place-items: center; max-height: 250px; margin: 4px 2px 8px; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); }
-.vellum-page-capture-expanded img { display: block; max-width: 100%; max-height: 238px; object-fit: contain; }
+.vellum-page-capture-expanded img { display: block; width: 100%; height: 238px; object-fit: contain; }
 .vellum-capture-download { position: absolute; inset-block-start: 10px; inset-inline-end: 10px; display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--foreground); box-shadow: 0 2px 8px #0003; }
 .vellum-page-capture-strip { display: flex; flex: none; gap: 8px; min-height: 80px; overflow-x: auto; overscroll-behavior-inline: contain; padding: 4px 3px 6px; scrollbar-width: thin; }
 .vellum-page-capture-item { flex: 0 0 128px; min-width: 0; margin: 0; padding: 5px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); }
