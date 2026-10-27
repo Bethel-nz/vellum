@@ -23,9 +23,8 @@
 
 import path from 'node:path'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { motion, useGpuixRequired, type EventPayload, type KeyEvent, type PublicInstance } from '@gpuix/react'
-import { Button, Icon, Label, Segmented } from '../components'
-import { duration, ease, offset, tween, useReducedMotion } from '../components/motion'
+import { useGpuixRequired, type EventPayload, type KeyEvent, type PublicInstance } from '@gpuix/react'
+import { Button, DockPanel, Icon, Label, Segmented } from '../components'
 import type { Hunk } from '../core/changes'
 import { ancestors } from '../core/filetree'
 import { copyText, keys } from '../core/platform'
@@ -80,7 +79,7 @@ export function fitFile(windowWidth: number, tree: number, file: number) {
   return Math.round(Math.max(FILE_MIN, Math.min(file, room >= FILE_MIN ? room : windowWidth - 60 - extra)))
 }
 
-export function FilePreview({ workspace, file, version, width, treeWidth, split, radius, tree, changes, onTree, onOpenFile, onMention, onMentionPath, onViewImage, onResize, onClose }: {
+export function FilePreview({ workspace, file, version, width, treeWidth, split, radius, tree, changes, onTree, onOpenFile, onMention, onMentionPath, onViewImage, onResize, onClose, onMouseMove }: {
   workspace: string
   file: Previewing
   /** Changes whenever the note does, so the file is read again. */
@@ -106,10 +105,11 @@ export function FilePreview({ workspace, file, version, width, treeWidth, split,
   /** An image file, full size over everything. */
   onViewImage: (src: string) => void
   onClose: () => void
+  /** Moves over the pane, for app.tsx's active pane (moves don't bubble past a handler). */
+  onMouseMove?: (event: EventPayload) => void
 }) {
   const m = useM()
   const renderer = useGpuixRequired()
-  const reduced = useReducedMotion()
   const scroller = useRef<PublicInstance>(null)
   const root = useRef<PublicInstance>(null)
   const preview = useMemo(() => (file.path ? readPreview(workspace, file.path) : undefined), [workspace, file.path, version])
@@ -188,14 +188,11 @@ export function FilePreview({ workspace, file, version, width, treeWidth, split,
   }
 
   return (
-    <motion.div
-      // Beside the note it's a card in the row and slides in from the right; over the note it
-      // sits on the right edge.
-      initial={reduced ? false : split ? { opacity: 0, left: offset.dialog } : { opacity: 0, right: -offset.dialog }}
-      animate={split ? { opacity: 1, left: 0 } : { opacity: 1, right: 0 }}
-      transition={tween({ duration: duration.standard, ease: ease.enter })}
+    <div
       style={{
-        ...(split ? { position: 'relative', flexShrink: 0 } : { position: 'absolute', top: 0, right: 0, bottom: 0 }),
+        position: 'relative',
+        flexGrow: 1,
+        minHeight: 0,
         width,
         display: 'flex',
         flexDirection: 'column',
@@ -207,14 +204,14 @@ export function FilePreview({ workspace, file, version, width, treeWidth, split,
         boxShadow: split ? { offsetX: 0, offsetY: 1, blurRadius: 0, spreadRadius: 0, color: m.paneHighlight, inset: true } : elevation(m, 'sheet'),
       }}
     >
-      <div ref={root} testId="file-preview" tabIndex={0} onKeyDown={onKeyDown} style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, keyboardFocusDim: false }}>
+      <div ref={root} testId="file-preview" tabIndex={0} onKeyDown={onKeyDown} onMouseMove={onMouseMove} style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, keyboardFocusDim: false }}>
         <div style={{ display: 'flex', flexDirection: 'row', flexGrow: 1, minHeight: 0 }}>
-          {tree ? (
-            <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 0, padding: TREE_INSET, flexShrink: 0 }}>
+          <DockPanel open={tree} width={treeShown + TREE_INSET * 2} gap={0}>
+            <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, padding: TREE_INSET, flexShrink: 0 }}>
               <FileTree workspace={workspace} name={folderName} current={shown?.rel} marks={marks} expanded={expanded} version={version} width={treeShown} radius={Math.max(6, radius - TREE_INSET)} onToggle={toggleDir} onOpen={onOpenFile} onMention={onMentionPath} />
               <Edge testId="file-tree-edge" right={0} onPress={(e) => onResize('tree', e.x ?? 0, e.clickCount === 2)} />
             </div>
-          ) : null}
+          </DockPanel>
           <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6, height: HEADER, paddingLeft: 8, paddingRight: 8, flexShrink: 0, ...(tree ? {} : { borderBottomWidth: 1, borderColor: m.border }) }}>
             <div style={{ display: 'flex', flexDirection: 'row', flexGrow: 1, minWidth: 0 }}>
@@ -291,12 +288,12 @@ export function FilePreview({ workspace, file, version, width, treeWidth, split,
         </div>
       </div>
       <Edge testId="file-preview-edge" left={0} onPress={(e) => onResize('pane', e.x ?? 0, e.clickCount === 2)} />
-    </motion.div>
+    </div>
   )
 }
 
 /** A strip down an edge that takes the press that starts a resize (app.tsx follows the drag). */
-function Edge({ testId, left, right, onPress }: { testId: string; left?: number; right?: number; onPress: (e: EventPayload) => void }) {
+export function Edge({ testId, left, right, onPress }: { testId: string; left?: number; right?: number; onPress: (e: EventPayload) => void }) {
   return <div testId={testId} onMouseDown={(e) => e.button === 0 && onPress(e)} style={{ position: 'absolute', left, right, top: 0, bottom: 0, width: EDGE, cursor: 'col-resize' }} />
 }
 

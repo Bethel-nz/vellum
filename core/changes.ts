@@ -152,6 +152,30 @@ export function hunkRows(patch: string): HunkRow[] {
   return out
 }
 
+/**
+ * A long hunk as patches of at most `size` rows, each with its own `@@` line, so a list can build
+ * only the part in view. `from` is the chunk's first row in `hunkRows(patch)`. A hunk that fits is
+ * one chunk: its own patch.
+ */
+export function chunkHunk(patch: string, size: number): { patch: string; from: number; rows: number }[] {
+  const [head = '', ...body] = patch.split('\n')
+  const lines = body.filter((l) => l !== '' && !l.startsWith('\\'))
+  if (lines.length <= size) return [{ patch, from: 0, rows: lines.length }]
+  const [, a = '1', c = '1'] = /^@@ -(\d+)(?:,\d+)? \+(\d+)/.exec(head) ?? []
+  let o = Number(a)
+  let n = Number(c)
+  const out: { patch: string; from: number; rows: number }[] = []
+  for (let from = 0; from < lines.length; from += size) {
+    const part = lines.slice(from, from + size)
+    const removed = part.filter((l) => l[0] !== '+').length
+    const added = part.filter((l) => l[0] !== '-').length
+    out.push({ patch: [`@@ -${o},${removed} +${n},${added} @@`, ...part].join('\n'), from, rows: part.length })
+    o += removed
+    n += added
+  }
+  return out
+}
+
 /** The row a line reference points at: new numbers for + and context rows, old for − rows. */
 export function rowOf(rows: HunkRow[], ref: LineRef): number {
   return rows.findIndex((r) => (ref.side === 'new' ? r.new === ref.line : r.kind === '-' && r.old === ref.line))
