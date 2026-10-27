@@ -18,6 +18,7 @@ export type ToolCall = {
   /** Actual MCP requests made by a code runner, captured at the note-scoped bridge. */
   children?: ToolCall[]
   origin?: 'bridge'
+  presentation?: { kind: 'browser'; session: string; generation: string; actionId: string }
   /** Presentation context when bridge children replace a runner row. */
   runner?: { code?: string; output?: string }
   exitCode?: number
