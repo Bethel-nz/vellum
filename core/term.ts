@@ -7,8 +7,7 @@
 // `holdTerm` hands it to the terminal holder (core/termd.ts), so it survives a quit or a hot
 // reload, and `heldTerms` gets those back at launch with their recent output replayed.
 
-import { spawn } from 'node:child_process'
-import { existsSync, openSync } from 'node:fs'
+import { existsSync, openSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { VtTerminal, type Grid, type KeyInput } from './ghostty'
 import { compiled, hasPty } from './platform'
@@ -190,7 +189,130 @@ export function startTerm(opts: TermOpts): TermSession {
 }
 
 export function killAllTerms() {
-  for (const s of sessions.values()) s.kill()
+  // A tmux-backed shell is ahead of everything — even this quit (the ✕ on its tab
+  // is the one thing that ends it). Its attach dies with the process on its own.
+  for (const [id, s] of sessions) if (!tmuxClients.has(id)) s.kill()
+}
+
+// ---------------------------------------------------------------- tmux shells
+
+/**
+ * Shell tabs run under tmux when tmux exists. The session is created detached and
+ * only attached: the program inside never depends on any of this process, so a shell
+ * is ahead of the holder, of a quit, even of Vellum itself. The tab's ✕ is the one
+ * thing that ends it — `kill-session`. Names live in `paths.home/terms.json`, so a
+ * later launch can reattach a detached session with no held PTYs to lean on.
+ */
+
+type TmuxEntry = { name: string; meta: unknown; at: string }
+
+let tmuxOk: boolean | undefined
+
+function tmuxAvailable(): boolean {
+  if (tmuxOk !== undefined) return tmuxOk
+  try {
+    tmuxOk = Bun.spawnSync(['tmux', '-V']).exitCode === 0
+  } catch {
+    tmuxOk = false
+  }
+  return tmuxOk
+}
+
+/** Live tmux session names; `undefined` means tmux itself couldn't answer. */
+function listTmux(): Set<string> | undefined {
+  try {
+    const out = Bun.spawnSync(['tmux', 'list-sessions', '-F', '#{session_name}'])
+    return new Set(out.exitCode === 0 ? out.stdout.toString().split('\n').filter(Boolean) : [])
+  } catch {
+    return undefined
+  }
+}
+
+const termsFile = () => path.join(paths.home, 'terms.json')
+
+function readRegistry(): TmuxEntry[] {
+  try {
+    const parsed = JSON.parse(readFileSync(termsFile(), 'utf8'))
+    return Array.isArray(parsed?.tmux) ? parsed.tmux : []
+  } catch {
+    return []
+  }
+}
+
+function writeRegistry(entries: TmuxEntry[]) {
+  try {
+    writeFileSync(termsFile(), JSON.stringify({ tmux: entries }, null, 2))
+  } catch {}
+}
+
+/** Attach PTYs that are tmux clients: quit must not end their sessions. */
+const tmuxClients = new Set<string>()
+/** Names attached in this run, so a restore never doubles a session. */
+const attachedTmux = new Set<string>()
+let tmuxSeq = 0
+
+type TmuxOpts = { argv: string[]; cwd: string; env: Record<string, string | undefined>; cols: number; rows: number }
+
+/**
+ * A login shell in a fresh detached tmux session, attached here through the holder as
+ * ever. The tab's ✕ becomes `kill-session`; a plain exit or detach keeps the session
+ * alive, so it comes back at the next launch.
+ */
+export async function tmuxShell(opts: TmuxOpts, meta: unknown): Promise<{ session: TermSession; tmux?: string }> {
+  if (!tmuxAvailable()) return { session: await holdTerm(opts, meta) }
+  const name = `vellum-${Date.now().toString(36)}-${tmuxSeq++}`
+  try {
+    // Nesting inside tmux is refused out of care, not carelessness — but a shell
+    // opened from Vellum is a session of its own even when Vellum sits in tmux.
+    const { TMUX: _tmux, TMUX_TMPDIR: _tmuxDir, ...env } = opts.env
+    const created = Bun.spawnSync(['tmux', 'new-session', '-d', '-s', name, '-x', String(opts.cols), '-y', String(opts.rows), '-c', opts.cwd, ...opts.argv], { env })
+    if (created.exitCode !== 0) throw new Error(created.stderr.toString())
+  } catch {
+    console.error('vellum: tmux new-session failed; the shell ends with the holder')
+    return { session: await holdTerm(opts, meta) }
+  }
+  const tagged = { ...(meta as object), tmux: name }
+  const session = await holdTerm({ argv: ['tmux', 'attach-session', '-t', name], cwd: opts.cwd, env: opts.env, cols: opts.cols, rows: opts.rows }, tagged)
+  tmuxClients.add(session.id)
+  attachedTmux.add(name)
+  writeRegistry([...readRegistry().filter((e) => e.name !== name), { name, meta: tagged, at: new Date().toISOString() }])
+  const plainKill = session.kill.bind(session)
+  session.kill = () => {
+    try {
+      Bun.spawn(['tmux', 'kill-session', '-t', name], { detached: true, stdio: ['ignore', 'ignore', 'ignore'] }).unref()
+    } catch {}
+    writeRegistry(readRegistry().filter((e) => e.name !== name))
+    plainKill()
+  }
+  return { session, tmux: name }
+}
+
+/**
+ * Shells whose tmux session still exists reattach here, with their tab metadata from
+ * terms.json. `skip` is the names already restored through the holder's held terms —
+ * holders that no longer exist (an `exit` typed inside tmux) fall out of the file.
+ */
+export async function restoreTmuxTerms(skip = new Set<string>()): Promise<{ meta: unknown; session: TermSession; tmux: string }[]> {
+  if (!tmuxAvailable()) return []
+  const live = listTmux()
+  if (!live) return []
+  const entries = readRegistry()
+  const kept: TmuxEntry[] = []
+  const out: { meta: unknown; session: TermSession; tmux: string }[] = []
+  for (const e of entries) {
+    if (skip.has(e.name) || !live.has(e.name)) continue
+    if (attachedTmux.has(e.name)) {
+      kept.push(e)
+      continue
+    }
+    const session = await holdTerm({ argv: ['tmux', 'attach-session', '-t', e.name], cwd: paths.home, env: process.env, cols: 100, rows: 30 }, e.meta)
+    tmuxClients.add(session.id)
+    attachedTmux.add(e.name)
+    out.push({ meta: e.meta, session, tmux: e.name })
+    kept.push(e)
+  }
+  if (kept.length !== entries.length) writeRegistry(kept)
+  return out
 }
 
 // ---------------------------------------------------------------- the holder
@@ -275,7 +397,7 @@ function startHolder() {
   const log = openSync(path.join(paths.home, 'termd.log'), 'a', 0o600)
   // Once compiled, Vellum is its own holder (bin.ts).
   const args = compiled ? ['--termd', socketPath()] : [path.join(import.meta.dir, 'termd.ts'), socketPath()]
-  spawn(process.execPath, args, { detached: true, stdio: ['ignore', log, log], cwd: paths.home }).unref()
+  Bun.spawn([process.execPath, ...args], { detached: true, stdio: ['ignore', log, log], cwd: paths.home }).unref()
 }
 
 /** The holder, started if it isn't running; undefined when there's none to be had. */
