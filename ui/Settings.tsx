@@ -1,34 +1,34 @@
-// Settings (⌘,): a page of its own over the note, under the tab strip. Sections are listed on the
-// left and scroll on the right; a section's name scrolls to it and lights while you're in it.
-// esc or Done goes back to the note, which stays as it was underneath. Everything persists to
-// settings.json (accounts to profiles.json). Translucency is a window option, so it applies on
-// the next launch; the rest applies at once.
+// Settings (⌘,): one page per sidebar item, with its own scroll position starting at the top.
+// Escape or Back to note returns to the note. Changes persist to settings.json (accounts to profiles.json).
 
-import { useRef, useState, type ReactNode } from 'react'
-import { DismissableLayer, motion, useGpuixRequired, type PublicInstance } from '@gpuix/react'
-import { Button, closedByOutsidePress, Dot, Field, Icon, Label, Menu, Segmented, SheetRow, SheetSection, Switch, type MenuItem } from '../components'
-import { enter, offset } from '../components/motion'
+import { useRef, useState } from 'react'
+import { DismissableLayer, type PublicInstance } from '@gpuix/react'
+import { motion } from '../components/spring'
+import { Button, closedByOutsidePress, Dot, Field, Icon, Label, Menu, Segmented, Switch, type MenuItem } from '../components'
+import { enter, leave, offset } from '../components/motion'
 import { sameLogin } from '../core/auth'
 import type { Profile } from '../core/profiles'
+import { agentChoices, agentFor, type AgentId } from '../core/agents'
 import { accentFor } from './theme'
 import { useM } from './kit'
 import { readSettings, updateSettings, type Settings } from '../core/store'
-import { cycleModes, defaultMode, modes, type Think } from '../core/asks'
+import { cycleModes, defaultMode, modeLabel, modes, type Think } from '../core/asks'
 import { effortLabel } from '../core/models'
 import { font } from './theme'
 import type { MaterialName } from './theme'
 import { keys } from '../core/platform'
+import { Activity } from './Activity'
+import { BrowserSettings } from './BrowserSettings'
+import { McpSettings } from './McpSettings'
 import { TrashSettings } from './Trash'
 import type { Thread } from '../core/threads'
+import { groups, matches, pageInfo, slug, type SettingsGroup, type SettingsPage as Page } from './settings/catalog'
+import { SettingsNavigation } from './settings/Navigation'
+import { SettingsResultLink, SettingsRow as SheetRow, SettingsSection as SheetSection, ThemeCards } from './settings/controls'
 
 export type TabMode = NonNullable<Settings['tabs']>
 export type MotionPref = 'system' | 'reduce' | 'full'
 
-const sections = ['Accounts', 'New notes', 'Instructions', 'Notifications', 'Appearance', 'Tabs', 'Motion', 'Trash'] as const
-type Section = (typeof sections)[number]
-const NAV = 176
-/** A section counts as the one you're in once its top is this close under the top edge. */
-const READING_LINE = 48
 
 export function SettingsPage({
   top,
@@ -39,8 +39,12 @@ export function SettingsPage({
   onTabs,
   motion: motionPref,
   onMotion,
+  showThoughts,
+  onShowThoughts,
   profiles,
   busy,
+  refreshing,
+  onRefresh,
   onLogin,
   onLogout,
   onAddProfile,
@@ -55,147 +59,71 @@ export function SettingsPage({
   onTabs: (next: TabMode) => void
   motion: MotionPref
   onMotion: (next: MotionPref) => void
+  showThoughts: boolean
+  onShowThoughts: (next: boolean) => void
   profiles: Profile[]
   /** Account ids a login or logout is running for. */
   busy: Set<string>
+  refreshing: Set<string>
+  onRefresh: (profileId: string) => void
   onLogin: (profileId: string) => void
   onLogout: (profileId: string) => void
-  onAddProfile: (name: string) => void
+  onAddProfile: (name: string, agent: AgentId) => void
   /** A note brought back from Trash, for Past notes. */
   onRestore: (thread: Thread) => void
 }) {
   const m = useM()
-  const renderer = useGpuixRequired()
   const root = useRef<PublicInstance>(null)
-  const scroller = useRef<PublicInstance>(null)
-  const anchors = useRef(new Map<Section, PublicInstance>())
-  const [current, setCurrent] = useState<Section>('Accounts')
-  // A section you jumped to stays lit through the scroll that jump makes, even when the page is
-  // too short for it to reach the top.
-  const jumped = useRef(0)
-
-  const boundsOf = (node: PublicInstance | null | undefined) => (node ? renderer.getElementBounds?.(node.id) : undefined)
-  /** The last section whose top has reached the reading line. */
-  const track = () => {
-    if (Date.now() - jumped.current < 300) return
-    const box = boundsOf(scroller.current)
-    if (!box) return
-    let at: Section = 'Accounts'
-    for (const s of sections) {
-      const b = boundsOf(anchors.current.get(s))
-      if (b && b.y - box.y <= READING_LINE) at = s
+  const [current, setCurrent] = useState<Page>('Vellum')
+  const [query, setQuery] = useState('')
+  const searching = Boolean(query.trim())
+  const accountNames = profiles.map((profile) => `${profile.name} ${profile.email ?? ''} ${profile.plan ?? ''}`).join(' ')
+  const hits = groups.filter((group) => matches(group, query, accountNames))
+  const visible = searching ? hits : groups.filter((group) => group.page === current)
+  const open = (page: Page) => { setCurrent(page); setQuery('') }
+  const content = (group: SettingsGroup) => {
+    switch (group.id) {
+      case 'thinking': return <SheetSection label="Model activity"><SheetRow label="Show model thinking" detail="Include reasoning in expandable activity. Tool results stay visible either way."><Switch checked={showThoughts} onChange={onShowThoughts} label="Show model thinking" testId="set-show-thoughts" /></SheetRow></SheetSection>
+      case 'new-notes': return <NewNotes profiles={profiles} />
+      case 'instructions': return <Instructions />
+      case 'notifications': return <Notifications />
+      case 'theme': return <>{searching ? <Button onPress={() => open('Appearance')} title="Open Appearance settings" style={{ alignSelf: 'start', marginBottom: 8 }}><text style={{ fontSize: 12, color: m.blue }}>Appearance</text><Icon name="chevronRight" size={11} color={m.blue} /></Button> : null}<ThemeCards value={material} onChange={onMaterial} /></>
+      case 'interface': return <SheetSection label="Interface" hint={keys('⇧⌘T toggles the tab strip. ⌘⇧L switches themes.')}>
+        <SheetRow label="Tab strip" detail="Keep tabs visible, hide them while you write, or hide them entirely."><Segmented testId="set-tabs" value={tabs} onChange={onTabs} options={[{ value: 'pinned', label: 'Pinned' }, { value: 'auto', label: 'Auto' }, { value: 'hidden', label: 'Hidden' }]} width={70} /></SheetRow>
+        <SheetRow label="Motion" detail="System follows your device’s reduced motion setting."><Segmented testId="set-motion" value={motionPref} onChange={onMotion} options={[{ value: 'system', label: 'System' }, { value: 'reduce', label: 'Reduced' }, { value: 'full', label: 'Full' }]} width={70} /></SheetRow>
+      </SheetSection>
+      case 'accounts': return <Accounts profiles={profiles} busy={busy} refreshing={refreshing} onRefresh={onRefresh} onLogin={onLogin} onLogout={onLogout} onAddProfile={onAddProfile} />
+      case 'browser': return <BrowserSettings />
+      case 'mcp': return <McpSettings />
+      case 'activity': return <Activity />
+      case 'trash': return <TrashSettings profiles={profiles} onRestore={onRestore} />
     }
-    setCurrent(at)
   }
-  const go = (s: Section) => {
-    const box = boundsOf(scroller.current)
-    const b = boundsOf(anchors.current.get(s))
-    const now = scroller.current ? renderer.getScrollOffset?.(scroller.current.id) : undefined
-    if (!box || !b || !now || !scroller.current) return
-    // Scroll offsets are 0 at the start and negative further down.
-    jumped.current = Date.now()
-    renderer.scrollTo?.(scroller.current.id, 0, Math.min(0, now[1] - (b.y - box.y) + 12))
-    setCurrent(s)
-  }
-  const section = (s: Section, children: ReactNode) => (
-    <div key={s} ref={(node) => { if (node) anchors.current.set(s, node); else anchors.current.delete(s) }} testId={`settings-${slug(s)}`}>
-      {children}
-    </div>
-  )
 
   return (
     <DismissableLayer onEscapeKeyDown={onClose} initialFocus={() => root.current?.id ?? null}>
-      <div ref={root} testId="settings" tabIndex={0} style={{ position: 'absolute', top, left: 0, right: 0, bottom: 0, backgroundColor: m.pane, keyboardFocusDim: false }}>
-        <motion.div
-          initial={{ opacity: 0, top: offset.menu }}
-          animate={{ opacity: 1, top: 0 }}
-          transition={enter('standard')}
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'row' }}
-        >
-          <div style={{ width: NAV, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 2, paddingTop: 22, paddingLeft: 14, paddingRight: 10, borderRightWidth: 1, borderColor: m.border }}>
-            <text style={{ fontSize: 15, lineHeight: 20, fontWeight: 600, color: m.text, paddingLeft: 8, paddingBottom: 12 }}>Settings</text>
-            {sections.map((s) => (
-              <Button key={s} onPress={() => go(s)} selected={current === s} testId={`settings-go-${slug(s)}`} style={{ justifyContent: 'flex-start', paddingLeft: 8 }}>
-                <Label muted={current !== s}>{s}</Label>
-              </Button>
-            ))}
-          </div>
-          <div style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'flex-end', paddingTop: 10, paddingRight: 12, flexShrink: 0 }}>
-              <Button onPress={onClose} testId="settings-done" title="Back to the note (esc)">
-                <Label muted>Done</Label>
-              </Button>
-            </div>
-            <div ref={scroller} onScrollChange={track} style={{ flexGrow: 1, minHeight: 0, overflowY: 'scroll', scrollbarColor: m.scrollbar, scrollbarWidth: 10, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', width: '100%', maxWidth: 600, paddingLeft: 24, paddingRight: 24, paddingBottom: 240, gap: 14 }}>
-                {section('Accounts', <Accounts profiles={profiles} busy={busy} onLogin={onLogin} onLogout={onLogout} onAddProfile={onAddProfile} />)}
-                {section('New notes', <NewNotes profiles={profiles} />)}
-                {section('Instructions', <Instructions />)}
-                {section('Notifications', <Notifications />)}
-                {section(
-                  'Appearance',
-                  <SheetSection label="Appearance">
-                    <SheetRow label="Theme" detail="⌘⇧L switches between them.">
-                      <Segmented
-                        testId="set-material"
-                        value={material}
-                        onChange={onMaterial}
-                        options={[
-                          { value: 'dark', label: 'Dark' },
-                          { value: 'light', label: 'Light' },
-                        ]}
-                        width={84}
-                      />
-                    </SheetRow>
-                  </SheetSection>,
-                )}
-                {section(
-                  'Tabs',
-                  <SheetSection label="Tabs" hint={keys('⇧⌘T shows or hides the tab strip in any mode.')}>
-                    <SheetRow label="Tab strip" detail="Auto tucks it away while you write; hidden keeps it gone.">
-                      <Segmented
-                        testId="set-tabs"
-                        value={tabs}
-                        onChange={onTabs}
-                        options={[
-                          { value: 'pinned', label: 'Pinned' },
-                          { value: 'auto', label: 'Auto' },
-                          { value: 'hidden', label: 'Hidden' },
-                        ]}
-                        width={70}
-                      />
-                    </SheetRow>
-                  </SheetSection>,
-                )}
-                {section(
-                  'Motion',
-                  <SheetSection label="Motion">
-                    <SheetRow label="Reduce motion" detail="System follows macOS Accessibility. Reduced shows changes without movement.">
-                      <Segmented
-                        testId="set-motion"
-                        value={motionPref}
-                        onChange={onMotion}
-                        options={[
-                          { value: 'system', label: 'System' },
-                          { value: 'reduce', label: 'Reduced' },
-                          { value: 'full', label: 'Full' },
-                        ]}
-                        width={70}
-                      />
-                    </SheetRow>
-                  </SheetSection>,
-                )}
-                {section('Trash', <TrashSettings profiles={profiles} onRestore={onRestore} />)}
+      {/* biome-ignore lint/a11y/noNoninteractiveTabindex: GPUIX needs a native focus target for Escape. */}
+      <motion.div ref={root} initial={false} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={leave()} testId="settings" role="dialog" aria-label="Settings" tabIndex={0} style={{ position: 'absolute', top, left: 0, right: 0, bottom: 0, backgroundColor: m.rootTint, keyboardFocusDim: false }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'row' }}>
+          <SettingsNavigation page={current} query={query} shown={(page) => !searching || hits.some((group) => group.page === page)} onQuery={setQuery} onOpen={open} onBack={onClose} />
+          <div testId="settings-content" style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0, marginTop: 8, marginRight: 8, marginBottom: 8, borderRadius: 12, borderWidth: 1, borderColor: m.border, backgroundColor: m.pane, overflow: 'hidden' }}>
+            <motion.div key={searching ? 'search' : current} initial={{ opacity: 0, top: offset.menu }} animate={{ opacity: 1, top: 0 }} transition={enter('fast')} testId="settings-page-scroll" style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', flexGrow: 1, minHeight: 0, overflowY: 'scroll', pointerEvents: 'auto', scrollbarColor: m.scrollbar, scrollbarWidth: 10 }}>
+              {/* biome-ignore lint/a11y/useSemanticElements: GPUIX regions use native div hosts. */}
+              <div role="region" aria-label={searching ? 'Search settings' : current} testId={searching ? 'settings-results' : `settings-${slug(current)}`} style={{ display: 'flex', flexDirection: 'column', width: '100%', maxWidth: 776, flexShrink: 0, paddingTop: 40, paddingBottom: 56, paddingLeft: 28, paddingRight: 28 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingBottom: 20 }}>
+                  <text testId="settings-page-title" style={{ fontSize: 20, lineHeight: 28, fontWeight: 600, color: m.text }}>{searching ? 'Search results' : current}</text>
+                  <text style={{ fontSize: 13.5, lineHeight: 20, color: m.textMuted }}>{searching ? `Settings matching “${query.trim()}”.` : pageInfo[current].intro}</text>
+                </div>
+                {visible.map((group) => <SettingsResultLink.Provider key={group.id} value={searching ? { page: group.page, open: () => open(group.page) } : undefined}><div testId={`settings-group-${group.id}`}>{content(group)}</div></SettingsResultLink.Provider>)}
+                {!visible.length ? <text testId="settings-search-empty" style={{ fontSize: 13.5, lineHeight: 20, color: m.textMuted }}>No settings found. Try a different word.</text> : null}
               </div>
-            </div>
+            </motion.div>
           </div>
-        </motion.div>
-      </div>
+        </div>
+      </motion.div>
     </DismissableLayer>
   )
 }
-
-const slug = (s: Section) => s.toLowerCase().replace(/ /g, '-')
 
 /** These read and write settings.json themselves: nothing else on screen changes with them. */
 function useSetting<K extends keyof Settings>(key: K): [Settings[K], (next: Settings[K]) => void] {
@@ -212,19 +140,19 @@ function NewNotes({ profiles }: { profiles: Profile[] }) {
   const [profile, setProfile] = useSetting('newNoteProfile')
   const [atLaunch, setAtLaunch] = useSetting('atLaunch')
   return (
-    <SheetSection label="New notes" hint="Each note keeps its own after that: ⇧⇥ changes the mode, the model menu the effort.">
+    <SheetSection label="New notes" hint="Defaults for new notes. Existing notes keep their settings.">
       <SheetRow label="Mode" detail={modes.find((x) => x.id === (mode ?? defaultMode))?.hint}>
-        <Segmented testId="set-new-mode" value={mode ?? defaultMode} onChange={setMode} options={cycleModes.map((id) => ({ value: id, label: modes.find((x) => x.id === id)!.label }))} width={64} />
+        <Segmented testId="set-new-mode" value={mode ?? defaultMode} onChange={setMode} options={cycleModes.map((id) => ({ value: id, label: modeLabel(id) }))} width={64} />
       </SheetRow>
-      <SheetRow label="Effort" detail="How long Claude thinks before it answers.">
+      <SheetRow label="Effort" detail="How much the model thinks before replying.">
         <Segmented testId="set-new-effort" value={think ?? 'on'} onChange={setThink} options={startEfforts.map((value) => ({ value, label: effortLabel(value) }))} width={70} />
       </SheetRow>
       {profiles.length > 1 ? (
-        <SheetRow label="Account" detail="What New note starts on. A folder another account uses still picks that one.">
+        <SheetRow label="Account" detail="Folders with a saved account use that account.">
           <AccountPick profiles={profiles} value={profiles.some((p) => p.id === profile) ? profile : undefined} onChange={setProfile} />
         </SheetRow>
       ) : null}
-      <SheetRow label="At launch" detail="Open the note you had open, or start a new one.">
+      <SheetRow label="At launch">
         <Segmented testId="set-at-launch" value={atLaunch ?? 'last'} onChange={setAtLaunch} options={[{ value: 'last', label: 'Last note' }, { value: 'new', label: 'New note' }]} width={84} />
       </SheetRow>
     </SheetSection>
@@ -237,15 +165,15 @@ function AccountPick({ profiles, value, onChange }: { profiles: Profile[]; value
   const [open, setOpen] = useState(false)
   const chosen = profiles.find((p) => p.id === value)
   const items: MenuItem[] = [
-    { label: 'The open note’s', checked: !chosen, testId: 'set-new-account-open', onSelect: () => onChange(undefined) },
+    { label: 'Current account', checked: !chosen, testId: 'set-new-account-open', onSelect: () => onChange(undefined) },
     { kind: 'separator' },
     ...profiles.map((p): MenuItem => ({ label: p.name, dot: accentFor(m, profiles, p.id), checked: p.id === chosen?.id, testId: `set-new-account-${p.id}`, onSelect: () => onChange(p.id) })),
   ]
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
-      <Button onPress={() => setOpen((v) => !v && !closedByOutsidePress('new-account'))} selected={open} testId="set-new-account" title="The account a new note suggests" style={{ gap: 7, paddingLeft: 10, paddingRight: 8, borderWidth: 1, borderColor: m.border }}>
+      <Button onPress={() => setOpen((v) => !v && !closedByOutsidePress('new-account'))} selected={open} testId="set-new-account" title="Choose default account" style={{ gap: 7, paddingLeft: 10, paddingRight: 8, borderWidth: 1, borderColor: m.border }}>
         {chosen ? <Dot color={accentFor(m, profiles, chosen.id)} size={8} /> : null}
-        <Label>{chosen?.name ?? 'The open note’s'}</Label>
+        <Label>{chosen?.name ?? 'Current account'}</Label>
         <Icon name="chevronDown" size={11} />
       </Button>
       <Menu open={open} onClose={() => setOpen(false)} side="bottom" align="end" width={220} testId="set-new-account-menu" closeKey="new-account" items={items} />
@@ -258,7 +186,7 @@ function Instructions() {
   const m = useM()
   const [text, setText] = useSetting('instructions')
   return (
-    <SheetSection label="Instructions" hint="New notes get these at once; a note already open picks them up after its next compaction. Each project's CLAUDE.md still applies.">
+    <SheetSection label="Instructions" hint="New notes use these instructions. Existing notes update after their next summary. Project instructions still apply.">
       <textarea
         testId="set-instructions"
         value={text ?? ''}
@@ -272,13 +200,13 @@ function Instructions() {
   )
 }
 
-/** macOS notifications, only while Vellum is behind another app (core/notify.ts). */
+/** Desktop alerts only leave the app while its window is unfocused. */
 function Notifications() {
   const [want, setWant] = useSetting('notify')
   return (
-    <SheetSection label="Notifications" hint="Only while Vellum is in the background.">
-      <SheetRow label="Notify me" detail="Asks are questions and permission requests; replies are finished turns.">
-        <Segmented testId="set-notify" value={want ?? 'asks'} onChange={setWant} options={[{ value: 'off', label: 'Never' }, { value: 'asks', label: 'Asks' }, { value: 'all', label: 'Asks, replies' }]} width={92} />
+    <SheetSection label="Notifications" hint="Desktop alerts appear while this window is unfocused. The notification inbox always keeps requests and replies together.">
+      <SheetRow label="Desktop alerts" detail="Requests include questions, approvals and agent errors. All also includes replies.">
+        <Segmented testId="set-notify" value={want ?? 'asks'} onChange={setWant} options={[{ value: 'off', label: 'Never' }, { value: 'asks', label: 'Requests' }, { value: 'all', label: 'All' }]} width={92} />
       </SheetRow>
     </SheetSection>
   )
@@ -288,46 +216,64 @@ function Notifications() {
 function Accounts({
   profiles,
   busy,
+  refreshing,
+  onRefresh,
   onLogin,
   onLogout,
   onAddProfile,
 }: {
   profiles: Profile[]
   busy: Set<string>
+  refreshing: Set<string>
+  onRefresh: (profileId: string) => void
   onLogin: (profileId: string) => void
   onLogout: (profileId: string) => void
-  onAddProfile: (name: string) => void
+  onAddProfile: (name: string, agent: AgentId) => void
 }) {
   const m = useM()
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
+  const [agent, setAgent] = useState<AgentId>('claude')
+  const choices = agentChoices(profiles)
+  const why = choices.find((c) => c.agent.id === agent)?.why
   const add = () => {
-    if (!name.trim()) return
-    onAddProfile(name.trim())
+    if (!name.trim() || why) return
+    onAddProfile(name.trim(), agent)
     setName('')
+    setAgent('claude')
     setAdding(false)
   }
   return (
-    <SheetSection label="Accounts" hint="Each account keeps its own login. Your skills, settings and history are shared.">
+    <SheetSection label="Accounts" hint="Separate logins, each with its agent. Claude accounts share skills, settings and history.">
       {profiles.map((p) => {
         // The later of two accounts with one login is the mistake; the first is fine.
         const same = p.loggedIn && p.email ? sameLogin(profiles, p.id, p.email) : undefined
         const twin = same && profiles.indexOf(same) < profiles.indexOf(p) ? same : undefined
+        const own = agentFor(p)
+        const named = (text: string) => (own.id === 'claude' ? text : `${own.title} · ${text}`)
         const who = twin
-          ? `Same login as ${twin.name}. Log out, sign out of claude.ai in your browser, and log in again.`
+          ? `Same login as ${twin.name}. Log out here and at claude.ai, then log in with another account.`
           : p.loggedIn === false
-            ? 'Not logged in'
-            : p.email
-              ? [p.email, p.plan].filter(Boolean).join(' · ')
-              : 'Checking…'
+            ? named('Not logged in')
+            : p.email || p.plan
+              ? named([p.email, p.plan].filter(Boolean).join(' · '))
+              : own.id === 'opencode'
+                ? 'OpenCode · its own sign-in (opencode auth login)'
+                : named('Checking…')
         return (
           <SheetRow key={p.id} label={p.name} detail={who} testId={`account-${p.id}`}>
             <Dot color={accentFor(m, profiles, p.id)} size={8} />
+            <Button onPress={() => onRefresh(p.id)} disabled={busy.has(p.id) || refreshing.has(p.id)} testId={`refresh-account-${p.id}`} title={`Refresh ${own.title} ${own.id === 'opencode' ? 'providers' : 'login status'}`} style={{ width: 24, paddingLeft: 0, paddingRight: 0 }}><Icon name="refresh" size={13} color={m.textMuted} /></Button>
             {busy.has(p.id) ? (
-              <Label muted>Working…</Label>
+              <Label muted>Signing in…</Label>
             ) : p.loggedIn === false ? (
               <Button variant="solid" onPress={() => onLogin(p.id)} testId={`login-${p.id}`} title={`Log in to ${p.name}`}>
                 <Label variant="solid">Log in</Label>
+              </Button>
+            ) : own.id === 'opencode' ? (
+              // OpenCode sign-in is per provider, so connecting another is always offered.
+              <Button onPress={() => onLogin(p.id)} testId={`login-${p.id}`} title={`Manage provider connections in ${p.name}`}>
+                <Label muted>Manage providers</Label>
               </Button>
             ) : (
               <Button onPress={() => onLogout(p.id)} testId={`logout-${p.id}`} title={`Log out of ${p.name}`}>
@@ -338,16 +284,20 @@ function Accounts({
         )
       })}
       {adding ? (
-        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <div style={{ flexGrow: 1 }}>
-            <Field value={name} onChange={setName} onSubmit={add} placeholder="Name, e.g. Work 2" autoFocus testId="new-account-name" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ alignSelf: 'start' }}><Segmented<AgentId> testId="new-account-agent" value={agent} onChange={setAgent} options={choices.map((c) => ({ value: c.agent.id, label: c.agent.title }))} width={84} /></div>
+          {why ? <Label muted>{why}</Label> : null}
+          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <div style={{ flexGrow: 1 }}>
+              <Field value={name} onChange={setName} onSubmit={add} placeholder="Work" autoFocus testId="new-account-name" />
+            </div>
+            <Button onPress={() => setAdding(false)}>
+              <Label muted>Cancel</Label>
+            </Button>
+            <Button variant="solid" onPress={add} testId="new-account-add" disabled={Boolean(why)}>
+              <Label variant="solid">Add account</Label>
+            </Button>
           </div>
-          <Button onPress={() => setAdding(false)}>
-            <Label muted>Cancel</Label>
-          </Button>
-          <Button variant="solid" onPress={add} testId="new-account-add">
-            <Label variant="solid">Add</Label>
-          </Button>
         </div>
       ) : (
         <Button onPress={() => setAdding(true)} testId="add-account" style={{ alignSelf: 'start' }}>

@@ -15,9 +15,9 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { DismissableLayer, useGpuixRequired, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { FloatingLayer } from '@gpuix/react/floating'
-import { cycleModes, modes, type PermissionMode } from '../core/asks'
+import { cycleModes, modes as allModes, type PermissionMode } from '../core/asks'
 
-const modeLabel = (mode: PermissionMode) => modes.find((x) => x.id === mode)?.label ?? mode
+const modeLabel = (mode: PermissionMode) => allModes.find((x) => x.id === mode)?.label ?? mode
 import { keys, primary } from '../core/platform'
 import type { Profile } from '../core/profiles'
 import { recipeCall, type Recipe } from '../core/recipes'
@@ -25,11 +25,22 @@ import { relabel, suggest, tagsIn, tagText, type Suggestion } from '../core/tags
 import { TokenText, type TokenContext } from './Tokens'
 import type { Tag } from '../core/threads'
 import { FileIcon, Icon, Meta, Quiet, useM } from './kit'
-import { motion as m_ } from '@gpuix/react'
+import { motion as m_ } from '../components/spring'
 import { concentric, elevation, font, radiusBase, type } from './theme'
 import { enter, offset, useReducedMotion } from '../components/motion'
+import { useAgent } from '../components/AgentContext'
 
 /** The "@query" or "#query" being typed at the end of the draft, trigger included. */
+/** The text a change put in at once (a paste, dictation), or '' when it only removed or typed one character. */
+function insertedRun(before: string, after: string): string {
+  if (after.length - before.length < 2) return ''
+  let start = 0
+  while (start < before.length && before[start] === after[start]) start++
+  let end = 0
+  while (end < before.length - start && before[before.length - 1 - end] === after[after.length - 1 - end]) end++
+  return after.slice(start, after.length - end)
+}
+
 function activeQuery(text: string): string | undefined {
   const match = /(?:^|\s)([@#][^\s@#]*)$/.exec(text)
   // `#path:42` is finished: the line number is typed after the pick, not searched for.
@@ -126,6 +137,7 @@ export function Composer({
   onFocusChange,
   tokenCtx,
   mode,
+  modes,
   onMode,
   asking,
   onAskKey,
@@ -153,14 +165,20 @@ export function Composer({
   tokenCtx?: TokenContext
   composerRef: RefObject<PublicInstance | null>
   mode: PermissionMode
+  /** The modes the note's agent has (core/agents.ts); ⇧⇥ cycles the ones among Ask, Edits, Plan and Auto. */
+  modes: { id: PermissionMode; label: string; hint: string }[]
   onMode: (mode: PermissionMode) => void
   /** Claude is waiting on an approval in this note. */
   asking?: boolean
   onAskKey?: (key: 'allow' | 'always' | 'deny') => void
   /** Images pasted into this draft, as files. */
   images?: string[]
-  /** ⌘V: text pastes as usual; the owner checks the clipboard for an image too. */
-  onPaste?: () => void
+  /**
+   * ⌘V, so the owner can check the clipboard for an image. With text on the clipboard the text
+   * field pastes it itself and the key never arrives: then this gets the text that went in at
+   * once (`inserted`), for the owner to compare with the clipboard.
+   */
+  onPaste?: (inserted?: string) => void
   onRemoveImage?: (index: number) => void
   /** Recipes for `$`: yours and the note's project's. */
   recipes?: Recipe[]
@@ -174,6 +192,7 @@ export function Composer({
   onUnqueue?: (index: number) => void
 }) {
   const m = useM()
+  const agent = useAgent()
   const renderer = useGpuixRequired()
   // It autofocuses, and an autofocused textarea never reports focus, so it starts focused.
   const [focused, setFocused] = useState(true)
@@ -214,7 +233,7 @@ export function Composer({
   const pickActive = () => (recipesOpen ? pickRecipe(recipeItems[active]!) : pick(items[active]!))
   const rows: PopupRow[] = recipesOpen
     ? recipeItems.map((r, i) => ({ key: `recipe:${r.file}`, testId: `recipe-pick-${i}`, icon: <Icon name="library" size={13} />, text: `$${r.name}`, mono: true, hint: r.description ?? (r.scope === 'project' ? 'this project' : undefined) }))
-    : items.map((s, i) => ({ key: `${s.type}:${s.value}`, testId: `tag-${i}`, icon: s.type === 'file' ? <FileIcon path={s.value} size={13} /> : s.type === 'skill' ? undefined : <Icon name="folder" size={13} />, text: s.type === 'skill' ? s.value : s.label, mono: s.type !== 'skill', hint: s.hint }))
+    : items.map((s, i) => ({ key: `${s.type}:${s.value}`, testId: `tag-${i}`, icon: s.type === 'file' ? <FileIcon path={s.value} size={13} /> : s.type === 'skill' ? <Icon name="zap" size={13} color={m.accent} /> : <Icon name="folder" size={13} />, text: s.type === 'skill' ? s.value : s.label, mono: s.type !== 'skill', hint: s.hint }))
 
   const pick = (s: Suggestion) => {
     const tag = { type: s.type, value: s.value } as Tag
@@ -230,8 +249,9 @@ export function Composer({
     if (primary(mods) && e.key === 'v') onPaste?.()
     if (e.key === 'tab' && mods?.shift && !mods.ctrl && !open) {
       e.preventDefault()
-      const i = cycleModes.indexOf(mode)
-      onMode(cycleModes[(i + 1) % cycleModes.length]!)
+      const cycle = cycleModes.filter((id) => modes.some((x) => x.id === id))
+      const i = cycle.indexOf(mode)
+      if (cycle.length) onMode(cycle[(i + 1) % cycle.length]!)
       return
     }
     if (asking && onAskKey && !value.trim() && !open) {
@@ -302,7 +322,9 @@ export function Composer({
         onChange={(e) => {
           const next = e.value ?? ''
           setFocused(true)
+          const inserted = insertedRun(value, next)
           onChange(next, tags)
+          if (inserted) onPaste?.(inserted)
           if (dismissed !== undefined && activeQuery(next) !== dismissed && next !== dismissed) setDismissed(undefined)
         }}
         // Plain ↵ arrives here, not in onKeyDown: it picks a tag, or allows a waiting ask.
@@ -333,14 +355,14 @@ export function Composer({
           ) : null}
         </div>
       ) : null}
-      {asking && !value.trim() ? <Meta color={m.blue}>{keys('Claude is waiting on you · ↵ allow · ⌘↵ always · esc deny')}</Meta> : null}
+      {asking && !value.trim() ? <Meta color={m.blue}>{keys(`${agent.title} is waiting on you · ↵ allow · ⌘↵ always · esc deny`)}</Meta> : null}
       {images.length ? <ImageRow images={images} onRemove={onRemoveImage} /> : null}
     </div>
   )
 }
 
 /** A message written while Claude was working, waiting for its turn to end. */
-export type QueuedMessage = { text: string; tags?: Tag[]; images?: string[] }
+export type QueuedMessage = { id?: string; text: string; tags?: Tag[]; images?: string[]; captureId?: string }
 
 /**
  * What you queued, above the paragraph you're writing: your paragraphs as they'll be sent,

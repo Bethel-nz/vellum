@@ -52,7 +52,7 @@ A queued message has Steer now and Remove under it until it goes.
 | ⇧⌘W | Close the tab |
 | ⌘1–⌘8 | Go to that tab; ⌘9 the last |
 | ⌃⇥ ⌃⇧⇥ | Next or previous tab (also ⇧⌘] ⇧⌘[) |
-| ⌘K | Jump to any note |
+| ⌘K | Search notes in the Library |
 | ⌘Y | Past notes |
 | ⇧⌘Y | Recipes |
 
@@ -68,6 +68,8 @@ The ticks down the left side are your paragraphs: hover one to preview it, click
 | ⇧⌘T | Show or hide the tab strip |
 | ⇧⌘L | Dark or light |
 | ⌘Esc | Back to writing |
+
+The pencil icon on the right opens Annotations: captures from every note, grouped by page. Open a capture in its note, send it to another note, or resolve it by hand.
 
 The terminal icon in the strip opens a terminal in its own tab. It keeps running when you quit Vellum.
 

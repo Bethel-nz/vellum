@@ -9,7 +9,8 @@
 // the preview follows it.
 
 import { useMemo, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
-import { motion, useGpuixRequired, type PublicInstance } from '@gpuix/react'
+import { useGpuixRequired, type PublicInstance } from '@gpuix/react'
+import { motion } from '../components/spring'
 import type { Thread } from '../core/threads'
 import { ease, tween } from '../components/motion'
 import { editParagraph } from './blocks'

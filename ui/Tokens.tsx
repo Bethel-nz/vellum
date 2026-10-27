@@ -6,7 +6,7 @@
 // spikes/inline-chips.tsx), so a read paragraph is a wrapping row of words and chip boxes.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { motion } from '@gpuix/react'
+import { motion } from '../components/spring'
 import { Chip, HunkPill, Icon } from '../components'
 import { duration, ease, tween } from '../components/motion'
 import { tagText, tokens, type Token } from '../core/tags'

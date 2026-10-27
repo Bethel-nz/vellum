@@ -6,18 +6,20 @@
 //   ring   context card: used of window, and Compact
 
 import { useState } from 'react'
-import { DismissableLayer, motion, type PublicInstance } from '@gpuix/react'
+import { DismissableLayer, type PublicInstance } from '@gpuix/react'
+import { motion } from '../components/spring'
 import { FloatingLayer } from '@gpuix/react/floating'
 import { useRef } from 'react'
 import { Button, ButtonGroup, closedByOutsidePress, Label, Menu } from '../components'
 import { duration, ease, offset, tween } from '../components/motion'
 import { ModelPicker } from '../components/ModelPicker'
 import { PopoverBackdrop } from '../components/PopoverBackdrop'
-import { modeLabel, modes, type PermissionMode, type Think } from '../core/asks'
+import { type PermissionMode, type Think } from '../core/asks'
 import { effortLabel, fallbackModels, formatTokens, shortModel, type ContextUse, type EffortOption, type ModelOption } from '../core/models'
 import type { IconName } from './icons'
 import { Icon, useM } from './kit'
 import { concentric, elevation, font, radiusBase, radiusXl } from './theme'
+import { useAgent } from '../components/AgentContext'
 
 export const statusBarHeight = 28
 
@@ -32,6 +34,7 @@ const modeIcon: Record<PermissionMode, IconName> = {
 
 export function StatusBar({
   mode,
+  modes,
   onMode,
   think,
   onThink,
@@ -45,6 +48,8 @@ export function StatusBar({
   onCompact,
 }: {
   mode: PermissionMode
+  /** The modes the note's agent has, in its words (core/agents.ts). */
+  modes: { id: PermissionMode; label: string; hint: string }[]
   onMode: (mode: PermissionMode) => void
   think: Think
   onThink: (think: Think) => void
@@ -60,30 +65,34 @@ export function StatusBar({
   onCompact: () => void
 }) {
   const m = useM()
+  const agent = useAgent()
   const [menu, setMenu] = useState<'mode' | 'model' | 'context' | null>(null)
   const close = () => setMenu(null)
   // A press on an open menu's own trigger closes it (keyed guard), rather than reopening;
   // closing one menu also doesn't eat the click that moves straight to another pill.
   const toggle = (k: 'mode' | 'model' | 'context') => setMenu((cur) => (cur === k || closedByOutsidePress(k) ? null : k))
-  const list = models ?? fallbackModels
-  const picked = list.find((x) => x.value === (model ?? 'default'))
+  // Claude's list until the agent sends its own; another agent's is empty until then (its default).
+  const list = models ?? (agent.id === 'claude' ? fallbackModels : agent.defaultModel ? [agent.defaultModel] : [])
+  const effectiveModel = model ?? agent.defaultModel?.value
+  const picked = list.find((x) => x.value === (effectiveModel ?? 'default'))
+  const modeLabel = modes.find((x) => x.id === mode)?.label ?? mode
   const risky = mode === 'bypassPermissions'
   const modeColor = risky ? m.warning : mode === 'plan' ? m.blue : m.textMuted
-  const modelTitle = shortModel(picked, model ? undefined : resolvedModel)
+  const modelTitle = shortModel(picked, effectiveModel ? undefined : resolvedModel)
   const effort = efforts?.find((option) => option.value === think)?.displayName ?? effortLabel(think)
   const contextTitle = context?.used ? `${formatTokens(context.used)}${context.window ? ` / ${formatTokens(context.window)}` : ' tokens'}` : 'Context empty'
 
   return (
     <ButtonGroup label="Agent settings" testId="status-bar" items={[
       {
-        id: 'mode-pill', label: `Permissions: ${modeLabel(mode)}`, shortcut: '⇧⇥', selected: menu === 'mode', onPress: () => toggle('mode'),
-        content: <><Icon name={modeIcon[mode]} size={14} color={modeColor} /><Label muted>{modeLabel(mode)}</Label></>,
+        id: 'mode-pill', label: `Permissions: ${modeLabel}`, shortcut: '⇧⇥', selected: menu === 'mode', onPress: () => toggle('mode'),
+        content: <><Icon name={modeIcon[mode]} size={14} color={modeColor} /><Label muted>{modeLabel}</Label></>,
         popover: <Menu open={menu === 'mode'} onClose={close} side="top" align="end" width={360} testId="mode-menu" closeKey="mode" items={modes.map((x) => ({ label: x.label, hint: x.hint, icon: modeIcon[x.id], checked: x.id === mode, destructive: x.id === 'bypassPermissions', testId: `mode-${x.id}`, onSelect: () => onMode(x.id) }))} />,
       },
       {
         id: 'model-pill', label: `Model: ${modelTitle} · Effort: ${effort}`, selected: menu === 'model', onPress: () => toggle('model'),
-        content: <><Icon name="claude" size={14} color="#d97757" /><Label>{modelTitle}</Label><text style={{ fontSize: 12, lineHeight: 16, color: m.textMuted }}>{effort}</text></>,
-        popover: menu === 'model' ? <ModelPicker models={list} model={model} resolvedModel={resolvedModel} efforts={efforts} think={think} onModel={onModel} onThink={onThink} onClose={close} /> : null,
+        content: <><Icon name={agent.id} size={14} color={agent.id === 'claude' ? '#d97757' : m.textMuted} /><Label>{modelTitle}</Label><text style={{ fontSize: 12, lineHeight: 16, color: m.textMuted }}>{effort}</text></>,
+        popover: menu === 'model' ? <ModelPicker models={list} model={effectiveModel} resolvedModel={resolvedModel} efforts={efforts} think={think} onModel={onModel} onThink={onThink} onClose={close} /> : null,
       },
       {
         id: 'context-pill', label: contextLabel(context), selected: menu === 'context', onPress: () => toggle('context'),
@@ -134,6 +143,7 @@ function ring(fraction: number): string {
 
 function ContextCard({ context, running, onClose, onCompact }: { context?: ContextUse; running: boolean; onClose: () => void; onCompact: () => void }) {
   const m = useM()
+  const agent = useAgent()
   const panel = useRef<PublicInstance>(null)
   const used = context?.used ?? 0
   const window = context?.window
@@ -172,15 +182,15 @@ function ContextCard({ context, running, onClose, onCompact }: { context?: Conte
             <Bar fraction={window ? used / window : 0} />
             <text style={{ fontSize: 12, lineHeight: 17, color: m.textMuted }}>
               {used
-                ? 'Compact summarizes the older part to make room.'
-                : 'Empty so far.'}
+                ? 'Summarize older messages to free up context.'
+                : `Context fills as you talk to ${agent.title}.`}
             </text>
             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <div style={{ flexGrow: 1 }} />
               <Button
                 testId="compact"
                 disabled={!used || running}
-                title={running ? 'Available when Claude finishes replying' : 'Summarize the conversation so far'}
+                title={running ? `Available when ${agent.title} finishes replying` : 'Summarize the conversation so far'}
                 onPress={() => {
                   onClose()
                   onCompact()
