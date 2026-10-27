@@ -1,7 +1,7 @@
 // New note: the project first, with an agent/account selector.
 // Overlays use the opaque popup token: GPUIX can only blur the whole window.
 
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import {
   useGpuixRequired,
   type PublicInstance,
@@ -10,11 +10,102 @@ import { Button } from '@gpuix/react/button'
 import path from 'node:path'
 import type { Profile } from '../core/profiles'
 import { agentChoices, agentFor, type AgentId } from '../core/agents'
-import { Dot, Icon, Meta, Quiet, useM } from './kit'
+import { Dot, FileIcon, Icon, Meta, Quiet, useM } from './kit'
 import { closedByOutsidePress, Field, Label, Menu, Segmented, Sheet } from '../components'
 import { keys, primary } from '../core/platform'
 import { accentFor, concentric, radiusBase, radiusXl, shortPath, type } from './theme'
 import { useLoaded } from './useLoaded'
+
+/** A folder's own mark, then its stack's language glyph, then its initials. Never a mystery box. */
+const ICON_FILES = ['icon.png', 'logo.png', 'logo.svg', 'icon.svg', 'favicon.ico', 'apple-touch-icon.png', 'app-icon.png']
+const MANIFESTS: Array<[file: string, stack: string]> = [
+  ['package.json', 'Node'], ['deno.json', 'Deno'], ['bunfig.toml', 'Bun'],
+  ['Cargo.toml', 'Rust'], ['go.mod', 'Go'], ['Package.swift', 'Swift'],
+  ['pyproject.toml', 'Python'], ['requirements.txt', 'Python'], ['setup.py', 'Python'],
+  ['Gemfile', 'Ruby'], ['pom.xml', 'Java'], ['build.gradle', 'JVM'], ['build.gradle.kts', 'JVM'],
+  ['composer.json', 'PHP'], ['CMakeLists.txt', 'C++'], ['Makefile', 'C'],
+]
+
+type ProjectMark = { icon?: string; stack?: string; manifest?: string }
+
+async function detectProject(folder: string): Promise<ProjectMark> {
+  for (const file of ICON_FILES) {
+    if (await Bun.file(path.join(folder, file)).exists()) return { icon: path.join(folder, file) }
+  }
+  for (const [file, stack] of MANIFESTS) {
+    if (await Bun.file(path.join(folder, file)).exists()) return { stack, manifest: path.join(folder, file) }
+  }
+  return {}
+}
+
+/** One tile of the project grid: a radio with a real mark, name and stack-or-path note. */
+function ProjectTile({ folder, selected, onPick, onMove, nodeRef, testId }: {
+  folder: string
+  selected: boolean
+  onPick: () => void
+  onMove: (dx: number, dy: number) => void
+  nodeRef: (node: PublicInstance | null) => void
+  testId?: string
+}) {
+  const m = useM()
+  const [mark, setMark] = useState<ProjectMark>({})
+  useEffect(() => {
+    let live = true
+    detectProject(folder).then((found) => { if (live) setMark(found) })
+    return () => { live = false }
+  }, [folder])
+  const base = path.basename(folder) || folder
+  const dir = shortPath(path.dirname(folder))
+  const initials = base.split(/[-_ ]+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('')
+  return (
+    <Button
+      ref={nodeRef}
+      testId={testId}
+      aria-label={folder}
+      aria-selected={selected}
+      onClick={onPick}
+      onKeyDown={(event) => {
+        if (event.key === 'left') { event.preventDefault(); onMove(-1, 0) }
+        else if (event.key === 'right') { event.preventDefault(); onMove(1, 0) }
+        else if (event.key === 'up') { event.preventDefault(); onMove(0, -1) }
+        else if (event.key === 'down') { event.preventDefault(); onMove(0, 1) }
+        else if (event.key === 'enter' || event.key === 'space') { event.preventDefault(); onPick() }
+      }}
+      style={{
+        flexGrow: 1,
+        flexBasis: 0,
+        minWidth: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 8,
+        paddingTop: 14,
+        paddingBottom: 12,
+        paddingLeft: 8,
+        paddingRight: 8,
+        borderRadius: radiusBase,
+        borderWidth: 1,
+        borderColor: selected ? m.borderFocused : m.border,
+        backgroundColor: selected ? m.selected : '#00000000',
+        cursor: 'pointer',
+        hover: { backgroundColor: selected ? m.selected : m.popupHover },
+        focusVisible: { outlineWidth: 2, outlineColor: m.focusRing, outlineOffset: -1 },
+      }}
+    >
+      {mark.icon ? (
+        <img src={mark.icon} objectFit="cover" style={{ width: 40, height: 40, borderRadius: 10, borderWidth: 1, borderColor: m.border }} />
+      ) : mark.manifest ? (
+        <div style={{ width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><FileIcon path={mark.manifest} size={30} /></div>
+      ) : (
+        <div style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: m.chipBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><text style={{ fontSize: 15, lineHeight: 20, fontWeight: 600, color: m.textMuted }}>{initials || '?'}</text></div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, width: '100%', minWidth: 0 }}>
+        <text style={{ ...type.label, fontWeight: 500, color: m.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: '100%' }}>{base}</text>
+        <text style={{ fontSize: 11.5, lineHeight: 16, color: m.textMuted, whiteSpace: 'nowrap', textOverflow: 'ellipsis-start', maxWidth: '100%' }}>{mark.stack ? `${mark.stack} · ${dir}` : dir}</text>
+      </div>
+    </Button>
+  )
+}
 
 /** A selectable row in a dialog list (recipes reuse it): quiet fill, hover wash, token radius. */
 export function Row({ selected, onPress, children, testId }: { selected?: boolean; onPress: () => void; children: ReactNode; testId?: string }) {
@@ -102,12 +193,34 @@ export function NewThreadDialog({
   const m = useM()
   const renderer = useGpuixRequired()
   const root = useRef<PublicInstance>(null)
+  const searchRef = useRef<PublicInstance>(null)
+  const tiles = useRef(new Map<number, PublicInstance>())
   const [folder, setFolder] = useState<string | undefined>(initialFolder ?? recentFolders[0])
   const [profileId, setProfileId] = useState<string | undefined>(() =>
     initialFolder ? initialProfileId : (recentFolders[0] && suggestProfile(recentFolders[0])) || initialProfileId || profiles[0]?.id,
   )
+  const [query, setQuery] = useState('')
   const shownFolders = [...new Set([initialFolder, ...recentFolders].filter((item): item is string => Boolean(item)))].slice(0, 5)
   const folders = folder && !shownFolders.includes(folder) ? [folder, ...shownFolders] : shownFolders
+  // The grid filters as you type; a hidden selection follows the first match (ModelPicker precedent).
+  const visible = folders.filter((item) => {
+    const q = query.trim().toLowerCase()
+    return !q || path.basename(item).toLowerCase().includes(q) || item.toLowerCase().includes(q)
+  })
+  useEffect(() => {
+    if (folder && !visible.includes(folder) && visible[0]) void chooseFolder(visible[0])
+  }, [query])
+  const COLS = 3
+  const rows: string[][] = []
+  for (let i = 0; i < visible.length; i += COLS) rows.push(visible.slice(i, i + COLS))
+  const move = (from: number, dx: number, dy: number) => {
+    if (!visible.length) return
+    const next = (from + dx + dy * COLS + visible.length * COLS) % visible.length
+    const item = visible[next]
+    if (item && item !== folder) void chooseFolder(item)
+    const node = tiles.current.get(next)
+    if (node) renderer.focusElement?.(node.id)
+  }
   const config = useLoaded(() => (folder ? projectConfig(folder) : Promise.resolve([])), [folder]) ?? []
   const [adding, setAdding] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
@@ -138,7 +251,7 @@ export function NewThreadDialog({
   const ready = Boolean(profile && folder)
   const create = () => { if (profile && folder) onCreate(profile.id, folder) }
   return (
-    <Sheet open={open} onClose={onClose} width={440} initialFocus={root} testId="new-note">
+    <Sheet open={open} onClose={onClose} width={440} initialFocus={searchRef} testId="new-note">
       <div ref={root} testId="new-note-body" tabIndex={0} onKeyDown={(event) => {
         if (primary(event.modifiers) && event.key === 'enter') { event.preventDefault(); event.stopPropagation(); if (!adding) create() }
       }} style={{ display: 'flex', flexDirection: 'column', keyboardFocusDim: false }}>
@@ -147,26 +260,36 @@ export function NewThreadDialog({
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 18, paddingRight: 18 }}>
-          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', paddingLeft: 6, paddingRight: 4 }}>
-            <Label muted>Project</Label>
-            <div style={{ flexGrow: 1 }} />
-            <Quiet onPress={browse} testId="choose-folder" title="Choose another project folder"><Icon name="folderPlus" size={13} /><Meta>Choose folder…</Meta></Quiet>
+          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <div style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, height: 34, paddingLeft: 10, paddingRight: 6, borderRadius: concentric(radiusBase, 2), backgroundColor: m.chipBg }}>
+              <Icon name="search" size={13} color={m.textMuted} />
+              <input
+                ref={searchRef}
+                testId="new-note-search"
+                value={query}
+                placeholder="Search projects…"
+                onChange={(e) => setQuery(e.value ?? '')}
+                onSubmit={() => { if (!adding) create() }}
+                style={{ flexGrow: 1, minWidth: 0, fontSize: 12.5, color: m.text }}
+              />
+              {query ? <Quiet onPress={() => setQuery('')} testId="new-note-search-clear" title="Clear search" style={{ width: 22, paddingLeft: 0, paddingRight: 0 }}><Icon name="x" size={11} /></Quiet> : null}
+            </div>
+            <Quiet onPress={browse} testId="choose-folder" title="Choose another project folder" style={{ height: 34, paddingLeft: 10, paddingRight: 10 }}><Icon name="folderPlus" size={13} /><Meta>Browse</Meta></Quiet>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {folders.map((item) => {
-              const selected = item === folder
-              const recentIndex = shownFolders.indexOf(item)
-              return <Button key={item} onClick={() => chooseFolder(item)} testId={recentIndex >= 0 ? `recent-${recentIndex}` : 'selected-folder'} aria-label={`Use ${item}`} aria-pressed={selected} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, paddingLeft: 12, paddingRight: 12, borderRadius: radiusBase, borderWidth: 1, borderColor: selected ? m.borderFocused : '#00000000', backgroundColor: selected ? m.popupHover : '#00000000', hover: { backgroundColor: m.popupHover }, focusVisible: { outlineWidth: 2, outlineColor: m.focusRing }, cursor: 'pointer' }}>
-                <Icon name={selected ? 'folderOpen' : 'folderClosed'} size={18} color={selected ? m.textUi : m.textMuted} />
-                <div style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <text style={{ ...type.label, fontWeight: 500, color: m.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{path.basename(item) || item}</text>
-                  <text style={{ fontSize: 11.5, lineHeight: 16, color: m.textMuted, whiteSpace: 'nowrap', textOverflow: 'ellipsis-start' }}>{shortPath(path.dirname(item))}</text>
-                </div>
-                {selected ? <Icon name="check" size={14} color={m.textUi} /> : null}
-              </Button>
-            })}
+          <div testId="new-note-grid" role="radiogroup" aria-label="Projects" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {rows.map((row, r) => (
+              <div key={r} style={{ display: 'flex', flexDirection: 'row', gap: 8 }}>
+                {row.map((item) => {
+                  const index = visible.indexOf(item)
+                  const recentIndex = shownFolders.indexOf(item)
+                  return <ProjectTile key={item} folder={item} selected={item === folder} onPick={() => chooseFolder(item)} onMove={(dx, dy) => move(index, dx, dy)} nodeRef={(node) => { if (node) tiles.current.set(index, node); else tiles.current.delete(index) }} testId={recentIndex >= 0 ? `recent-${recentIndex}` : 'selected-folder'} />
+                })}
+              </div>
+            ))}
             {!folders.length ? <div style={{ padding: 14, borderRadius: radiusBase, borderWidth: 1, borderColor: m.border }}><Meta>Choose a folder to start your first project note.</Meta></div> : null}
+            {folders.length && !visible.length ? <div style={{ padding: 14 }}><Meta>{`No projects match “${query.trim()}”.`}</Meta></div> : null}
           </div>
+          <Meta>↑↓←→ move · ↵ select</Meta>
           {config.length ? <div testId="trust-warning" style={{ padding: 10, borderRadius: concentric(radiusBase, 2), backgroundColor: m.dangerBg }}><text style={{ fontSize: 12, lineHeight: 17, color: m.danger }}>{`This folder has ${config.join(', ')}. Its hooks and MCP servers can run without approval. Continue only if you trust this folder.`}</text></div> : null}
         </div>
 
