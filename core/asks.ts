@@ -12,12 +12,12 @@ export type PermissionMode = 'manual' | 'acceptEdits' | 'plan' | 'auto' | 'dontA
 export type Think = 'off' | 'on' | 'medium' | 'high' | 'xhigh' | 'max'
 
 export const modes: { id: PermissionMode; label: string; hint: string }[] = [
-  { id: 'manual', label: 'Ask', hint: 'Every edit and command asks first' },
-  { id: 'acceptEdits', label: 'Edits', hint: 'Edits go through; commands ask' },
-  { id: 'plan', label: 'Plan', hint: 'Read and plan, change nothing' },
-  { id: 'auto', label: 'Auto', hint: 'Claude decides what needs asking' },
-  { id: 'dontAsk', label: "Don't ask", hint: 'Anything that would ask is refused' },
-  { id: 'bypassPermissions', label: 'Full access', hint: 'Nothing asks. Use in folders you can lose' },
+  { id: 'manual', label: 'Ask', hint: 'Approve each edit and command' },
+  { id: 'acceptEdits', label: 'Edits', hint: 'Allow edits; ask before commands' },
+  { id: 'plan', label: 'Plan', hint: 'Read and plan without changing files' },
+  { id: 'auto', label: 'Auto', hint: 'Claude decides when to ask' },
+  { id: 'dontAsk', label: "Don't ask", hint: 'Reject actions that need approval' },
+  { id: 'bypassPermissions', label: 'Full access', hint: 'No approval prompts. Can change or delete files' },
 ]
 /** ⇧⇥ cycles these; the other modes are a deliberate pick from the menu. */
 export const cycleModes: PermissionMode[] = ['manual', 'acceptEdits', 'plan', 'auto']
@@ -33,6 +33,7 @@ export type Ask = {
   /** The command, path or URL, in mono. */
   detail: string
   input: Record<string, unknown>
+  reason?: string
   /** An ACP form elicitation, answered with values rather than permission options. */
   questions?: UserQuestion[]
   /** For edits: the change itself, as a unified diff against the file on disk. */

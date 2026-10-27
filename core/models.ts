@@ -5,7 +5,7 @@
 // Context is how full the conversation is: the agent's `usage_update` (used of size). Older notes,
 // from before ACP, count it from the last assistant message's usage against the result's window.
 
-import { paths, readJson, writeJson } from './store'
+import { loadJson, paths } from './store'
 import path from 'node:path'
 import type { Think } from './asks'
 
@@ -26,12 +26,19 @@ export type ContextUse = { used: number; window?: number }
 
 const cacheFile = () => path.join(paths.home, 'models.json')
 
+// A cache: read once at start, written back whenever an account reports its models.
+let cached = await loadJson<Record<string, ModelOption[]>>(cacheFile(), {})
+// One write after another, so the file ends as the latest list.
+let writing: Promise<unknown> = Promise.resolve()
+
 export function cachedModels(): Record<string, ModelOption[]> {
-  return readJson<Record<string, ModelOption[]>>(cacheFile(), {})
+  return cached
 }
 
 export function cacheModels(profileId: string, list: ModelOption[]) {
-  writeJson(cacheFile(), { ...cachedModels(), [profileId]: list })
+  cached = { ...cached, [profileId]: list }
+  const body = JSON.stringify(cached, null, 2) + '\n'
+  writing = writing.then(() => Bun.write(cacheFile(), body)).catch(() => {})
 }
 
 /** "claude-opus-5-5" → "Opus 5.5", "claude-haiku-5-5[1m]" → "Haiku 5.5". */
