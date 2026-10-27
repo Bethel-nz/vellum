@@ -1,5 +1,5 @@
-// Self-check for the note's column growing with the window: 720 in the default window, wider in a
-// wide one, and never past 960. Measures the composer, which spans the column less its padding.
+// Self-check for the note's column: capped at 720 in every window, so prose stays scannable.
+// Measures the composer, which spans the column less its padding.
 //   bun scripts/check-width.ts
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'

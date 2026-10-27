@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { AnimatePresence, motion } from './spring'
 import { spring, tween, useReducedMotion } from './motion'
 
-/** A side pane opens its space in the row; an overlay closes atomically with its shadow. */
+/** A side pane opens its space in the row; an overlay closes atomically with its shadow. Overlay leaves the bottom chrome (status bar + approval/toast line) visible. */
 export function DockPanel({ open, width, overlay = false, gap = 8, testId, selectable = true, children }: {
   open: boolean
   width: number
@@ -25,7 +25,7 @@ export function DockPanel({ open, width, overlay = false, gap = 8, testId, selec
       animate={overlay ? { opacity: 1, right: 0 } : { width: width + gap, opacity: 1 }}
       exit={overlay ? undefined : { width: 0, opacity: 0 }}
       transition={tween(reduced ? { duration: 0 } : spring.panel)}
-      style={{ ...(overlay ? { position: 'absolute', top: 0, right: 0, bottom: 0, width } : { position: 'relative', flexShrink: 0 }), minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+      style={{ ...(overlay ? { position: 'absolute', top: 0, right: 0, bottom: 42, width } : { position: 'relative', flexShrink: 0 }), minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
     >
       <div style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width, display: 'flex', flexDirection: 'column', minHeight: 0, ...(selectable ? {} : { userSelect: 'none' }) }}>
         {children}

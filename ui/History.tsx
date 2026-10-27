@@ -4,7 +4,7 @@
 // esc closes. ⌘K opens the same Library search. Recipes are the other side (ui/Recipes.tsx).
 
 import { useEffect, useRef } from 'react'
-import { useGpuixRequired, type KeyEvent, type PublicInstance } from '@gpuix/react'
+import { useGpuixRequired, useWindowSize, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { motion } from '../components/spring'
 import { Button, Icon, Segmented, SidePanel, useM } from '../components'
 import { enter, offset, useReducedMotion } from '../components/motion'
@@ -79,13 +79,14 @@ export function History({
   // Switching sides slides the new one in from its side of the switch (Past notes left, Recipes
   // right). Not as the panel opens: the panel's own entrance is enough.
   const reduced = useReducedMotion()
+  const window = useWindowSize()
   const seen = useRef({ open, view })
   const switched = open && seen.current.open && seen.current.view !== view
   seen.current = { open, view }
   const slideFrom = switched && !reduced ? (view === 'recipes' ? offset.dialog : -offset.dialog) : undefined
 
   return (
-    <SidePanel open={open} onClose={onClose} side="left" width={WIDTH} initialFocus={view === 'recipes' ? recipesRef : inputRef} testId="history">
+    <SidePanel open={open} onClose={onClose} side="left" width={Math.min(WIDTH, window.width - 60)} initialFocus={view === 'recipes' ? recipesRef : inputRef} testId="history">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingLeft: 14, paddingRight: 14, paddingTop: 14, flexShrink: 0 }}>
         <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}><text style={{ fontSize: 14, lineHeight: 20, fontWeight: 600, color: m.text, flexGrow: 1 }}>Library</text><Button onPress={onClose} title="Close Library"><Icon name="x" size={13} /></Button></div>
         <Segmented<'history' | 'recipes'> pill testId="history-view" value={view} onChange={onView} width="fill" options={[{ value: 'history', label: 'Past notes' }, { value: 'recipes', label: 'Recipes' }]} />

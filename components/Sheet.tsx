@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Dialog, DialogBackdrop, DialogPopup, DialogPortal, type PublicInstance } from '@gpuix/react'
 import { motion } from './spring'
-import { radiusXl } from '../ui/theme'
+import { elevation, radiusXl } from '../ui/theme'
 import { Button } from './Button'
 import { Icon } from './Icon'
 import { duration, ease, leave, offset, spring, tween, useReducedMotion } from './motion'
@@ -87,7 +87,7 @@ export function Sheet({
             borderRadius: radiusXl,
             borderWidth: 1,
             borderColor: m.border,
-            boxShadow: { offsetX: 0, offsetY: 18, blurRadius: 48, spreadRadius: 0, color: m.shadow },
+            boxShadow: elevation(m, 'sheet'),
             overflow: 'hidden',
           }}
         >
@@ -186,7 +186,7 @@ export function SidePanel({
             borderRadius: radiusXl,
             borderWidth: 1,
             borderColor: m.border,
-            boxShadow: { offsetX: 0, offsetY: 18, blurRadius: 48, spreadRadius: 0, color: m.shadow },
+            boxShadow: elevation(m, 'sheet'),
             overflow: 'hidden',
           }}
         >
