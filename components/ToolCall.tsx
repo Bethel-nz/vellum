@@ -70,7 +70,11 @@ export function ToolCallGroup({ summary, items: rawItems, thinking, testId = 'to
   const running = items.filter((call) => call.status === 'running').length
   const marks = [...new Set(items.map(mark))].slice(0, 3)
   const label = items.length ? `${running ? 'Using' : 'Used'} ${items.length} ${items.length === 1 ? 'tool' : 'tools'}` : summary || 'Thinking'
+  // A pure-thinking group has nothing behind a dropdown, so it renders as a static
+  // status row: same marks and label, no chevron, no toggle.
+  const expandable = items.length > 0
   return <div testId={testId} style={{ display: 'flex', flexDirection: 'column', borderRadius: radiusXl, borderWidth: 1, borderColor: m.border, backgroundColor: m.panel, overflow: 'hidden', minWidth: 0 }}>
+    {expandable ? (
     <Base testId="tool-group-toggle" aria-label={`${open ? 'Hide' : 'Show'} tool activity`} aria-expanded={open} onClick={() => { if (!open) onInspect?.(); else setClosing(true); setOpen((value) => !value) }} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 9, borderTopLeftRadius: concentric(radiusXl, 1), borderTopRightRadius: concentric(radiusXl, 1), borderBottomLeftRadius: open || closing ? 0 : concentric(radiusXl, 1), borderBottomRightRadius: open || closing ? 0 : concentric(radiusXl, 1), minHeight: 38, paddingLeft: 12, paddingRight: 12, hover: { backgroundColor: m.hover }, focusVisible: { outlineWidth: 2, outlineColor: m.focusRing, outlineOffset: -2 } }}>
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', flexShrink: 0 }}>
         {(marks.length ? marks : ['bulb' as const]).map((name, index) => <div key={name} style={{ width: 22, height: 22, marginLeft: index ? -5 : 0, borderRadius: 11, borderWidth: 1, borderColor: m.borderFocused, backgroundColor: m.panel, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name={name} size={12} color={m.textMuted} /></div>)}
@@ -80,23 +84,29 @@ export function ToolCallGroup({ summary, items: rawItems, thinking, testId = 'to
       {failed ? <text style={{ fontSize: 11.5, lineHeight: 16, color: m.danger }}>{`${failed} failed`}</text> : null}
       <Icon name={open ? 'chevronUp' : 'chevronDown'} size={13} color={m.textMuted} />
     </Base>
-    <AnimatePresence initial={false} onExitComplete={() => setClosing(false)}>{open ? <Reveal key="calls" testId={`${testId}-calls`} flow>
+    ) : (
+    <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 38, paddingLeft: 12, paddingRight: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', flexShrink: 0 }}>
+        {(marks.length ? marks : ['bulb' as const]).map((name, index) => <div key={name} style={{ width: 22, height: 22, marginLeft: index ? -5 : 0, borderRadius: 11, borderWidth: 1, borderColor: m.borderFocused, backgroundColor: m.panel, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name={name} size={12} color={m.textMuted} /></div>)}
+      </div>
+      <text style={{ flexGrow: 1, minWidth: 0, fontSize: 12.5, lineHeight: 18, color: m.textMuted }}>{label}</text>
+    </div>
+    )}
+    {expandable ? <AnimatePresence initial={false} onExitComplete={() => setClosing(false)}>{open ? <Reveal key="calls" testId={`${testId}-calls`} flow>
       <div style={{ display: 'flex', flexDirection: 'column', borderTopWidth: 1, borderColor: m.border, paddingTop: 4, paddingBottom: 4 }}>
-        {thinking ? <Thinking text={thinking} /> : null}
+        {thinking ? <Thinking /> : null}
         {items.map((call) => <Call key={call.id} call={call} />)}
       </div>
-    </Reveal> : null}</AnimatePresence>
+    </Reveal> : null}</AnimatePresence> : null}
   </div>
 }
 
-function Thinking({ text }: { text: string }) {
+// A status line, not a toggle: thought text stays out of the note (see showThoughts
+// in blocks.tsx), so there is nothing behind a dropdown to justify one.
+function Thinking() {
   const m = useM()
-  const [open, setOpen] = useState(false)
-  return <div style={{ display: 'flex', flexDirection: 'column' }}>
-    <Base testId="tool-thinking-toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 36, paddingLeft: 12, paddingRight: 12, hover: { backgroundColor: m.hover }, focusVisible: { backgroundColor: m.selected } }}>
-      <Icon name="bulb" size={15} /><text style={{ flexGrow: 1, fontSize: 12.5, color: m.textMuted }}>Thinking</text><Icon name={open ? 'chevronUp' : 'chevronDown'} size={12} />
-    </Base>
-    <AnimatePresence initial={false}>{open ? <Reveal key="thinking"><div style={{ paddingLeft: 37, paddingRight: 12, paddingTop: 4, paddingBottom: 12 }}><ToolDetail title="Thinking" text={text} testId="thinking-scroll"><text testId="model-thinking" style={{ fontSize: 12, lineHeight: 18, color: m.textMuted }}>{text}</text></ToolDetail></div></Reveal> : null}</AnimatePresence>
+  return <div testId="tool-thinking" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 36, paddingLeft: 12, paddingRight: 12 }}>
+    <Icon name="bulb" size={15} color={m.textMuted} /><text style={{ flexGrow: 1, fontSize: 12.5, color: m.textMuted }}>Thinking</text>
   </div>
 }
 

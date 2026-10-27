@@ -31,6 +31,7 @@ export type MotionPref = 'system' | 'reduce' | 'full'
 
 
 export function SettingsPage({
+  noteId,
   top,
   onClose,
   material,
@@ -50,6 +51,7 @@ export function SettingsPage({
   onAddProfile,
   onRestore,
 }: {
+  noteId?: string
   /** Where the page starts: under the tab strip while it shows. */
   top: number
   onClose: () => void
@@ -93,7 +95,7 @@ export function SettingsPage({
         <SheetRow label="Motion" detail="System follows your device’s reduced motion setting."><Segmented testId="set-motion" value={motionPref} onChange={onMotion} options={[{ value: 'system', label: 'System' }, { value: 'reduce', label: 'Reduced' }, { value: 'full', label: 'Full' }]} width={70} /></SheetRow>
       </SheetSection>
       case 'accounts': return <Accounts profiles={profiles} busy={busy} refreshing={refreshing} onRefresh={onRefresh} onLogin={onLogin} onLogout={onLogout} onAddProfile={onAddProfile} />
-      case 'browser': return <BrowserSettings />
+      case 'browser': return <BrowserSettings noteId={noteId} />
       case 'mcp': return <McpSettings />
       case 'activity': return <Activity />
       case 'trash': return <TrashSettings profiles={profiles} onRestore={onRestore} />

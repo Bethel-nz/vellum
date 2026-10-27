@@ -6,7 +6,7 @@
 
 import { homedir } from 'node:os'
 import path from 'node:path'
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { render, useGpuixRequired, useWindowSize, type EventPayload, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { AnimatePresence, motion } from './components/spring'
 import { ApprovalCard, Button, closedByOutsidePress, DockPanel, Field, Label, Menu, stripHeight, TabStrip, useToast, type MenuItem as MenuEntry, type StripTab } from './components'
@@ -21,7 +21,7 @@ import { duration, ease, setReducedMotion, tween, useReducedMotion } from './com
 import { AgentRunner, killAllAgents } from './core/agent'
 import { mcp } from './core/mcp'
 import { recoverCaptureDeliveries, startBridge, updateCapture } from './core/bridge'
-import { closeAllBrowsers, closeBrowser, rememberBrowser } from './core/browser'
+import { closeAllBrowsers, closeBrowser } from './core/browser'
 import { capturePrompt, type BrowserSession, type CaptureStatus, type SavedCapture } from './core/capture'
 import { captureDir, captureImages, copyCapture, readCapture } from './core/captures'
 import { captureOpen, collectAnnotations } from './core/annotations'
@@ -29,6 +29,8 @@ import { CaptureViewer } from './ui/Capture'
 import { Annotations } from './ui/Annotations'
 import { NotificationBanner, NotificationInboxButton } from './ui/Notifications'
 import { BrowserViewer } from './ui/BrowserBlock'
+import { AgentScreenHost, BrowserLauncher } from './ui/AgentScreenHost'
+import { closeBrowserSessionsOnExit, getBrowserSession, subscribeBrowserRuntime, validateBrowser } from './core/browser-runtime'
 import { MobileView, type PhoneCapture } from './ui/MobileView'
 import { mobileSupported, registerMobileOpener } from './core/mobile'
 import { accountRefreshInterval, accountStatus, loginCommand, loginMethods, logout, sameLogin, type AccountStatus } from './core/auth'
@@ -541,6 +543,8 @@ function App() {
   const [viewing, setViewing] = useState<Viewing>()
   const [captureViewing, setCaptureViewing] = useState<SavedCapture>()
   const [captureJump, setCaptureJump] = useState<{ noteId: string; id: string; nonce: number }>()
+  const browserPage = useRef<PublicInstance>(null)
+  const liveBrowser = useSyncExternalStore(subscribeBrowserRuntime, () => activeId ? getBrowserSession(activeId)?.generation + ":" + getBrowserSession(activeId)?.phase + ":" + getBrowserSession(activeId)?.lastActionId : "")
   const [browserViewing, setBrowserViewing] = useState<BrowserSession>()
   const [drivingBrowserNoteId, setDrivingBrowserNoteId] = useState<string>()
   const drivingBrowserRef = useRef(drivingBrowserNoteId)
@@ -771,9 +775,6 @@ function App() {
   useEffect(() => {
     let bridge: ReturnType<typeof startBridge> | undefined
     try {
-      for (const thread of threadsRef.current) {
-        if (thread.blocks.some((block) => block.kind === 'browser')) rememberBrowser(thread.id)
-      }
       bridge = startBridge({
         notes: () => threadsRef.current.filter((thread) => tabsRef.current.includes(thread.id) && thread.id !== HELP_ID).map((thread) => ({ id: thread.id, title: thread.title, workspace: thread.workspace, account: profilesRef.current.find((profile) => profile.id === thread.profileId)?.name || thread.profileId, active: thread.id === activeRef.current })),
         record,
@@ -785,9 +786,9 @@ function App() {
         },
       })
     } catch (error) { showToastRef.current(`Browser bridge: ${String((error as Error).message)}`) }
-    const stop = () => { bridge?.stop(); closeAllBrowsers() }
+    const stop = () => { closeBrowserSessionsOnExit(); bridge?.stop() }
     process.on('exit', stop)
-    return () => { process.off('exit', stop); stop() }
+    return () => { process.off('exit', stop); void closeAllBrowsers(); bridge?.stop() }
   }, [record])
   useEffect(() => { recoverCaptureDeliveries() }, [tabs])
 
@@ -1146,7 +1147,7 @@ function App() {
 
   const closeTabNow = useCallback(
     (id: string) => {
-      closeBrowser(id)
+      void closeBrowser(id).catch(error => showToastRef.current(String(error.message)))
       const i = tabs.indexOf(id)
       const next = tabs.filter((x) => x !== id)
       // Its agent ends with the tab (and lets go of the session); the next message starts it again.
@@ -1715,7 +1716,9 @@ function App() {
   const tabThreads = tabs.map((id) => threads.find((t) => t.id === id)).filter((t): t is Thread => Boolean(t))
   const editsWaiting = active ? pendingEdits(active).length > 0 : false
   const currentCapture = captureViewing ? threads.flatMap((thread) => thread.blocks).find((block): block is Extract<Block, { kind: 'capture' }> => block.kind === 'capture' && block.saved.capture.id === captureViewing.capture.id && block.saved.noteId === captureViewing.noteId)?.saved ?? captureViewing : undefined
-  const currentBrowser = browserViewing ? threads.flatMap((thread) => thread.blocks).find((block): block is Extract<Block, { kind: 'browser' }> => block.kind === 'browser' && block.browser.session === browserViewing.session)?.browser ?? browserViewing : undefined
+  const activeBrowserSession = activeId && liveBrowser ? getBrowserSession(activeId) : undefined
+  const activeBrowser = activeBrowserSession?.generation && validateBrowser(activeBrowserSession as import('./core/browser-types').BrowserKey) ? activeBrowserSession : undefined
+  const currentBrowser = browserViewing ? threads.flatMap((thread) => thread.blocks).find((block): block is Extract<Block, { kind: 'browser' }> => block.kind === 'browser' && block.browser.noteId === browserViewing.noteId && block.browser.session === browserViewing.session && block.browser.generation === browserViewing.generation)?.browser ?? browserViewing : undefined
   const placeholder = !active?.blocks.length
     ? keys(`Start writing.  ⌘↵ asks ${activeAgent.title} · ! runs a command · @ tags a file`)
     : editsWaiting
@@ -1841,6 +1844,7 @@ function App() {
               trailing={
                 <>
                   {/* At the right end, over the pane it opens. */}
+                  {activeBrowser ? <BrowserLauncher browser={activeBrowser} /> : null}
                   <Button onPress={() => setOverlay((current) => current === 'annotations' ? null : 'annotations')} selected={overlay === 'annotations'} testId="open-annotations" title="Annotations across all notes"><Icon name="pencil" size={14} />{annotationOpenCount ? <Meta color={m.textMuted}>{String(annotationOpenCount)}</Meta> : null}</Button>
                   {mobileSupported ? <Button onPress={toggleMobile} selected={mobileOpen} testId="open-mobile" title="Mobile view (⇧⌘M)"><Icon name="phone" size={14} /></Button> : null}
                   {active && !term ? <Button onPress={toggleFiles} selected={Boolean(previewing) && fileTree} testId="open-files" title={keys('Files in this folder (⇧⌘E)')}><Icon name={previewing && fileTree ? 'folderOpen' : 'folderClosed'} size={14} /></Button> : null}
@@ -1874,7 +1878,7 @@ function App() {
           ) : active ? (
             <>
               {/* Text scrolls under the strip through a short fade instead of a hard edge. */}
-              <div testId="page" onMouseMove={hoverPane('page')} style={{ position: 'relative', flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column', ...(activePane === 'page' ? {} : { userSelect: 'none' }) }}>
+              <div ref={browserPage} testId="page" onMouseMove={hoverPane('page')} style={{ position: 'relative', flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column', ...(activePane === 'page' ? {} : { userSelect: 'none' }) }}>
               <Document
                 thread={active}
                 actions={actions}
@@ -1960,6 +1964,7 @@ function App() {
                 }}
               />
               <Timeline thread={active} list={noteList} rows={visibleRows} />
+              {activeBrowser ? <AgentScreenHost key={activeBrowser.generation} browser={activeBrowser} thread={active} rows={visibleRows} page={browserPage} onTakeControl={() => runners.current.get(active.id)?.interrupt()} onDrivingChange={driving => setDrivingBrowserNoteId(driving ? active.id : undefined)} /> : null}
               <div style={{ position: 'absolute', left: 0, right: 0, bottom: 10, display: 'flex', flexDirection: 'row', justifyContent: 'center', pointerEvents: 'none' }}>
                 <div style={{ pointerEvents: 'auto' }}>
                 <StatusBar
@@ -1988,6 +1993,7 @@ function App() {
           <AnimatePresence>
           {overlay === 'settings' ? (
             <SettingsPage
+              noteId={activeId}
               key="settings"
               top={0}
               onClose={() => setOverlay(null)}
