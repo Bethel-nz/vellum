@@ -6,7 +6,7 @@ import { useM } from './theme'
 export function Meta({ children, color, mono }: { children: ReactNode; color?: string; mono?: boolean }) {
   const m = useM()
   return (
-    <text style={{ ...type.meta, color: color ?? m.textFaint, fontFamily: mono ? font.mono : font.sans, whiteSpace: 'nowrap' }}>
+    <text style={{ ...type.meta, color: color ?? m.textMuted, fontFamily: mono ? font.mono : font.sans, whiteSpace: 'nowrap' }}>
       {children}
     </text>
   )
