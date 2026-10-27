@@ -61,6 +61,11 @@ kbd { font: 400 11px/1.5 var(--font-body); color: var(--text-secondary); }
 .vellum-field { display: grid; gap: 7px; }
 .vellum-ui select { max-width: 100%; min-height: var(--control-height-md); padding: 0 9px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--background); color: var(--foreground); font: inherit; cursor: pointer; }
 .vellum-field select { width: 100%; }
+.vellum-connection-settings { margin-top: 16px; }
+.vellum-connection-settings summary { cursor: pointer; }
+.vellum-connection-settings form { margin-top: 10px; }
+.vellum-connection-settings input { width: 100%; min-height: var(--control-height-md); padding: 0 9px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--background); color: var(--foreground); font: inherit; }
+.vellum-connection-settings .vellum-meta { margin: 0; }
 .vellum-delivery { display: flex; flex-direction: column; align-items: stretch; gap: 7px; margin-block: 18px 22px; }
 .vellum-delivery .vellum-meta { margin: 0; }
 .vellum-segments { display: flex; width: 100%; }
