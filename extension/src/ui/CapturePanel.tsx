@@ -225,12 +225,12 @@ export function CapturePanel(props: CapturePanelProps) {
       setDragPosition({ ref: active.ref, x: event.clientX - offset.x, y: event.clientY - offset.y })
     }} onPointerUp={() => { dragOffset.current = null }} onPointerCancel={() => { dragOffset.current = null }} initial={{ opacity: 0, y: reduced ? 0 : 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={panelTransition}>
       <motion.div layout="size" className="vellum-comment-row" data-multiline={multiline} transition={reduced ? { duration: 0 } : motionTokens.spring.morph}>
-        <button ref={settingsButton} type="button" className="vellum-tool-button" aria-label={props.toolsOpen ? 'Hide element controls' : 'Show element controls'} title="Styles and animation" aria-expanded={props.toolsOpen} aria-controls={controlsId} disabled={props.capturing} onClick={() => props.onToolsOpen(!props.toolsOpen)}><IconSettingsSliderHor size={18} /></button>
-        <textarea ref={input} className="vellum-comment-input" aria-label="Comment" placeholder="Add a comment…" value={active.note} rows={1} disabled={props.capturing} onChange={(event) => props.onNote(active.ref, event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); props.onSave() } }} />
+        <motion.button layout="position" transition={reduced ? { duration: 0 } : motionTokens.spring.morph} ref={settingsButton} type="button" className="vellum-tool-button" aria-label={props.toolsOpen ? 'Hide element controls' : 'Show element controls'} title="Styles and animation" aria-expanded={props.toolsOpen} aria-controls={controlsId} disabled={props.capturing} onClick={() => props.onToolsOpen(!props.toolsOpen)}><IconSettingsSliderHor size={18} /></motion.button>
+        <motion.textarea layout="position" transition={reduced ? { duration: 0 } : motionTokens.spring.morph} ref={input} className="vellum-comment-input" aria-label="Comment" placeholder="Add a comment…" value={active.note} rows={1} disabled={props.capturing} onChange={(event) => props.onNote(active.ref, event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); props.onSave() } }} />
         <textarea ref={inputMeasure} className="vellum-comment-measure" aria-hidden="true" inert tabIndex={-1} value={active.note} rows={1} readOnly />
-        <button type="button" className="vellum-tool-button vellum-comment-save" aria-label="Save annotation" title="Save annotation" disabled={props.capturing || !canSave} onClick={props.onSave}>
-          <IconArrowUp size={18} />
-        </button>
+        <motion.button layout="position" transition={reduced ? { duration: 0 } : motionTokens.spring.morph} type="button" className="vellum-tool-button vellum-comment-save" aria-label="Save annotation" title="Save annotation" disabled={props.capturing || !canSave} onClick={props.onSave}>
+          <IconCheckmark1 size={18} />
+        </motion.button>
       </motion.div>
       <motion.div id={controlsId} className="vellum-controls-reveal" inert={!props.toolsOpen || props.capturing} aria-hidden={!props.toolsOpen} initial={false} animate={{ height: props.toolsOpen ? 'auto' : 0, marginTop: props.toolsOpen ? 10 : 0 }} style={{ pointerEvents: props.toolsOpen ? 'auto' : 'none' }} transition={controlsTransition}>
         <motion.div className="vellum-settings-popover" initial={false} animate={{ opacity: props.toolsOpen ? 1 : 0 }} transition={controlsContentTransition}>
