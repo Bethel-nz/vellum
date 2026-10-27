@@ -2,24 +2,30 @@
 // bubbles, no avatars, no timestamps. Your text and Claude's replies are both
 // editable in place; tool work renders as quiet embeds between them.
 
-import { existsSync } from 'node:fs'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useGpuixRequired, type KeyEvent, type PublicInstance } from '@gpuix/react'
-import { forDiff, summarize, type Block, type Tag } from '../core/threads'
-import { printedFile } from '../core/printed'
+import { forDiff, summarize, type Block, type Tag, type ToolCall } from '../core/threads'
+import type { BrowserSession, SavedCapture } from '../core/capture'
+import { CaptureCard } from './Capture'
+import { BrowserBlock } from './BrowserBlock'
 import { getTerm } from '../core/term'
 import { FileIcon, Icon, Meta, Quiet, useM } from './kit'
 import { ToolCallGroup } from '../components/ToolCall'
+import { AgentMark } from '../components/AgentMark'
 import { isSubagentCall, SubagentTasks } from '../components/SubagentTasks'
 import { Alert } from '../components/Alert'
+import { UsageLimitBanner } from '../components/UsageLimitBanner'
+import { usageLimitFromText } from '../core/usage'
 import { TerminalBlock } from './TerminalBlock'
 import { TokenText, type TokenContext } from './Tokens'
 import { tokens } from '../core/tags'
 import { splitFences } from '../core/fences'
 import type { Identity } from '../core/avatar'
+import { useLoaded } from './useLoaded'
 import { formatTokens } from '../core/models'
 import { copyText, primary } from '../core/platform'
 import { concentric, diffHeaderClip, diffInk, diffTheme, font, nativeTheme, radiusBase, replyText, replyTheme, type } from './theme'
+import { useAgent } from '../components/AgentContext'
 
 const COMMIT_MS = 500
 
@@ -154,11 +160,14 @@ function UserBlock({ block, actions }: { block: Extract<Block, { kind: 'user' }>
 /** Images you pasted with a paragraph, under it like photos clipped to a page. A click opens one full size. */
 function PastedImages({ images, onView }: { images: string[]; onView: (images: string[], index: number) => void }) {
   const m = useM()
-  const shown = images.filter((src) => existsSync(src))
+  // Until the check lands every image counts as there, so a reply doesn't flash "missing".
+  const present = useLoaded(() => Promise.all(images.map((src) => Bun.file(src).exists())), [images.join('\n')])
+  const there = (i: number) => present?.[i] ?? true
+  const shown = images.filter((_, i) => there(i))
   return (
     <div testId="user-images" style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 8 }}>
-      {images.map((src) =>
-        existsSync(src) ? (
+      {images.map((src, i) =>
+        there(i) ? (
           <div
             key={src}
             testId={`user-image-${shown.indexOf(src)}`}
@@ -226,7 +235,8 @@ function AssistantBlock({ block, actions }: { block: Extract<Block, { kind: 'ass
   const parts = useMemo(() => splitFences(block.markdown || ' '), [block.markdown])
   if (editing && !block.streaming) {
     return (
-      <div onMouseDownOutside={() => setEditing(false)}>
+      <div onMouseDownOutside={() => setEditing(false)} style={{ position: 'relative' }}>
+        <AgentMark />
         <EditableText
           value={block.markdown}
           color={m.textMuted}
@@ -243,7 +253,8 @@ function AssistantBlock({ block, actions }: { block: Extract<Block, { kind: 'ass
     )
   }
   return (
-    <div testId={`reply-${block.id}`} onClick={() => !block.streaming && setEditing(true)} style={{ display: 'flex', flexDirection: 'column', gap: 12, cursor: block.streaming ? 'default' : 'text' }}>
+    <div testId={`reply-${block.id}`} onClick={() => !block.streaming && setEditing(true)} style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 12, cursor: block.streaming ? 'default' : 'text' }}>
+      <AgentMark />
       {parts.map((p, i) =>
         p.kind === 'code' ? (
           <CodeCard key={i} code={p.code} language={p.language} testId={`code-${block.id}-${i}`} />
@@ -292,12 +303,61 @@ function CodeCard({ code, language, testId }: { code: string; language: string; 
   )
 }
 
-function ActivityBlock({ block }: { block: Extract<Block, { kind: 'activity' }> }) {
+function shellCall(block: Extract<Block, { kind: 'shell' }>): ToolCall {
+  return {
+    id: block.termId,
+    name: 'Bash',
+    detail: block.command,
+    ...block.call,
+    input: block.call?.input ?? (block.command ? { command: block.command } : undefined),
+    output: block.output,
+    exitCode: block.exitCode,
+    status: block.exitCode === undefined ? 'running' : block.exitCode === 0 ? 'ok' : 'error',
+  }
+}
+
+/** Keep the original virtual-list slots so timeline links still address the same rows. */
+export function toolActivityGroups(blocks: Block[]) {
+  const groups = new Map<string, Extract<Block, { kind: 'activity' }> | null>()
+  let current: Extract<Block, { kind: 'activity' }> | undefined
+  for (const block of blocks) {
+    if (block.kind !== 'activity' && !(block.kind === 'shell' && block.source === 'agent')) { current = undefined; continue }
+    const items = block.kind === 'activity' ? block.items : [shellCall(block)]
+    const thoughts = block.kind === 'activity' ? block.thoughts : 0
+    const thinking = block.kind === 'activity' ? block.thinking : undefined
+    if (!current) {
+      current = { kind: 'activity', id: block.id, items: [...items], thoughts, thinking, summary: '' }
+      groups.set(block.id, current)
+    } else {
+      current.items.push(...items)
+      current.thoughts += thoughts
+      current.thinking = [current.thinking, thinking].filter(Boolean).join('\n\n') || undefined
+      groups.set(block.id, null)
+    }
+    current.summary = summarize(current.thoughts, current.items)
+  }
+  return groups
+}
+
+function ActivityBlock({ block, onInspect }: { block: Extract<Block, { kind: 'activity' }>; onInspect?: () => void }) {
+  const m = useM()
+  const captures = block.items.filter((call) => /(?:^|__)vellum_(pending|get_capture|watch|resolve|dismiss|reply)$/.test(call.name))
+  if (captures.length) {
+    const other = block.items.filter((call) => !captures.includes(call))
+    const labels: Record<string, string> = { pending: 'Checking pending captures', get_capture: 'Reading capture', watch: 'Waiting for a capture', resolve: 'Resolved capture', dismiss: 'Dismissed capture', reply: 'Replied to capture' }
+    return <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {other.length || block.thoughts ? <ActivityBlock block={{ ...block, items: other, summary: summarize(block.thoughts, other) }} onInspect={onInspect} /> : null}
+      {captures.map((call) => <div key={call.id} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+        <Icon name={call.status === 'error' ? 'info' : 'check'} size={12} color={call.status === 'error' ? m.danger : m.textMuted} />
+        <text style={{ fontSize: 12, lineHeight: 18, color: call.status === 'error' ? m.danger : m.textMuted }}>{call.status === 'error' ? 'Capture tool failed' : labels[call.name.split('vellum_').at(-1)!] || 'Capture'}</text>
+      </div>)}
+    </div>
+  }
   const agents = block.items.filter(isSubagentCall)
-  if (!agents.length) return <ToolCallGroup summary={block.summary} items={block.items} />
+  if (!agents.length) return <ToolCallGroup testId={`tool-group-${block.id}`} summary={block.summary} items={block.items} thinking={block.thinking} onInspect={onInspect} />
   const tools = block.items.filter((call) => !isSubagentCall(call))
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-    {tools.length || block.thoughts ? <ToolCallGroup summary={summarize(block.thoughts, tools)} items={tools} /> : null}
+    {tools.length || block.thoughts ? <ToolCallGroup testId={`tool-group-${block.id}`} summary={summarize(block.thoughts, tools)} items={tools} thinking={block.thinking} onInspect={onInspect} /> : null}
     <SubagentTasks items={agents} />
   </div>
 }
@@ -338,38 +398,7 @@ function EditBlock({ block }: { block: Extract<Block, { kind: 'edit' }> }) {
 }
 
 function AgentShell({ block }: { block: Extract<Block, { kind: 'shell' }> }) {
-  const m = useM()
-  const [open, setOpen] = useState(false)
-  const output = (block.output ?? '').replace(/\s+$/, '')
-  const lines = output ? output.split('\n') : []
-  const shown = open ? lines : lines.slice(0, 12)
-  const failed = block.exitCode !== undefined && block.exitCode !== 0
-  // `cat ui/theme.ts` and the like print a file: show it in that file's language (the code
-  // element knows it from the path). Anything else, and a failure's message, reads as shell.
-  const file = failed ? undefined : printedFile(block.command)
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', borderRadius: concentric(radiusBase, 0), borderWidth: 1, borderColor: m.border, backgroundColor: m.codeBg, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 10, paddingRight: 10, paddingTop: 7, paddingBottom: 7 }}>
-        <text style={{ flexGrow: 1, minWidth: 0, color: m.text, fontFamily: font.mono, fontSize: 12, lineHeight: 17, lineClamp: 3 }}>{`$ ${block.command}`}</text>
-        {block.exitCode === undefined ? <Meta>running…</Meta> : failed ? <Meta color={m.danger}>failed</Meta> : null}
-      </div>
-      {shown.length ? (
-        <code
-          code={shown.join('\n')}
-          {...(file ? { path: file } : { language: 'bash' })}
-          theme={nativeTheme(m)}
-          style={{ paddingLeft: 10, paddingRight: 10, paddingBottom: 8, minWidth: 0, color: failed ? m.danger : m.termFg }}
-        />
-      ) : null}
-      {lines.length > 12 ? (
-        <div style={{ paddingLeft: 2, paddingBottom: 4 }}>
-          <Quiet onPress={() => setOpen((v) => !v)}>
-            <Meta color={m.textMuted}>{open ? 'Show less' : `Show all ${lines.length} lines`}</Meta>
-          </Quiet>
-        </div>
-      ) : null}
-    </div>
-  )
+  return <ToolCallGroup summary="" items={[shellCall(block)]} />
 }
 
 function UserShell({ block, onSendOutput, onReturnFocus }: { block: Extract<Block, { kind: 'shell' }>; onSendOutput: (cmd: string, out: string) => void; onReturnFocus: () => void }) {
@@ -382,7 +411,6 @@ function UserShell({ block, onSendOutput, onReturnFocus }: { block: Extract<Bloc
     <TerminalBlock
       session={session}
       frozen={frozen}
-      title={`$ ${block.command}`}
       testId={`term-${block.termId}`}
       onReturnFocus={onReturnFocus}
       onSendOutput={(out) => onSendOutput(block.command, out)}
@@ -392,19 +420,17 @@ function UserShell({ block, onSendOutput, onReturnFocus }: { block: Extract<Bloc
 
 function ErrorBlock({ block, onLogin }: { block: Extract<Block, { kind: 'error' }>; onLogin: () => void }) {
   const m = useM()
-  return (
-    <Alert tone="danger" title={block.text} testId={`error-${block.id}`}>
-      {block.login ? (
-        <Quiet onPress={onLogin} style={{ alignSelf: 'start', marginLeft: -8 }}>
-          <Icon name="login" size={12} color={m.text} />
-          <text style={{ fontSize: 12.5, lineHeight: 16, color: m.text }}>Log in to this account</text>
-        </Quiet>
-      ) : null}
-    </Alert>
-  )
+  const limit = block.usageLimit ?? usageLimitFromText(block.text)
+  // Once the limit has reset, the notice is history: the note drops it.
+  if (limit) return <UsageLimitBanner limit={limit} hideAfterReset testId={`error-${block.id}`} />
+  return <Alert tone="danger" title={block.text} icon={block.login ? 'shieldX' : undefined} singleLine={block.login} testId={`error-${block.id}`} action={block.login ? <Quiet onPress={onLogin} testId={`error-login-${block.id}`}><text style={{ fontSize: 12.5, lineHeight: 16, color: m.text, whiteSpace: 'nowrap' }}>Log in</text></Quiet> : undefined} />
 }
 
 export type BlockActions = {
+  showThoughts?: boolean
+  onInspectTools?: () => void
+  onViewCapture: (saved: SavedCapture) => void
+  onViewBrowser: (browser: BrowserSession) => void
   /** Workspace and tag scopes for chips and their slices. */
   tokens: TokenContext
   /** Your picture and name, for the margin beside your paragraphs. */
@@ -420,12 +446,16 @@ export type BlockActions = {
 
 export const BlockView = memo(function BlockView({ block, actions }: { block: Block; actions: BlockActions }) {
   switch (block.kind) {
+    case 'capture':
+      return <CaptureCard saved={block.saved} onOpen={() => actions.onViewCapture(block.saved)} />
+    case 'browser':
+      return <BrowserBlock browser={block.browser} onOpen={() => actions.onViewBrowser(block.browser)} />
     case 'user':
       return <UserBlock block={block} actions={actions} />
     case 'assistant':
       return <AssistantBlock block={block} actions={actions} />
     case 'activity':
-      return <ActivityBlock block={block} />
+      return !actions.showThoughts && !block.items.length ? null : <ActivityBlock block={actions.showThoughts ? block : { ...block, thoughts: 0, thinking: undefined, summary: summarize(0, block.items) }} onInspect={actions.onInspectTools} />
     case 'edit':
       return <EditBlock block={block} />
     case 'shell':
@@ -467,9 +497,10 @@ function AlsoChanged({ block }: { block: Extract<Block, { kind: 'git' }> }) {
 /** Where the CLI summarized everything above: a hairline across the page, like a fold. */
 function CompactLine({ block }: { block: Extract<Block, { kind: 'compact' }> }) {
   const m = useM()
+  const agent = useAgent()
   const at = new Date(block.at)
   const time = Number.isNaN(at.getTime()) ? '' : ` · ${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
-  const what = block.trigger === 'auto' ? 'Context was full, so Claude summarized everything above' : 'Claude summarized everything above'
+  const what = block.trigger === 'auto' ? `Context was full, so ${agent.title} summarized everything above` : `${agent.title} summarized everything above`
   const from = block.preTokens ? ` · ${formatTokens(block.preTokens)} tokens before` : ''
   return (
     <div testId={`compact-${block.id}`} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 6, paddingBottom: 6 }}>
@@ -490,7 +521,7 @@ function MovedLine({ block }: { block: Extract<Block, { kind: 'moved' }> }) {
     <div testId={`moved-${block.id}`} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 6, paddingBottom: 6 }}>
       <div style={{ flexGrow: 1, height: 1, backgroundColor: m.border }} />
       <Icon name="user" size={12} color={m.textFaint} />
-      <text style={{ ...type.meta, color: m.textMuted, flexShrink: 0 }}>{`Moved from ${block.from} to ${block.to}; Claude reads the note above${time}`}</text>
+      <text style={{ ...type.meta, color: m.textMuted, flexShrink: 0 }}>{`Moved from ${block.from} to ${block.to}; the agent there reads the note above${time}`}</text>
       <div style={{ flexGrow: 1, height: 1, backgroundColor: m.border }} />
     </div>
   )

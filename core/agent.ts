@@ -13,23 +13,29 @@
 // In a git repo, each of your messages snapshots the working tree as it goes out, and every turn
 // end records what changed since (core/gitsnap.ts): a `vellum/git-changes` record.
 
-import { existsSync, readFileSync, realpathSync } from 'node:fs'
+// realpath has no Bun.file counterpart: node:fs.
+import { realpathSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { createTwoFilesPatch } from 'diff'
 import type { RequestPermissionRequest, SessionConfigOption, SessionNotification } from '@agentclientprotocol/sdk'
 import { AcpConnection, RpcFailure } from './acp'
+import { bridgeAgent } from './bridge'
+import { closeBrowser, helperDir } from './browser'
 import { defaultClaudeJson, linkAccount, mergeMcpServers } from './accounts'
 import { defaultMode, describe, type Ask, type PermissionMode, type Think } from './asks'
 import { filePatch } from './files'
 import { changedFiles, snapshot, type Snapshot } from './gitsnap'
 import { acquire, liveHolder, release } from './locks'
 import { effortLabel, effortValue, type EffortOption, type ModelOption } from './models'
-import { claudeBin, compiled, imageMime } from './platform'
+import { agentFor, modeFor, modeFromOptions } from './agents'
+import { compiled, imageMime } from './platform'
 import type { Profile } from './profiles'
 import { profileEnv } from './profiles'
 import { systemPromptText } from './prompt'
 import { formQuestions, questionError, type QuestionContent } from './questions'
-import { patchFromInput, type AcpRecord, type VellumRecord } from './threads'
+import { patchFromInput, relPath, writesWhole, type AcpRecord, type VellumRecord } from './threads'
+import { normalizeToolCall, toolName } from './tools'
+import { mcp, mcpKey, readTool, type McpApproval } from './mcp'
 
 export type RunnerTarget = {
   threadId: string
@@ -62,34 +68,37 @@ type Listener = {
 }
 
 /** A message as ACP content: pasted images ahead of the text. */
-function promptBlocks(text: string, images: string[]) {
-  const pictures = images.filter((f) => existsSync(f)).map((f) => ({ type: 'image', mimeType: imageMime(f), data: readFileSync(f).toString('base64') }))
+async function promptBlocks(text: string, images: string[]) {
+  const files = await Promise.all(images.map(async (f) => ((await Bun.file(f).exists()) ? { f, bytes: await Bun.file(f).bytes() } : undefined)))
+  const pictures = files.filter((x) => x !== undefined).map(({ f, bytes }) => ({ type: 'image', mimeType: imageMime(f), data: bytes.toBase64() }))
   return [...pictures, ...(text ? [{ type: 'text', text }] : [])]
 }
 
-/** Vellum's mode names → the adapter's mode ids. */
-const toAgentMode = (m: PermissionMode) => (m === 'manual' ? 'default' : m)
-const fromAgentMode = (id: string): PermissionMode => (id === 'default' ? 'manual' : (id as PermissionMode))
 /** Thinking maps onto the adapter's effort option: off is its lowest level, max its highest. */
 const effortFor = (t: Think) => (t === 'off' ? 'low' : t === 'on' ? 'default' : t)
 
 /**
- * The agent program: the bundled adapter, run by this Bun, or by Vellum itself once compiled
- * (bin.ts). VELLUM_AGENT swaps in a fake for checks.
+ * The account's agent program (core/agents.ts). VELLUM_AGENT swaps in a fake for checks, whatever
+ * the account's agent.
  */
-export function agentArgv(): string[] {
+export function agentArgv(profile: Pick<Profile, 'agent'>): string[] {
   if (process.env.VELLUM_AGENT) return compiled ? [process.execPath, '--run', process.env.VELLUM_AGENT] : [process.execPath, process.env.VELLUM_AGENT]
-  if (compiled) return [process.execPath, '--agent']
-  const entry = fileURLToPath(import.meta.resolve('@agentclientprotocol/claude-agent-acp/dist/index.js'))
-  return [process.execPath, entry]
+  return agentFor(profile).argv()
 }
 
-/** The agent's environment for an account: its config dir, and your own `claude` to run. */
-export function agentEnv(profile: Profile): Record<string, string> {
-  return { ...profileEnv(profile), CLAUDE_CODE_EXECUTABLE: claudeBin() }
+/** The agent's environment for an account: its home, its CLI, and Vellum's helpers on PATH. */
+export function agentEnv(profile: Profile, noteId?: string): Record<string, string> {
+  const pairing = noteId ? bridgeAgent(noteId) : undefined
+  return { ...profileEnv(profile), PATH: `${helperDir()}${path.delimiter}${process.env.PATH ?? ''}`, VELLUM_EXEC_PATH: process.execPath, VELLUM_COMPILED: compiled ? '1' : '0', VELLUM_BROWSER_SCRIPT: path.resolve(import.meta.dir, '../scripts/browser.ts'), ...(pairing ? { VELLUM_NOTE_ID: noteId!, VELLUM_BRIDGE: pairing.endpoint, VELLUM_TOKEN: pairing.token } : {}) }
 }
 
 const sentence = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s)
+
+/** An ACP diff (an agent's before and after of one file) as the patch an approval card shows. */
+function diffPatch(workspace: string, diff: { path?: string; oldText?: string | null; newText?: string }): string {
+  const rel = relPath(workspace, String(diff.path ?? ''))
+  return createTwoFilesPatch(rel, rel, String(diff.oldText ?? ''), String(diff.newText ?? ''), '', '', { context: 3 })
+}
 
 const live = new Set<AgentRunner>()
 
@@ -115,6 +124,12 @@ export class AgentRunner {
   /** The working tree as your latest message went out; undefined outside a repo. */
   #base?: Promise<Snapshot | undefined>
   #locked: string | undefined
+  /** Vellum's prompt, still to go ahead of a new session's first message (agents without `systemPrompt`). */
+  #prime: string | undefined
+  #toolNames = new Map<string, string>()
+  #activeTools = new Map<string, { name: string; runner: boolean }>()
+  #mcpRevision = -1
+  #starting = false
 
   constructor(target: RunnerTarget, listener: Listener) {
     this.#target = target
@@ -136,7 +151,13 @@ export class AgentRunner {
 
   setMode(mode: PermissionMode) {
     this.#target = { ...this.#target, mode }
-    this.#setConfig('mode', toAgentMode(mode))
+    for (const [key, value] of this.#modeSettings(mode)) this.#setConfig(key, value)
+  }
+
+  /** The config options that make a Vellum mode on this note's agent (core/agents.ts). */
+  #modeSettings(mode: PermissionMode | undefined): [string, string][] {
+    const agent = agentFor(this.#target.profile)
+    return Object.entries(agent.modes[modeFor(agent, mode)]?.set ?? {})
   }
 
   setModel(model: string | undefined) {
@@ -173,6 +194,29 @@ export class AgentRunner {
     pending.resolve(result ? { action: 'accept', content: result } : { action: 'cancel' })
   }
 
+  /** Associate only an unambiguous live call; parallel runners are never guessed. */
+  toolParent(name: string) {
+    const live = [...this.#activeTools]
+    const direct = live.filter(([, call]) => call.name === name || call.name.replace(/^mcp__.+?__/, '') === name.replace(/^mcp__.+?__/, ''))
+    if (direct.length === 1) return direct[0]![0]
+    if (direct.length > 1) return
+    const runners = live.filter(([, call]) => call.runner)
+    return runners.length === 1 ? runners[0]![0] : undefined
+  }
+
+  /** Vellum's MCP proxy gates the actual invocation, including agents in automatic modes. */
+  approveMcp: McpApproval = async (server, tool, input, signal) => {
+    if (signal.aborted || !this.#turn) return 'deny'
+    const requestId = `mcp:${crypto.randomUUID()}`
+    const ask: Ask = { requestId, threadId: this.#target.threadId, tool: `mcp__${server.name}__${tool.name}`, title: tool.title || tool.name, detail: JSON.stringify(input, null, 2), input, reason: tool.description, at: new Date().toISOString(), optionIds: { allow: 'allow', reject: 'deny', ...(readTool(tool) ? { always: 'reads' } : {}) }, ...(readTool(tool) ? { alwaysLabel: `Always allow tools marked read-only by ${server.name}`, suggestions: ['reads'] } : {}) }
+    return new Promise((resolve) => {
+      const cancel = () => { if (this.#asks.delete(requestId)) { this.#listener.askGone(requestId); resolve('deny') } }
+      this.#asks.set(requestId, { ask, resolve: (answer: any) => { signal.removeEventListener('abort', cancel); resolve(answer?.outcome?.optionId === 'allow' ? 'allow' : answer?.outcome?.optionId === 'reads' ? 'reads' : 'deny') } })
+      signal.addEventListener('abort', cancel, { once: true })
+      this.#listener.ask(ask)
+    })
+  }
+
   /**
    * A turn: your text, and any pasted images as ACP image blocks ahead of it. `follow` is a note
    * sent with a "no": it belongs to the same turn, so the snapshot taken for your message stands.
@@ -191,7 +235,10 @@ export class AgentRunner {
         const before = await Promise.race([base, Bun.sleep(SNAPSHOT_WAIT_MS).then(() => 'late' as const)])
         if (before === 'late' && this.#base === base) this.#base = Promise.resolve(undefined)
         this.#prompting = true
-        const res: any = await this.#conn!.request('session/prompt', { sessionId, prompt: promptBlocks(text, images) }).finally(() => {
+        const prime = this.#prime
+        this.#prime = undefined
+        const prompt = [...(prime ? [{ type: 'text', text: `About the app you're running in (from Vellum, not the user):\n\n${prime}` }] : []), ...(await promptBlocks(text, images))]
+        const res: any = await this.#conn!.request('session/prompt', { sessionId, prompt }).finally(() => {
           this.#prompting = false
         })
         if (before && before !== 'late') {
@@ -221,7 +268,7 @@ export class AgentRunner {
     try {
       const res: any = await this.#conn!.request('_session/steering', {
         sessionId: this.#session,
-        prompt: promptBlocks(text, images),
+        prompt: await promptBlocks(text, images),
         // An idle session says so instead of starting a turn Vellum didn't open.
         _meta: { steering: { idleBehavior: 'promptRequired' } },
       })
@@ -247,33 +294,42 @@ export class AgentRunner {
   /** End the process (closing the note, switching account). Resolves once it has exited. */
   async dispose() {
     live.delete(this)
+    closeBrowser(this.#target.threadId)
     const conn = this.#conn
     this.#dropAsks()
     if (conn) {
       conn.kill()
       await conn.exited
     }
-    if (this.#locked) release(this.#locked)
+    if (this.#locked) await release(this.#locked)
   }
 
   // ---------------------------------------------------------------- lifecycle
 
   #start(): Promise<string | undefined> {
-    if (this.#ready && this.#conn && !this.#conn.closed) return this.#ready
-    this.#ready = this.#open()
+    if (this.#starting) return this.#ready!
+    if (this.#ready && this.#conn && !this.#conn.closed && (this.#mcpRevision === mcp.revision || this.#prompting)) return this.#ready
+    this.#starting = true
+    const previous = this.#conn
+    this.#conn = undefined
+    this.#ready = (async () => {
+      if (previous && !previous.closed) { previous.kill(); await previous.exited }
+      if (this.#locked) { await release(this.#locked); this.#locked = undefined }
+      return this.#open()
+    })().finally(() => { this.#starting = false })
     return this.#ready
   }
 
   async #open(): Promise<string | undefined> {
     const { workspace, profile, sessionId, threadId } = this.#target
     if (sessionId) {
-      const holder = liveHolder(sessionId, this.#target.configDirs)
+      const holder = await liveHolder(sessionId, this.#target.configDirs)
       if (holder) {
         this.#listener.record({ type: 'vellum/error', text: `This conversation is open in ${holder.where} (pid ${holder.pid}). Close it there first, so only one place writes to it.` })
         this.#turn = false
         return
       }
-      if (!acquire(sessionId, { threadId, profileId: profile.id })) {
+      if (!(await acquire(sessionId, { threadId, profileId: profile.id }))) {
         this.#listener.record({ type: 'vellum/error', text: 'This conversation is open in another Vellum window.' })
         this.#turn = false
         return
@@ -282,7 +338,7 @@ export class AgentRunner {
     }
     this.#stopping = false
     this.#prepare(profile)
-    const conn = new AcpConnection(agentArgv(), { cwd: workspace, env: agentEnv(profile) }, {
+    const conn = new AcpConnection(agentArgv(profile), { cwd: workspace, env: agentEnv(profile, threadId) }, {
       request: (method, params, id) => this.#onRequest(method, params, id),
       notification: (method, params) => this.#onNotification(method, params),
     })
@@ -302,15 +358,22 @@ export class AgentRunner {
       protocolVersion: 1,
       // Each capability is an object: `form: true` fails ACP's schema and is silently dropped, and
       // without form support the adapter starts claude with --disallowedTools=AskUserQuestion.
-      clientCapabilities: { auth: { terminal: true }, session: { compaction: {} }, elicitation: { form: {} } },
+      clientCapabilities: { auth: { terminal: true }, session: { compaction: {} }, elicitation: { form: {} }, _meta: { terminal_output_delta: true } },
       clientInfo: { name: 'vellum', title: 'Vellum', version: '0.1.0' },
     })
     const canResume = Boolean(init?.agentCapabilities?.sessionCapabilities?.resume)
     // Steering is an extension: advertised in the response's top-level `_meta`, beside the capabilities.
     this.#steering = init?._meta?.steering?.supported === true
     // What Vellum draws for the agent's tools, after its own prompt, for agents that take one.
-    const systemPrompt = init?.agentCapabilities?.sessionCapabilities?.systemPrompt ? { mode: 'append', content: [{ type: 'text', text: systemPromptText() }] } : undefined
-    const params = { cwd: workspace, mcpServers: [], ...(systemPrompt ? { systemPrompt } : {}) }
+    const agent = agentFor(profile)
+    const promptText = systemPromptText(agent.claudeCode)
+    const systemPrompt = init?.agentCapabilities?.sessionCapabilities?.systemPrompt ? { mode: 'append', content: [{ type: 'text', text: promptText }] } : undefined
+    const pairing = bridgeAgent(threadId)
+    const script = compiled ? path.join(helperDir(), 'vellum-mcp.ts') : path.resolve(import.meta.dir, '../scripts/vellum-mcp.ts')
+    const mcpServers = pairing ? [{ name: 'vellum', command: process.execPath, args: [...(compiled ? ['--run'] : []), script], env: [{ name: 'VELLUM_NOTE_ID', value: threadId }, { name: 'VELLUM_BRIDGE', value: pairing.endpoint }, { name: 'VELLUM_TOKEN', value: pairing.token }] }] : []
+    if (pairing) for (const server of mcp.configured()) mcpServers.push({ ...mcpServers[0]!, name: mcpKey(server), env: [...mcpServers[0]!.env, { name: 'VELLUM_MCP_SERVER', value: server.id }] })
+    this.#mcpRevision = mcp.revision
+    const params = { cwd: workspace, mcpServers, ...(systemPrompt ? { systemPrompt } : {}) }
     let res: any
     let id = sessionId
     if (id && canResume) {
@@ -325,17 +388,20 @@ export class AgentRunner {
     if (!id) {
       res = await conn.request('session/new', params)
       id = String(res.sessionId)
-      if (this.#locked) release(this.#locked)
-      acquire(id, { threadId, profileId: profile.id })
+      // An agent without ACP's systemPrompt reads Vellum's part once, ahead of the session's first message.
+      this.#prime = systemPrompt ? undefined : promptText
+      if (this.#locked) await release(this.#locked)
+      await acquire(id, { threadId, profileId: profile.id })
       this.#locked = id
     }
     this.#session = id
     this.#target = { ...this.#target, sessionId: id }
-    this.#emit({ type: 'acp/session', sessionId: id, agent: 'claude', profileId: profile.id })
+    this.#emit({ type: 'acp/session', sessionId: id, agent: agent.id, profileId: profile.id })
     // The agent's starting values are where it begins, not a change it made: your picks go on top.
     this.#takeConfig(res?.configOptions, false)
-    const want: [string, string][] = [['mode', toAgentMode(this.#target.mode ?? defaultMode)]]
-    if (this.#target.model) want.push(['model', this.#target.model])
+    const want: [string, string][] = this.#modeSettings(this.#target.mode ?? defaultMode)
+    const model = this.#target.model ?? agent.defaultModel?.value
+    if (model) want.push(['model', model])
     if (this.#target.think && this.#target.think !== 'on') want.push(['thought_level', effortFor(this.#target.think)])
     for (const [cat, value] of want) await this.#applyConfig(cat, value)
     return id
@@ -347,7 +413,7 @@ export class AgentRunner {
    * has no other writer.
    */
   #prepare(profile: Profile) {
-    if (!profile.configDir) return
+    if (!profile.configDir || !agentFor(profile).claudeCode) return
     try {
       const fixed = linkAccount(profile.id, profile.configDir).filter((a) => a.did !== 'linked')
       if (fixed.length)
@@ -385,13 +451,19 @@ export class AgentRunner {
       })
       if (list.length) this.#listener.efforts?.(list)
     }
-    const mode: any = this.#option('mode')
-    if (react && mode?.currentValue) {
-      const m = fromAgentMode(String(mode.currentValue))
-      if (m !== this.mode && this.#session) {
-        this.#target = { ...this.#target, mode: m }
-        this.#listener.modeChanged?.(m)
-      }
+    if (react) this.#modeFromAgent()
+  }
+
+  /** The agent changed its mode itself (Claude leaving plan mode): say which Vellum mode that is. */
+  #modeFromAgent() {
+    if (!this.#session) return
+    const m = modeFromOptions(agentFor(this.#target.profile), (key) => {
+      const value = (this.#option(key) as any)?.currentValue
+      return value === undefined ? undefined : String(value)
+    })
+    if (m && m !== modeFor(agentFor(this.#target.profile), this.mode)) {
+      this.#target = { ...this.#target, mode: m }
+      this.#listener.modeChanged?.(m)
     }
   }
 
@@ -402,7 +474,8 @@ export class AgentRunner {
     if (values.length && !values.includes(value)) return
     try {
       const res: any = await this.#conn.request('session/set_config_option', { sessionId: this.#session, configId: opt.id, value })
-      this.#takeConfig(res?.configOptions)
+      // Our own change, not the agent's: a mode made of two options (Codex's plan) is half-set in between.
+      this.#takeConfig(res?.configOptions, false)
     } catch (e) {
       this.#listener.record({ type: 'vellum/error', text: `Couldn't change ${opt.name ?? category}: ${e instanceof RpcFailure ? e.error.message : String(e)}` })
     }
@@ -421,6 +494,8 @@ export class AgentRunner {
   #end(rec: Extract<AcpRecord, { type: 'acp/end' }>) {
     this.#turn = false
     this.#stopping = false
+    this.#toolNames.clear()
+    this.#activeTools.clear()
     this.#dropAsks()
     this.#emit(rec)
   }
@@ -428,17 +503,28 @@ export class AgentRunner {
   #fail(e: unknown) {
     if (!this.#turn && !(e instanceof RpcFailure)) return
     this.#turn = false
+    this.#toolNames.clear()
+    this.#activeTools.clear()
     this.#dropAsks()
     const err = e instanceof RpcFailure ? e.error : { code: 0, message: String(e) }
     // Exits are reported by the exit handler, with stderr.
     if (err.code === -32099) return
-    const login = err.code === -32000 || /auth|log ?in/i.test(err.message)
-    this.#listener.record({ type: 'vellum/error', text: login ? 'Not logged in · log in to this account to continue' : err.message, login })
+    const login = err.code === -32000 || /\b(authentication required|not logged in|not signed in|log ?in required|unauthorized)\b/i.test(err.message)
+    this.#listener.record({ type: 'vellum/error', text: err.message, login })
   }
 
   #onNotification(method: string, params: any) {
     if (method === 'session/update') {
-      const update = (params as SessionNotification).update as any
+      let update = (params as SessionNotification).update as any
+      if (update?.sessionUpdate === 'tool_call' || update?.sessionUpdate === 'tool_call_update') {
+        const name = update.name || update._meta?.claudeCode?.toolName ? toolName(update) : this.#toolNames.get(update.toolCallId) ?? toolName(update)
+        this.#toolNames.set(update.toolCallId, name)
+        const input = normalizeToolCall(update).arguments
+        if (update.status === 'completed' || update.status === 'failed') this.#activeTools.delete(update.toolCallId)
+        else this.#activeTools.set(update.toolCallId, { name, runner: typeof input?.code === 'string' || this.#activeTools.get(update.toolCallId)?.runner === true })
+        const definition = mcp.describeTool(name)
+        if (definition) update = { ...update, _meta: { ...update._meta, vellumTool: definition } }
+      }
       switch (update?.sessionUpdate) {
         // Large and only useful live (slash-command lists); not part of the note.
         case 'available_commands_update':
@@ -448,11 +534,9 @@ export class AgentRunner {
           return
         case 'current_mode_update':
           if (update.currentModeId) {
-            const m = fromAgentMode(String(update.currentModeId))
-            if (m !== this.mode) {
-              this.#target = { ...this.#target, mode: m }
-              this.#listener.modeChanged?.(m)
-            }
+            const mode: any = this.#option('mode')
+            if (mode) this.#config = this.#config.map((o) => (o === mode ? { ...mode, currentValue: String(update.currentModeId) } : o))
+            this.#modeFromAgent()
           }
           return
       }
@@ -480,8 +564,20 @@ export class AgentRunner {
     if (method !== 'session/request_permission') throw new RpcFailure(method, { code: -32601, message: `Vellum does not handle ${method}` })
     const req = params as RequestPermissionRequest
     const call: any = req.toolCall ?? {}
-    const tool: string = call._meta?.claudeCode?.toolName ?? call.name ?? call.kind ?? 'Tool'
-    const input = call.rawInput ?? {}
+    const normalized = normalizeToolCall(call)
+    // The managed proxy performs the permission check at the actual call boundary.
+    // Only our exact server namespaces qualify; arbitrary tools keep their ACP prompt.
+    if (mcp.managedTool(normalized.name)) {
+      const allow = req.options.find(option => option.kind === 'allow_once')
+      return allow ? { outcome: { outcome: 'selected', optionId: allow.optionId } } : { outcome: { outcome: 'cancelled' } }
+    }
+    const named = normalized.name
+    const raw = normalized.input ?? {}
+    const tool = named === 'Edit' && !call._meta?.claudeCode && writesWhole(raw) ? 'Write' : named
+    const input = tool === 'Bash' && !call._meta?.claudeCode ? { ...raw, command: Array.isArray(raw.command) ? raw.command.join(' ') : (raw.command ?? call.title ?? '') }
+      : tool === 'Edit' && !raw.file_path && call.locations?.[0]?.path ? { ...raw, file_path: String(call.locations[0].path) }
+      : raw
+    const diff = (call.content ?? []).find((c: any) => c?.type === 'diff')
     const { title, detail } = describe(tool, input, this.#target.workspace, call.title)
     const byKind = (k: string) => req.options.find((o) => o.kind === k)
     const always = byKind('allow_always')
@@ -492,7 +588,10 @@ export class AgentRunner {
       title,
       detail,
       input,
-      patch: ['Edit', 'Write', 'MultiEdit'].includes(tool) ? (filePatch(this.#target.workspace, tool, input) ?? patchFromInput(tool, input)) : undefined,
+      reason: typeof input.description === 'string' ? input.description : undefined,
+      patch: ['Edit', 'Write', 'MultiEdit'].includes(tool)
+        ? (filePatch(this.#target.workspace, tool, input) ?? (diff ? diffPatch(this.#target.workspace, diff) : undefined) ?? patchFromInput(tool, input))
+        : undefined,
       suggestions: always ? [always.optionId] : undefined,
       // The agent's own words for what "always" does, so you approve exactly that.
       alwaysLabel: always ? sentence(always.name.replace(/^yes,\s*(and\s+)?/i, '')) : undefined,
@@ -519,12 +618,8 @@ export function killAllAgents() {
   for (const r of live) void r.dispose()
 }
 
-/** True when the bundled adapter is installed (it is a dependency; a broken install says so early). */
-export function agentInstalled() {
-  if (process.env.VELLUM_AGENT) return existsSync(realpathSync(process.env.VELLUM_AGENT))
-  try {
-    return existsSync(fileURLToPath(import.meta.resolve('@agentclientprotocol/claude-agent-acp/dist/index.js')))
-  } catch {
-    return false
-  }
+/** Why the account's agent can't run here (not installed, a broken install), or undefined when it can. */
+export function agentMissing(profile: Pick<Profile, 'agent'>): string | undefined {
+  if (process.env.VELLUM_AGENT) return Bun.file(realpathSync(process.env.VELLUM_AGENT)).size > 0 ? undefined : `No fake agent at ${process.env.VELLUM_AGENT}`
+  return agentFor(profile).missing()
 }
