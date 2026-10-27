@@ -2,11 +2,13 @@
 // into an .icns, and cargo-packager wrapping both in a bundle (packager.json), signed ad hoc.
 // macOS only; needs cargo-packager (`cargo install cargo-packager --locked`).
 //   bun scripts/build-app.ts      → dist/bundle/Vellum.app
-import { mkdirSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
+import { cpSync } from 'node:fs'
 import path from 'node:path'
 import pkg from '../package.json'
 import config from '../packager.json'
+import { remove } from './scratch'
+import { prepareNotificationHelper } from './notification-helper'
 
 const root = path.resolve(import.meta.dir, '..')
 const dist = path.join(root, 'dist')
@@ -40,10 +42,20 @@ const built = await Bun.build({
 })
 if (!built.success) throw new AggregateError(built.logs, 'bun build failed')
 
+const helpers = path.join(dist, 'helpers')
+await prepareNotificationHelper(path.join(helpers, 'Vellum Notifications.app'))
+await Bun.write(path.join(helpers, 'browser'), Bun.file(path.join(root, 'bin/browser')))
+await Bun.$`chmod 755 ${path.join(helpers, 'browser')}`.quiet()
+await Bun.write(path.join(helpers, 'vellum-mcp.ts'), Bun.file(path.join(root, 'scripts/vellum-mcp.ts')))
+// The simulator addon loads its native binary and three helpers beside its CommonJS entry.
+const simulatorPackage = path.dirname(Bun.resolveSync('simdriver', root))
+await remove(path.join(helpers, 'simdriver'))
+cpSync(simulatorPackage, path.join(helpers, 'simdriver'), { recursive: true })
+
 console.log('making dist/AppIcon.icns')
 const iconset = path.join(dist, 'AppIcon.iconset')
-rmSync(iconset, { recursive: true, force: true })
-mkdirSync(iconset, { recursive: true })
+await remove(iconset)
+await Bun.$`mkdir -p ${iconset}`.quiet()
 for (const size of [16, 32, 128, 256, 512]) {
   for (const [scale, suffix] of [[1, ''], [2, '@2x']] as const) {
     run(['sips', '-z', String(size * scale), String(size * scale), 'assets/icon.png', '--out', path.join(iconset, `icon_${size}x${size}${suffix}.png`)])
@@ -52,8 +64,13 @@ for (const size of [16, 32, 128, 256, 512]) {
 run(['iconutil', '-c', 'icns', iconset, '-o', path.join(dist, 'AppIcon.icns')])
 
 console.log('bundling dist/bundle/Vellum.app')
-rmSync(path.join(dist, 'bundle', 'Vellum.app'), { recursive: true, force: true })
+await remove(path.join(dist, 'bundle', 'Vellum.app'))
 run(['cargo', 'packager', '--release', '--config', 'packager.json'])
+const bundledHelpers = path.join(dist, 'bundle/Vellum.app/Contents/MacOS/helpers')
+cpSync(path.join(helpers, 'Vellum Notifications.app'), path.join(bundledHelpers, 'Vellum Notifications.app'), { recursive: true })
+for (const file of ['browser', 'vellum-mcp.ts']) await Bun.write(path.join(bundledHelpers, file), Bun.file(path.join(helpers, file)))
+cpSync(path.join(helpers, 'simdriver'), path.join(bundledHelpers, 'simdriver'), { recursive: true })
+await Bun.$`chmod 755 ${path.join(bundledHelpers, 'browser')}`.quiet()
 // Ad hoc: enough to open on this Mac. Handing it to someone else needs a Developer ID and notarizing.
 run(['codesign', '--force', '--deep', '--sign', '-', path.join(dist, 'bundle', 'Vellum.app')])
 console.log('dist/bundle/Vellum.app')
