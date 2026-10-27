@@ -123,7 +123,7 @@ kbd { font: 400 11px/1.5 var(--font-body); color: var(--text-secondary); }
 .vellum-comment-actions { flex-shrink: 0; display: flex; align-items: center; gap: 3px; padding: 0 10px 7px 18px; font-size: 11px; color: var(--text-muted); }
 .vellum-comment-actions > .vellum-saved-comment { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .vellum-controls-reveal { display: flex; flex-direction: column; min-height: 0; flex-shrink: 1; }
-.vellum-settings-popover { position: relative; display: flex; flex-direction: column; flex-shrink: 1; width: 100%; max-height: min(620px, calc(var(--vellum-editor-room, 700px) - var(--vellum-comment-height, 48px) - 60px)); min-height: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: 0 4px 14px #0002; }
+.vellum-settings-popover { position: relative; display: flex; flex-direction: column; flex-shrink: 1; width: 100%; max-height: min(620px, calc(var(--vellum-editor-room, 700px) - var(--vellum-comment-height, 48px) - 60px)); min-height: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); box-shadow: 0 4px 14px #0002; }
 .vellum-annotation-identity { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
 .vellum-annotation-identity code { font: 11px/1.4 var(--font-mono); overflow-wrap: anywhere; }
 .vellum-annotation-identity code:last-child { color: var(--text-muted); font-size: 10px; }
@@ -138,7 +138,7 @@ kbd { font: 400 11px/1.5 var(--font-body); color: var(--text-secondary); }
 .vellum-inspector-footer { flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-top: 1px solid var(--border); }
 .vellum-inspector-footer > span { flex: 1; text-align: end; color: var(--text-muted); font-size: 11px; }
 .vellum-text-button { min-height: 30px; padding: 3px 10px; background: transparent; border: 1px solid var(--border-strong); border-radius: 18px; color: var(--foreground); cursor: pointer; }
-.vellum-dial-editor .dialkit-root { font-family: var(--font-body); --dial-glass-bg: var(--surface); --dial-dropdown-bg: var(--surface-raised); --dial-text-root: var(--foreground); --dial-text-primary: var(--foreground); --dial-text-label: var(--text-secondary); --dial-text-section: var(--text-secondary); --dial-text-secondary: var(--text-muted); --dial-text-tertiary: var(--text-muted); --dial-focus-ring: var(--focus-outline); }
+.vellum-dial-editor .dialkit-root { font-family: var(--font-body); --dial-glass-bg: var(--surface-raised); --dial-dropdown-bg: var(--surface-raised); --dial-text-root: var(--foreground); --dial-text-primary: var(--foreground); --dial-text-label: var(--text-secondary); --dial-text-section: var(--text-secondary); --dial-text-secondary: var(--text-muted); --dial-text-tertiary: var(--text-muted); --dial-focus-ring: var(--focus-outline); }
 .vellum-dial-editor .dialkit-panel-inner { width: 100%; min-width: 0; border: 0; border-radius: 0; box-shadow: none; }
 .vellum-dial-editor .dialkit-panel-inline { width: 100%; }
 .vellum-dial-editor .dialkit-toolbar, .vellum-dial-editor .dialkit-panel-toolbar { display: none; }
