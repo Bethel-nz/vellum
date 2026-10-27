@@ -17,7 +17,6 @@ import { IconSettingsSliderHor } from '@central-icons-react/round-outlined-radiu
 import { IconTrashCan } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconTrashCan'
 import { IconArrowUndoUp } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowUndoUp'
 import { IconCrossMedium } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossMedium'
-import { IconMicrophone } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconMicrophone'
 import { motionTokens } from '../arc/motion-tokens'
 import { CaptureDials } from './Dials'
 import type { PageScreenshot } from '../messages'
@@ -65,6 +64,7 @@ export function CapturePanel(props: CapturePanelProps) {
   const [bridgeUrl, setBridgeUrl] = useState(props.bridge.url)
   const [bridgePort, setBridgePort] = useState(String(props.bridge.port))
   const [bridgeStatus, setBridgeStatus] = useState('')
+  const [multiline, setMultiline] = useState(false)
   const [dragPosition, setDragPosition] = useState<{ ref: string; x: number; y: number } | null>(null)
   const dragOffset = useRef<{ pointerId: number; x: number; y: number; startX: number; startY: number; moved: boolean } | null>(null)
   const reduced = useReducedMotion()
@@ -109,8 +109,22 @@ export function CapturePanel(props: CapturePanelProps) {
   useLayoutEffect(() => {
     const node = input.current
     if (!node) return
-    node.style.height = '0px'
-    node.style.height = `${Math.min(120, node.scrollHeight)}px`
+    const resize = () => {
+      node.style.height = '0px'
+      const style = getComputedStyle(node)
+      const line = Number.parseFloat(style.lineHeight) || 24
+      const padding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom)
+      setMultiline(node.scrollHeight > line + padding + 1)
+      node.style.height = `${Math.min(120, node.scrollHeight)}px`
+    }
+    resize()
+    let width = node.getBoundingClientRect().width
+    const observer = new ResizeObserver(() => {
+      const next = node.getBoundingClientRect().width
+      if (next !== width) { width = next; resize() }
+    })
+    observer.observe(node)
+    return () => observer.disconnect()
   }, [active?.note, active?.ref])
   useLayoutEffect(() => {
     const node = composer.current
@@ -186,14 +200,11 @@ export function CapturePanel(props: CapturePanelProps) {
       event.preventDefault()
       setDragPosition({ ref: active.ref, x: event.clientX - offset.x, y: event.clientY - offset.y })
     }} onPointerUp={() => { dragOffset.current = null }} onPointerCancel={() => { dragOffset.current = null }} initial={{ opacity: 0, y: reduced ? 0 : 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={panelTransition}>
-      <div className="vellum-comment-row">
+      <div className="vellum-comment-row" data-multiline={multiline}>
         <button ref={settingsButton} type="button" className="vellum-tool-button" aria-label={props.toolsOpen ? 'Hide element controls' : 'Show element controls'} title="Styles and animation" aria-expanded={props.toolsOpen} aria-controls={controlsId} disabled={props.capturing} onClick={() => props.onToolsOpen(!props.toolsOpen)}><IconSettingsSliderHor size={18} /></button>
         <textarea ref={input} aria-label="Comment" placeholder="Add a comment…" value={active.note} rows={1} disabled={props.capturing} onChange={(event) => props.onNote(active.ref, event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); props.onSave() } }} />
-        <button type="button" className="vellum-tool-button" aria-label="Voice input" title="Voice input coming soon" disabled><IconMicrophone size={17} /></button>
         <button type="button" className="vellum-tool-button vellum-comment-save" aria-label="Save annotation" title="Save annotation" disabled={props.capturing || !canSave} onClick={props.onSave}>
-          <span aria-hidden="true" style={{ display: 'grid', width: 18, height: 18 }}><AnimatePresence initial={false}>
-            <motion.span key={props.toolsOpen ? 'check' : 'up'} style={{ gridArea: '1 / 1', display: 'flex' }} initial={reduced ? { opacity: 0 } : { opacity: 0, scale: .6, filter: 'blur(4px)' }} animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }} exit={reduced ? { opacity: 0 } : { opacity: 0, scale: .6, filter: 'blur(4px)' }} transition={{ duration: reduced ? .12 : .16, ease: [...motionTokens.ease.standard] }}>{props.toolsOpen ? <IconCheckmark1 size={18} /> : <IconArrowUp size={18} />}</motion.span>
-          </AnimatePresence></span>
+          <IconArrowUp size={18} />
         </button>
       </div>
       <motion.div id={controlsId} className="vellum-controls-reveal" inert={!props.toolsOpen || props.capturing} aria-hidden={!props.toolsOpen} initial={false} animate={{ height: props.toolsOpen ? 'auto' : 0, marginTop: props.toolsOpen ? 10 : 0 }} style={{ pointerEvents: props.toolsOpen ? 'auto' : 'none' }} transition={controlsTransition}>

@@ -73,3 +73,26 @@ The local Motion specimen in review/MOTION-SAMPLE.md was recorded through the UI
 serialized using the production upload function to a sample receiver. It yielded two
 opacity keyframes with computed spring easing and 122 movement samples. Production
 bridge delivery and debugger screenshots were not reverified by this sample.
+
+## 2026-10-27 editor controls and multiline composer
+
+Document pointer events from the closed extension shadow root expose its host rather
+than internal controls. The outside-pointer check now treats that host (or the whole
+Snapshot surface in a normal DOM mount) as part of the annotation session. Opening
+connection settings, element controls and nested DialKit popovers retains the draft;
+clicking the surrounding page still dismisses the composer.
+
+Removed the disabled microphone and the check/up icon switch: the save action always
+uses an up arrow. Its own flex column stays separate from the textarea's content.
+Measured text height, including width changes, switches the composer from a 24px pill
+radius to an 18px rounded square; the arrow changes from a circle to a 9px square.
+Long comments scroll within 120px, and reduced motion disables the radius transition.
+
+Scoped Biome passed the two changed UI files. The production extension build passed
+and refreshed dist/ (existing module-directive and chunk-size warnings remain).
+A temporary local component fixture checked keyboard interaction in a closed shadow
+root and pointer interaction in an open variant: settings and tweak/color popovers
+preserved the draft; outside dismissal/reopen retained text; saving cleared the input
+and restored the single-line shape. Multiline layout measured no text/button overlap
+and no microphone. Inspected the composer screenshot. Temporary fixtures were removed;
+live bridge delivery and a reloaded unpacked extension were not reverified here.
