@@ -8,7 +8,8 @@
 //   shell      $SHELL -lc · %ComSpec% /d /s /c
 //   PTY        Bun's PTY is POSIX only, so on Windows interactive `claude` opens in a console
 
-import { appendFileSync, closeSync, copyFileSync, existsSync, linkSync, mkdirSync, openSync, readFileSync, statSync, symlinkSync } from 'node:fs'
+// Links, folders and the checks' appended log are node:fs's work; reading and copying files is Bun.file's.
+import { appendFileSync, linkSync, mkdirSync, statSync, symlinkSync } from 'node:fs'
 import { homedir, userInfo } from 'node:os'
 import path from 'node:path'
 
@@ -243,7 +244,7 @@ export function realName(): string {
  * prompt. Linux: ~/.face or AccountsService's copy. Windows keeps it in a .accountpicture-ms
  * container, so there the profile's own image or the monogram stands in.
  */
-export function accountPicture(): { bytes: Buffer } | { file: string } | undefined {
+export async function accountPicture(): Promise<{ bytes: Buffer } | { file: string } | undefined> {
   const user = userInfo().username
   if (os === 'mac') {
     const out = read(['dscl', '.', '-read', `/Users/${user}`, 'JPEGPhoto'])
@@ -255,7 +256,7 @@ export function accountPicture(): { bytes: Buffer } | { file: string } | undefin
   if (os === 'linux') {
     for (const file of [path.join(homedir(), '.face'), path.join(homedir(), '.face.icon'), `/var/lib/AccountsService/icons/${user}`]) {
       try {
-        if (existsSync(file) && isImage(readFileSync(file).subarray(0, 8))) return { file }
+        if (isImage(Buffer.from(await Bun.file(file).slice(0, 8).arrayBuffer()))) return { file }
       } catch {}
     }
   }
@@ -270,6 +271,30 @@ function isImage(head: Buffer) {
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp)$/i
 
+/** Text that is only an image file's name or path: what Finder puts on the clipboard beside a copied image. */
+export const isImageName = (text: string) => !text.includes('\n') && IMAGE_EXT.test(text.trim())
+
+/**
+ * pasteText(), without holding up the UI. ⌘V in a text field is the window menu's Paste, which
+ * never reaches a key handler, so a paste shows up as inserted text and this tells a paste from
+ * typing. Line endings come back as \n.
+ */
+export async function clipboardText(): Promise<string> {
+  // Self-checks stand in for the clipboard, as VELLUM_PASTE_IMAGE does for its image.
+  if (process.env.VELLUM_CLIPBOARD_TEXT !== undefined) return process.env.VELLUM_CLIPBOARD_TEXT
+  // Any other check (a background window) never reads the real one.
+  if (process.env.GPUIX_BACKGROUND === '1') return ''
+  const argv = pasteCommand()
+  if (!argv) return ''
+  try {
+    const p = Bun.spawn(argv, { stdout: 'pipe', stderr: 'ignore' })
+    const text = await new Response(p.stdout).text()
+    return (await p.exited) === 0 ? text.replace(/\r\n/g, '\n') : ''
+  } catch {
+    return ''
+  }
+}
+
 /**
  * The image on the clipboard, saved as a file in `dir`; undefined when there is none. A copied
  * image file (Finder, Explorer) is copied as is; image data is written as PNG. macOS asks
@@ -278,9 +303,9 @@ const IMAGE_EXT = /\.(png|jpe?g|gif|webp)$/i
 export async function pasteImage(dir: string): Promise<string | undefined> {
   mkdirSync(dir, { recursive: true })
   // Self-checks paste a known file instead of touching the real clipboard.
-  if (process.env.VELLUM_PASTE_IMAGE) return existsSync(process.env.VELLUM_PASTE_IMAGE) ? copyInto(process.env.VELLUM_PASTE_IMAGE, dir) : undefined
+  if (process.env.VELLUM_PASTE_IMAGE) return (await Bun.file(process.env.VELLUM_PASTE_IMAGE).exists()) ? copyInto(process.env.VELLUM_PASTE_IMAGE, dir) : undefined
   const out = path.join(dir, `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}.png`)
-  const run = async (argv: string[], stdout: 'pipe' | number = 'pipe') => {
+  const run = async (argv: string[], stdout: 'pipe' | ReturnType<typeof Bun.file> = 'pipe') => {
     try {
       const p = Bun.spawn(argv, { stdout, stderr: 'ignore' })
       const text = stdout === 'pipe' ? await new Response(p.stdout as ReadableStream).text() : ''
@@ -289,7 +314,8 @@ export async function pasteImage(dir: string): Promise<string | undefined> {
       return { ok: false, text: '' }
     }
   }
-  const saved = () => existsSync(out) && statSync(out).size > 0 ? out : undefined
+  // A missing file has size 0.
+  const saved = () => (Bun.file(out).size > 0 ? out : undefined)
 
   if (os === 'mac') {
     const r = await run([
@@ -308,7 +334,7 @@ export async function pasteImage(dir: string): Promise<string | undefined> {
       '-e', 'close access f',
       '-e', 'return "png"',
     ])
-    if (r.text && r.text !== 'png') return IMAGE_EXT.test(r.text) && existsSync(r.text) ? copyInto(r.text, dir) : undefined
+    if (r.text && r.text !== 'png') return IMAGE_EXT.test(r.text) && Bun.file(r.text).size > 0 ? copyInto(r.text, dir) : undefined
     return saved()
   }
   if (os === 'linux') {
@@ -316,26 +342,24 @@ export async function pasteImage(dir: string): Promise<string | undefined> {
     const types = wayland ? await run(['wl-paste', '--list-types']) : Bun.which('xclip') ? await run(['xclip', '-selection', 'clipboard', '-t', 'TARGETS', '-o']) : { ok: false, text: '' }
     if (!types.ok) return
     if (types.text.split('\n').includes('image/png')) {
-      const fd = openSync(out, 'w')
-      await run(wayland ? ['wl-paste', '--type', 'image/png'] : ['xclip', '-selection', 'clipboard', '-t', 'image/png', '-o'], fd)
-      closeSync(fd)
+      await run(wayland ? ['wl-paste', '--type', 'image/png'] : ['xclip', '-selection', 'clipboard', '-t', 'image/png', '-o'], Bun.file(out))
       return saved()
     }
     const uri = types.text.split('\n').includes('text/uri-list') ? (await run(wayland ? ['wl-paste', '--type', 'text/uri-list'] : ['xclip', '-selection', 'clipboard', '-t', 'text/uri-list', '-o'])).text.split('\n')[0] : ''
     const file = uri?.startsWith('file://') ? decodeURIComponent(uri.slice(7)) : ''
-    return IMAGE_EXT.test(file) && existsSync(file) ? copyInto(file, dir) : undefined
+    return IMAGE_EXT.test(file) && Bun.file(file).size > 0 ? copyInto(file, dir) : undefined
   }
   const r = await run([
     'powershell', '-NoProfile', '-NonInteractive', '-STA', '-Command',
     `Add-Type -AssemblyName System.Windows.Forms; $f = [System.Windows.Forms.Clipboard]::GetFileDropList(); if ($f.Count -gt 0) { $f[0] } else { $i = [System.Windows.Forms.Clipboard]::GetImage(); if ($i) { $i.Save('${out}', [System.Drawing.Imaging.ImageFormat]::Png); 'png' } }`,
   ])
-  if (r.text && r.text !== 'png') return IMAGE_EXT.test(r.text) && existsSync(r.text) ? copyInto(r.text, dir) : undefined
+  if (r.text && r.text !== 'png') return IMAGE_EXT.test(r.text) && Bun.file(r.text).size > 0 ? copyInto(r.text, dir) : undefined
   return saved()
 }
 
-function copyInto(file: string, dir: string): string {
+async function copyInto(file: string, dir: string): Promise<string> {
   const to = path.join(dir, `${Date.now().toString(36)}-${path.basename(file)}`)
-  copyFileSync(file, to)
+  await Bun.write(to, Bun.file(file))
   return to
 }
 

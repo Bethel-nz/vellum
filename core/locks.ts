@@ -9,7 +9,9 @@
 //   2. Vellum's lock, ~/.vellum/locks/<sessionId>, created exclusively and naming the Vellum pid,
 //      so two Vellum windows can't both drive one session.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+// The registry is a folder and the lock is created exclusively ('wx'): node:fs's work. Reading and
+// replacing the files is Bun.file's.
+import { mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { paths } from './store'
@@ -44,16 +46,21 @@ function describeEntry(e: any): string {
  * A live process other than `except` that has `sessionId` open, looking in every config dir's
  * registry (an account's own and ~/.claude).
  */
-export function liveHolder(sessionId: string, configDirs: (string | null)[], except: Set<number> = new Set()): Holder | undefined {
+export async function liveHolder(sessionId: string, configDirs: (string | null)[], except: Set<number> = new Set()): Promise<Holder | undefined> {
   const dirs = new Set(configDirs.map((d) => d ?? path.join(homedir(), '.claude')))
   for (const dir of dirs) {
     const reg = path.join(dir, 'sessions')
-    if (!existsSync(reg)) continue
-    for (const f of readdirSync(reg)) {
+    let names: string[]
+    try {
+      names = readdirSync(reg)
+    } catch {
+      continue
+    }
+    for (const f of names) {
       if (!f.endsWith('.json')) continue
       let e: any
       try {
-        e = JSON.parse(readFileSync(path.join(reg, f), 'utf8'))
+        e = await Bun.file(path.join(reg, f)).json()
       } catch {
         continue
       }
@@ -63,20 +70,20 @@ export function liveHolder(sessionId: string, configDirs: (string | null)[], exc
       return { pid: e.pid, where: describeEntry(e) }
     }
   }
-  const lock = readLock(sessionId)
+  const lock = await readLock(sessionId)
   if (lock && lock.pid !== process.pid && alive(lock.pid)) return { pid: lock.pid, where: 'another Vellum window' }
 }
 
-function readLock(sessionId: string): { pid: number } | undefined {
+async function readLock(sessionId: string): Promise<{ pid: number } | undefined> {
   try {
-    return JSON.parse(readFileSync(lockFile(sessionId), 'utf8'))
+    return await Bun.file(lockFile(sessionId)).json()
   } catch {
     return
   }
 }
 
 /** Take Vellum's lock on a session. False if another live Vellum holds it. */
-export function acquire(sessionId: string, owner: { threadId: string; profileId: string }): boolean {
+export async function acquire(sessionId: string, owner: { threadId: string; profileId: string }): Promise<boolean> {
   mkdirSync(lockDir(), { recursive: true })
   const file = lockFile(sessionId)
   const body = JSON.stringify({ pid: process.pid, ...owner, at: new Date().toISOString() })
@@ -84,17 +91,17 @@ export function acquire(sessionId: string, owner: { threadId: string; profileId:
     writeFileSync(file, body, { flag: 'wx' })
     return true
   } catch {
-    const held = readLock(sessionId)
+    const held = await readLock(sessionId)
     // Ours already, or left behind by a Vellum that is gone: take it over.
     if (!held || held.pid === process.pid || !alive(held.pid)) {
-      writeFileSync(file, body)
+      await Bun.write(file, body)
       return true
     }
     return false
   }
 }
 
-export function release(sessionId: string) {
-  const held = readLock(sessionId)
-  if (held?.pid === process.pid) rmSync(lockFile(sessionId), { force: true })
+export async function release(sessionId: string) {
+  const held = await readLock(sessionId)
+  if (held?.pid === process.pid) await Bun.file(lockFile(sessionId)).delete().catch(() => {})
 }
