@@ -83,7 +83,7 @@ connection settings, element controls and nested DialKit popovers retains the dr
 clicking the surrounding page still dismisses the composer.
 
 Removed the disabled microphone and the check/up icon switch: the save action always
-uses an up arrow. A single line stays in a compact pill. Multiline comments expand
+uses a Central Icons checkmark. A single line stays in a compact pill. Multiline comments expand
 into a 26px rounded panel: settings at the top left, the textarea between the icon
 columns, and the circular arrow at the bottom right. The input has no border, shadow
 or focus outline; the surrounding panel supplies its surface. A hidden, inert
@@ -107,8 +107,8 @@ and refreshed dist/ (existing module-directive and chunk-size warnings remain).
 A temporary local component fixture checked keyboard interaction in a closed shadow
 root and pointer interaction in an open variant: settings and tweak/color popovers
 preserved the draft; outside dismissal/reopen retained text; saving cleared the input
-and restored the single-line shape. The revised multiline layout placed the body below
-settings and above the footer, with no overlap and a circular action. A real clipboard
+and restored the single-line shape. The revised multiline layout keeps the text between the settings and save controls,
+with no overlap and a circular action. A real clipboard
 round-trip from the UI included both fixture annotations, selectors and context; the
 previous empty clipboard was restored. A focused serialization check covered drafts,
 tweaks, screenshot metadata, image-byte omission and preservation of the source capture.
@@ -116,3 +116,15 @@ Inspected the composer screenshot. Temporary fixtures were removed;
 live bridge delivery and a reloaded unpacked extension were not reverified here.
 Repeated compact/expanded transitions and explicit line breaks passed a follow-up
 browser check with no console errors after fixing a ResizeObserver delivery warning.
+
+Composer children now use position layout correction to counteract the parent size
+projection, keeping the controls and text undistorted during growth and clearing.
+The textarea hides native scrollbars while retaining normal vertical scrolling.
+The element editor, including its navigation and footer, uses the raised surface
+color; DialKit inherits that same background.
+
+A local component check sampled icon and button geometry through expansion to 14
+lines and clearing back to one line: maximum aspect-ratio error stayed below 0.000003.
+The textarea reached its 180px limit, scrolled from 155px back to 0, and reported no
+visible scrollbar. The editor background and Central Icons save checkmark were
+visually checked; no browser console errors were recorded. Scoped Biome passed.
