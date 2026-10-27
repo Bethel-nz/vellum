@@ -1,6 +1,7 @@
 // A single selected wash slides behind the strip's active pill, without moving its hit area.
 import { motion } from './spring'
 import { duration, ease, tween, useReducedMotion } from './motion'
+import { controlRadius } from './Button'
 import { useM } from './theme'
 
 export function TabIndicator({ left, width }: { left: number; width: number }) {
@@ -12,7 +13,7 @@ export function TabIndicator({ left, width }: { left: number; width: number }) {
         initial={false}
         animate={{ left, width, opacity: width ? 1 : 0 }}
         transition={tween({ duration: duration.instant, ease: ease.enter })}
-        style={{ position: 'absolute', top: 0, height: 24, borderRadius: 7, backgroundColor: m.selected, borderWidth: 1, borderColor: m.borderFocused }}
+        style={{ position: 'absolute', top: 0, height: 24, borderRadius: controlRadius, backgroundColor: m.selected, borderWidth: 1, borderColor: m.borderFocused }}
       />
     </div>
   )

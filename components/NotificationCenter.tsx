@@ -4,7 +4,7 @@ import { DismissableLayer, useGpuixRequired, useWindowSize, type KeyEvent, type 
 import { motion } from './spring'
 import { FloatingLayer } from '@gpuix/react/floating'
 import { Button as Base } from '@gpuix/react/button'
-import { elevation } from '../ui/theme'
+import { concentric, elevation, radiusBase } from '../ui/theme'
 import { Button, Label } from './Button'
 import { Icon } from './Icon'
 import { Lifted } from './Lifted'
@@ -147,16 +147,16 @@ export function NotificationCenter({ notifications, label = 'Notifications', onR
           <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', maxHeight, minHeight: 0, overflow: 'hidden', borderRadius: PANEL_RADIUS }}>
             <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingTop: narrow ? 20 : 23, paddingBottom: narrow ? 16 : 18, paddingLeft: narrow ? 16 : 24, paddingRight: narrow ? 16 : 24, flexShrink: 0 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flexGrow: 1 }}>
-                <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}><text style={{ fontSize: narrow ? 18 : 22, lineHeight: narrow ? 22 : 27, color: m.text, fontWeight: 500, flexShrink: 1, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{label}</text><div style={{ height: 21, minWidth: 21, paddingLeft: 5, paddingRight: 5, borderRadius: 7, backgroundColor: m.chipBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Count value={unread} testId={`${testId}-count`} /></div></div>
+                <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}><text style={{ fontSize: narrow ? 18 : 22, lineHeight: narrow ? 22 : 27, color: m.text, fontWeight: 500, flexShrink: 1, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{label}</text><div style={{ height: 21, minWidth: 21, paddingLeft: 5, paddingRight: 5, borderRadius: concentric(radiusBase, 3), backgroundColor: m.chipBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Count value={unread} testId={`${testId}-count`} /></div></div>
                 <motion.div key={unread ? 'unread' : 'read'} initial={reduced ? false : { opacity: 0, top: offset.tooltip }} animate={{ opacity: 1, top: 0 }} transition={enter()} style={{ position: 'relative', pointerEvents: 'none' }}><text style={{ fontSize: 12, lineHeight: 17, color: m.textMuted }}>{unread ? 'Updates waiting for you' : 'No unread notifications'}</text></motion.div>
               </div>
-              <Button buttonRef={closeButton} title="Close notifications" testId={`${testId}-close`} onPress={() => setOpen(false)} style={{ width: 30, height: 30, paddingLeft: 0, paddingRight: 0, borderRadius: 8 }}><Icon name="x" size={17} /></Button>
+              <Button buttonRef={closeButton} title="Close notifications" testId={`${testId}-close`} onPress={() => setOpen(false)} style={{ width: 30, height: 30, paddingLeft: 0, paddingRight: 0, borderRadius: concentric(radiusBase, 2) }}><Icon name="x" size={17} /></Button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingLeft: narrow ? 12 : 20, paddingRight: narrow ? 12 : 17, paddingBottom: 13, minHeight: 52, borderBottomWidth: 1, borderColor: m.border, flexShrink: 0 }}>
               {/* biome-ignore lint/a11y/useSemanticElements: GPUIX has div hosts, not HTML fieldsets. */}
               <div role="group" aria-label="Show notifications" style={{ position: 'relative', display: 'flex', flexDirection: 'row', gap: 3 }}>
-                <motion.div initial={false} animate={{ left: view === 'all' ? 0 : 64 }} transition={tween(spring.morph)} style={{ position: 'absolute', top: 0, width: 61, height: 31, borderRadius: 9, backgroundColor: m.chipBg, pointerEvents: 'none' }} />
-                {(['all', 'unread'] as const).map((next) => <Base key={next} ref={(node) => { if (node) tabTargets.current.set(next, node); else tabTargets.current.delete(next) }} testId={`${testId}-${next}`} aria-selected={view === next} onClick={() => { setView(next); setExpanded(null) }} style={{ width: 61, height: 31, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 9, focusVisible: { outlineWidth: 1, outlineColor: m.focusRing } }}><text style={{ fontSize: 12, lineHeight: 17, color: view === next ? m.text : m.textMuted }}>{next === 'all' ? 'All' : 'Unread'}</text></Base>)}
+                <motion.div initial={false} animate={{ left: view === 'all' ? 0 : 64 }} transition={tween(spring.morph)} style={{ position: 'absolute', top: 0, width: 61, height: 31, borderRadius: concentric(radiusBase, 1), backgroundColor: m.chipBg, pointerEvents: 'none' }} />
+                {(['all', 'unread'] as const).map((next) => <Base key={next} ref={(node) => { if (node) tabTargets.current.set(next, node); else tabTargets.current.delete(next) }} testId={`${testId}-${next}`} aria-selected={view === next} onClick={() => { setView(next); setExpanded(null) }} style={{ width: 61, height: 31, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: concentric(radiusBase, 1), focusVisible: { outlineWidth: 1, outlineColor: m.focusRing } }}><text style={{ fontSize: 12, lineHeight: 17, color: view === next ? m.text : m.textMuted }}>{next === 'all' ? 'All' : 'Unread'}</text></Base>)}
               </div>
               {unread > 0 ? <Button title="Mark all read" testId={`${testId}-mark-all`} onPress={markAll} style={{ paddingLeft: 0, paddingRight: 0, gap: 6 }}><Icon name="checkCheck" size={15} />{narrow ? null : <text style={{ fontSize: 12, lineHeight: 17, color: m.textMuted }}>Mark all read</text>}</Button> : null}
             </div>
@@ -181,7 +181,7 @@ export function NotificationTrigger({ unreadCount = 0, open = false, label = 'No
   const [hover, setHover] = useState(false)
   return <div style={{ position: 'relative', width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: open || hover ? m.borderFocused : m.border, backgroundColor: open || hover ? m.chipBg : m.popup }}>
     <div style={{ position: 'absolute', left: 11, top: 11, pointerEvents: 'none' }}><Icon name="bell" size={19} color={m.text} /></div>
-    {unreadCount > 0 ? <motion.div initial={reduced ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={enter('fast')} style={{ position: 'absolute', top: -6, right: -6, minWidth: 20, height: 20, paddingLeft: 5, paddingRight: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 10, borderWidth: 2, borderColor: m.popup, backgroundColor: m.text, pointerEvents: 'none' }}><Count value={unreadCount} display={unreadCount > 9 ? '9+' : String(unreadCount)} color={m.pane} testId={`${testId}-badge`} /></motion.div> : null}
+    {unreadCount > 0 ? <motion.div initial={reduced ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={enter('fast')} style={{ position: 'absolute', top: -6, right: -6, minWidth: 20, height: 20, paddingLeft: 5, paddingRight: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: radiusBase, borderWidth: 2, borderColor: m.popup, backgroundColor: m.text, pointerEvents: 'none' }}><Count value={unreadCount} display={unreadCount > 9 ? '9+' : String(unreadCount)} color={m.pane} testId={`${testId}-badge`} /></motion.div> : null}
     <Base ref={buttonRef} testId={testId} aria-label={unreadCount ? `${label}, ${unreadCount.toLocaleString()} unread` : label} aria-expanded={open} onMouseDown={onPressStart} onKeyDown={(event) => { if (event.key === 'enter' || event.key === 'space') onPressStart?.() }} onClick={onPress} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} style={{ position: 'absolute', left: 0, top: -6, right: -6, bottom: 0, borderRadius: 21, focusVisible: { outlineWidth: 2, outlineColor: m.focusRing, outlineOffset: 2 } }} />
   </div>
 }
@@ -242,7 +242,7 @@ function NotificationDetails({ item, inset, testId, onRead, onDismiss }: { item:
     </motion.div>
     <div style={{ position: 'absolute', left: inset, right: 10, bottom: 15, display: 'flex', flexDirection: 'row', gap: 6 }}>
       <ReadAction read={Boolean(item.read)} testId={`${testId}-read`} onPress={onRead} />
-      <Button testId={`${testId}-dismiss`} onPress={onDismiss} style={{ height: 30, paddingLeft: 10, paddingRight: 10, borderRadius: 10, borderWidth: 1, borderColor: m.border, gap: 5 }}><Icon name="x" size={14} /><text style={{ fontSize: 12, lineHeight: 17, color: m.text }}>Dismiss</text></Button>
+      <Button testId={`${testId}-dismiss`} onPress={onDismiss} style={{ height: 30, paddingLeft: 10, paddingRight: 10, borderRadius: radiusBase, borderWidth: 1, borderColor: m.border, gap: 5 }}><Icon name="x" size={14} /><text style={{ fontSize: 12, lineHeight: 17, color: m.text }}>Dismiss</text></Button>
     </div>
   </div>
 }
@@ -266,7 +266,7 @@ function ReadAction({ read, testId, onPress }: { read: boolean; testId: string; 
   const width = widths?.[read ? 'unread' : 'read']
   return <div style={{ position: 'relative', flexShrink: 0 }}>
     <div style={{ position: 'absolute', left: 0, top: -1000, opacity: 0, pointerEvents: 'none', display: 'flex', flexDirection: 'row' }}><text ref={readSizer} style={{ flexShrink: 0, fontSize: 12, lineHeight: 17, whiteSpace: 'nowrap' }}>Mark read</text><text ref={unreadSizer} style={{ flexShrink: 0, fontSize: 12, lineHeight: 17, whiteSpace: 'nowrap' }}>Mark unread</text></div>
-    <motion.div initial={false} animate={width === undefined ? {} : { width }} transition={tween(spring.morph)} style={{ height: 30, paddingLeft: 10, paddingRight: 10, borderWidth: 1, borderColor: m.border, borderRadius: 10, display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 5, overflow: 'hidden', pointerEvents: 'none' }}><motion.div key={label} initial={reduced ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={enter('fast')} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 0, pointerEvents: 'none' }}><Icon name={read ? 'circleDot' : 'check'} size={14} /><text style={{ fontSize: 12, lineHeight: 17, color: m.text, whiteSpace: 'nowrap' }}>{label}</text></motion.div></motion.div>
-    <Base testId={testId} aria-label={label} onClick={onPress} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderRadius: 10, focusVisible: { outlineWidth: 1, outlineColor: m.focusRing } }} />
+    <motion.div initial={false} animate={width === undefined ? {} : { width }} transition={tween(spring.morph)} style={{ height: 30, paddingLeft: 10, paddingRight: 10, borderWidth: 1, borderColor: m.border, borderRadius: radiusBase, display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 5, overflow: 'hidden', pointerEvents: 'none' }}><motion.div key={label} initial={reduced ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={enter('fast')} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 0, pointerEvents: 'none' }}><Icon name={read ? 'circleDot' : 'check'} size={14} /><text style={{ fontSize: 12, lineHeight: 17, color: m.text, whiteSpace: 'nowrap' }}>{label}</text></motion.div></motion.div>
+    <Base testId={testId} aria-label={label} onClick={onPress} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderRadius: radiusBase, focusVisible: { outlineWidth: 1, outlineColor: m.focusRing } }} />
   </div>
 }
