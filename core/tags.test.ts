@@ -1,8 +1,9 @@
 import { expect, test } from 'bun:test'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { fileLabel, promptFor, readSlice, relabel, tagText, tokens } from './tags'
+import { fileLabel, promptFor, readSlice, relabel, skills, tagText, tokens } from './tags'
+import type { Profile } from './profiles'
 import type { Tag } from './threads'
 
 const dir = mkdtempSync(path.join(tmpdir(), 'vellum-tags-'))
@@ -53,4 +54,35 @@ test('relabel writes the shortest names, and lengthens both when two files share
   expect(relabel('see #core/printed.ts:3 now', [a])).toBe('see #printed.ts:3 now')
   expect(relabel('see #printed.ts:3 and #ui/printed.ts', [a, b])).toBe('see #core/printed.ts:3 and #ui/printed.ts')
   expect(relabel('plain text, #1 and an@email.com', [a])).toBe('plain text, #1 and an@email.com')
+})
+
+test('the @ menu offers the skills the note\'s agent loads, from its own folders', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'vellum-skills-'))
+  const user = path.join(root, 'home')
+  const workspace = path.join(root, 'project')
+  const skill = (dir: string, name: string) => {
+    mkdirSync(path.join(dir, name), { recursive: true })
+    writeFileSync(path.join(dir, name, 'SKILL.md'), `---\nname: ${name}\n---\n`)
+  }
+  skill(path.join(workspace, '.claude', 'skills'), 'review')
+  skill(path.join(workspace, '.agents', 'skills'), 'simdriver')
+  skill(path.join(user, '.claude', 'skills'), 'animate')
+  skill(path.join(user, '.agents', 'skills'), 'shared')
+  skill(path.join(user, '.config', 'opencode', 'skills'), 'oc-only')
+  // A folder without a SKILL.md isn't a skill.
+  mkdirSync(path.join(user, '.agents', 'skills', 'empty'), { recursive: true })
+  const profile = (agent: Profile['agent']) => ({ id: 'p', name: 'p', color: '#000', configDir: null, workspaces: [], agent }) as Profile
+  expect(skills(workspace, profile('claude'), user)).toEqual(['animate', 'review'])
+  expect(skills(workspace, profile('codex'), user)).toEqual(['shared', 'simdriver'])
+  expect(skills(workspace, profile('opencode'), user)).toEqual(['animate', 'oc-only', 'review', 'shared', 'simdriver'])
+})
+
+test('a skill reads @name, older @skill:name text still parses, and a same-named file doesn\'t take it', () => {
+  const skill: Tag = { type: 'skill', value: 'simdriver' }
+  const file: Tag = { type: 'file', value: 'tools/simdriver' }
+  expect(tagText(skill)).toBe('@simdriver')
+  const parsed = (text: string) => tokens(text, [skill, file]).filter((t) => t.kind === 'tag').map((t) => t.kind === 'tag' && t.tag)
+  expect(parsed('use @simdriver here')).toEqual([skill])
+  expect(parsed('use @skill:simdriver here')).toEqual([skill])
+  expect(parsed('see #simdriver')).toEqual([file])
 })

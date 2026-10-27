@@ -3,14 +3,22 @@
 // Vellum never reads, copies or displays credential files. A profile folder links your setup and
 // history from ~/.claude (core/accounts.ts), so the login is the only thing that differs.
 
+// mkdir with a mode has no Bun.file form.
+import { mkdirSync } from 'node:fs'
 import { linkAccount } from './accounts'
-import { paths, readJson, writeJson } from './store'
+import { accountHome, agentFor, type AgentId } from './agents'
+import { loadJson, paths, writeJson } from './store'
 
 export type Profile = {
   id: string
   name: string
   color: string
-  /** Absolute path for CLAUDE_CONFIG_DIR. Null means Claude Code's own default (~/.claude). */
+  /** Which agent this account runs (core/agents.ts). Missing on accounts from before: Claude. */
+  agent?: AgentId
+  /**
+   * The agent's home for this account: CLAUDE_CONFIG_DIR for Claude, CODEX_HOME for Codex.
+   * Null means the agent's own default (~/.claude, ~/.codex), where your existing sign-in is.
+   */
   configDir: string | null
   workspaces: string[]
   /** Set after a headless run succeeds or reports "Not logged in". */
@@ -25,8 +33,12 @@ export type Profile = {
 
 const PROFILE_COLORS = ['#1447e6', '#c2453a', '#2f8a5b', '#9352c2', '#8a6200', '#1a7680']
 
+// Read once, before anything renders; Vellum is the only writer while it runs.
+let saved = await loadJson<Profile[]>(paths.profiles, [])
+
+/** Copies, so a caller can change them and save what it wants. */
 export function loadProfiles(): Profile[] {
-  const list = readJson<Profile[]>(paths.profiles, [])
+  const list = structuredClone(saved)
   if (list.length > 0) return list
   // First run: one profile that uses the account Claude Code is already logged into.
   const seeded: Profile[] = [
@@ -37,6 +49,7 @@ export function loadProfiles(): Profile[] {
 }
 
 export function saveProfiles(list: Profile[]) {
+  saved = structuredClone(list)
   writeJson(paths.profiles, list)
 }
 
@@ -47,14 +60,22 @@ function slug(name: string, taken: Set<string>) {
   return id
 }
 
-export function createProfile(name: string): Profile[] {
+/**
+ * A new account. A Claude one shares your settings, skills and MCP servers with ~/.claude
+ * (core/accounts.ts); a Codex one gets an empty CODEX_HOME of its own; OpenCode has one account,
+ * its default home, for now.
+ */
+export function createProfile(name: string, agent: AgentId = 'claude'): Profile[] {
   const list = loadProfiles()
   const id = slug(name, new Set(list.map((p) => p.id)))
-  const dir = paths.profileDir(id)
-  linkAccount(id, dir)
+  let dir: string | null = accountHome(paths.profileDir(id), agent)
+  if (agent === 'claude') linkAccount(id, dir)
+  else if (agent === 'codex') mkdirSync(dir, { recursive: true, mode: 0o700 })
+  else dir = null
   const profile: Profile = {
     id,
     name,
+    ...(agent === 'claude' ? {} : { agent }),
     color: PROFILE_COLORS[list.length % PROFILE_COLORS.length]!,
     configDir: dir,
     workspaces: [],
@@ -87,12 +108,11 @@ export function profileForWorkspace(list: Profile[], workspace: string): Profile
   return list.find((p) => p.workspaces.includes(workspace))
 }
 
-/** Environment for any `claude` process under this profile. */
+/** Environment for the account's agent, or any of its CLI's processes: pointed at its home. */
 export function profileEnv(profile: Profile, base: Record<string, string | undefined> = process.env) {
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(base)) if (v !== undefined) env[k] = v
-  if (profile.configDir) env.CLAUDE_CONFIG_DIR = profile.configDir
-  else delete env.CLAUDE_CONFIG_DIR
+  agentFor(profile).home(env, profile.configDir)
   return env
 }
 

@@ -8,15 +8,18 @@
 //   #path:42     one line of a file; Claude gets that line quoted, not the file, unless the
 //                note widened the tag to the whole file
 //   @dir/        a folder, passed through as `@dir/`
-//   @skill:name  a skill; becomes one plain instruction
+//   @name        a skill; becomes one plain instruction. Typing `@skill:` narrows the menu to
+//                skills
 //   ±path:12     a hunk from the Changes sheet; becomes "hunk 1 (path)" with the diff and your
 //                line comments after the text
 //
-// `@path` for a file still parses (older notes wrote files that way).
+// `@path` for a file and `@skill:name` for a skill still parse (older notes wrote them that way).
 
-import { existsSync, readdirSync, statSync } from 'node:fs'
+// Walking folders is node:fs's work; whether a file is there is Bun.file's (a missing one has size 0).
+import { readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
+import { agentFor } from './agents'
 import { readWorkspaceFile } from './files'
 import type { Profile } from './profiles'
 import { noteLabel } from './changes'
@@ -85,17 +88,20 @@ function folders(files: string[]): string[] {
   return [...set]
 }
 
-export function skills(workspace: string, profile: Profile): string[] {
-  const roots = [
-    path.join(workspace, '.claude', 'skills'),
-    path.join(profile.configDir ?? path.join(homedir(), '.claude'), 'skills'),
-  ]
+/** The skills the note's agent can load, from the folders that agent reads (core/agents.ts). */
+export function skills(workspace: string, profile: Profile, user = homedir()): string[] {
+  const roots = agentFor(profile).skillRoots(workspace, profile.configDir ?? null, user)
   const names = new Set<string>()
   for (const root of roots) {
-    if (!existsSync(root)) continue
-    for (const name of readdirSync(root)) {
+    let entries: string[]
+    try {
+      entries = readdirSync(root)
+    } catch {
+      continue
+    }
+    for (const name of entries) {
       try {
-        if (statSync(path.join(root, name)).isDirectory() && existsSync(path.join(root, name, 'SKILL.md'))) names.add(name)
+        if (statSync(path.join(root, name)).isDirectory() && Bun.file(path.join(root, name, 'SKILL.md')).size > 0) names.add(name)
       } catch {}
     }
   }
@@ -152,7 +158,7 @@ export async function suggest(query: string, workspace: string, profile: Profile
 }
 
 export function tagText(tag: Tag) {
-  if (tag.type === 'skill') return `@skill:${tag.value}`
+  if (tag.type === 'skill') return `@${tag.value}`
   if (tag.type === 'folder') return `@${tag.value}`
   if (tag.type === 'hunk') return `±${tag.value}`
   return `#${tag.value}${tag.line ? `:${lineLabel(tag)}` : ''}`
@@ -202,7 +208,8 @@ const TRAILING = /[.,;:!?)\]]+$/
  */
 export function tokens(text: string, known: Tag[]): Token[] {
   const files = [...new Set(known.filter((t) => t.type === 'file').map((t) => t.value))]
-  const others = new Set(known.filter((t) => t.type !== 'file').map((t) => tagText(t)))
+  // Skills were written `@skill:name` before they read `@name`; notes from then still show them.
+  const others = new Map(known.filter((t) => t.type !== 'file').flatMap((t) => [tagText(t), ...(t.type === 'skill' ? [`@skill:${t.value}`] : [])].map((text) => [text, t] as const)))
   const out: Token[] = []
   let plain = ''
   const flush = () => {
@@ -212,8 +219,9 @@ export function tokens(text: string, known: Tag[]): Token[] {
   for (const part of text.split(/(\s+)/)) {
     const tail = TRAILING.exec(part)?.[0] ?? ''
     let word = tail ? part.slice(0, -tail.length) : part
-    let tag: Tag | undefined
-    if (word.startsWith('#') || (word.startsWith('@') && !word.startsWith('@skill:'))) {
+    // A tag the text already has comes first: `@simdriver` is the skill even beside a file of that name.
+    let tag: Tag | undefined = others.get(word)
+    if (!tag && (word.startsWith('#') || word.startsWith('@'))) {
       // `#path:42` or `#path:12-18` — the trailing colon-number is the line or range; `TRAILING`
       // may have eaten a lone ':'.
       const m = /^[#@](.+?)(?::(\d+)(?:-(\d+))?)?$/.exec(word)
@@ -221,7 +229,6 @@ export function tokens(text: string, known: Tag[]): Token[] {
       const value = m ? fileFor(m[1]!, files) : undefined
       if (value) tag = { type: 'file', value, ...(m![2] ? { line: Number(m![2]) } : {}), ...(m![2] && end > Number(m![2]) ? { endLine: end } : {}) }
     }
-    if (!tag && others.has(word)) tag = known.find((t) => t.type !== 'file' && tagText(t) === word)
     if (tag) {
       flush()
       out.push({ kind: 'tag', tag, text: word })
@@ -256,7 +263,7 @@ export function mentionedFiles(markdown: string, workspace: string, limit = 6): 
   for (const m of markdown.matchAll(/`([\w@][\w@./-]*\.\w+)(?::(\d+))?`/g)) {
     const file = m[1]!
     const key = `${file}:${m[2] ?? ''}`
-    if (seen.has(key) || file.includes('..') || !existsSync(path.join(workspace, file))) continue
+    if (seen.has(key) || file.includes('..') || Bun.file(path.join(workspace, file)).size === 0) continue
     seen.add(key)
     out.push({ type: 'file', value: file, ...(m[2] ? { line: Number(m[2]) } : {}) })
     if (out.length >= limit) break
