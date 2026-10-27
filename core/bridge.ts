@@ -8,7 +8,9 @@ import { paths, readJson, readSettings } from './store'
 import { record } from './tool-display'
 import type { ToolCall } from './tools'
 import type { VellumRecord } from './threads'
-import { rememberBrowser } from './browser'
+import { browserCall, browserTools } from './browser-tools'
+import { acquireBrowserCapture, browserCommand, browserRun, releaseBrowserCapture, subscribeBrowserEvents } from './browser-runtime'
+import { recordToolbarPresence, listToolbarTargets } from './browser-targets'
 import { mobileCall, mobileTools } from './mobile-tools'
 import { mcp as mcpServers, type McpApproval } from './mcp'
 
@@ -56,6 +58,7 @@ export function createBridge(callbacks: Callbacks) {
   let token = typeof previous?.token === 'string' && /^[\w-]{43}$/.test(previous.token) ? previous.token : secret()
   const agentTokens = new Map<string, string>()
   let stopped = false
+  const stopBrowserEvents = subscribeBrowserEvents(event => callbacks.record(event.key.noteId, { type: 'vellum/browser-event', event, at: event.at }))
   const origin = `chrome-extension://${extensionId}`
   const notify = (saved: SavedCapture) => {
     callbacks.record(saved.noteId, { type: 'vellum/capture', ...saved, at: new Date().toISOString() })
@@ -101,16 +104,17 @@ export function createBridge(callbacks: Callbacks) {
     const id = `rpc-${crypto.randomUUID()}`, startedAt = new Date().toISOString()
     const definition = () => {
       if (serverId) return mcpServers.describeTool(fullName)
-      const tool = [...tools, ...mobileTools].find(tool => tool.name === name)
+      const tool = [...tools, ...mobileTools, ...browserTools].find(tool => tool.name === name)
       return tool ? { inputSchema: tool.inputSchema } : undefined
     }
+    let presentation: ToolCall['presentation']
     const report = (result?: unknown) => {
       if (body.method !== 'tools/call') return
       const failed = record(result) && result.isError === true
-      const call: ToolCall = { id, name: fullName, detail: name, arguments: record(body.params?.arguments) ? body.params.arguments : {}, input: record(body.params?.arguments) ? body.params.arguments : {}, startedAt, origin: 'bridge', definition: definition(), status: result === undefined ? 'running' : failed ? 'error' : 'ok', ...(result !== undefined ? { result, output: JSON.stringify(result), finishedAt: new Date().toISOString(), ...(failed ? { error: Array.isArray(result.content) ? result.content.flatMap(part => record(part) && typeof part.text === 'string' ? [part.text] : []).join('\n') : 'Tool request failed' } : {}) } : {}) }
+      const call: ToolCall = { id, name: fullName, detail: name, arguments: record(body.params?.arguments) ? body.params.arguments : {}, input: record(body.params?.arguments) ? body.params.arguments : {}, startedAt, origin: 'bridge', ...(presentation ? { presentation } : {}), definition: definition(), status: result === undefined ? 'running' : failed ? 'error' : 'ok', ...(result !== undefined ? { result, output: JSON.stringify(result), finishedAt: new Date().toISOString(), ...(failed ? { error: Array.isArray(result.content) ? result.content.flatMap(part => record(part) && typeof part.text === 'string' ? [part.text] : []).join('\n') : 'Tool request failed' } : {}) } : {}) }
       callbacks.record(noteId, { type: 'vellum/tool-call', parentId, call, at: new Date().toISOString() })
     }
-    report()
+    if (serverId || name !== 'browser') report()
     try {
       let result: unknown
       if (serverId) {
@@ -125,13 +129,14 @@ export function createBridge(callbacks: Callbacks) {
       }
       if (body.method === 'initialize') result = { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'vellum', version: '0.1.0' } }
       else if (body.method === 'ping') result = {}
-      else if (body.method === 'tools/list') result = { tools: [...tools, ...mobileTools] }
+      else if (body.method === 'tools/list') result = { tools: [...tools, ...mobileTools, ...browserTools] }
       else if (body.method === 'tools/call') {
         const name = body.params?.name
         const args = body.params?.arguments ?? {}
         const statusContent = (saved: SavedCapture) => ({ content: [{ type: 'text', text: JSON.stringify({ id: saved.capture.id, status: saved.status, summary: saved.summary, reply: saved.reply }) }] })
         const content = (value: unknown) => ({ content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] })
-        if (typeof name === 'string' && name.startsWith('mobile_') && mobileTools.some((tool) => tool.name === name)) result = await mobileCall(name, args)
+        if (typeof name === 'string' && browserTools.some(tool => tool.name === name)) result = await browserCall(noteId, name, args, { signal, toolCallId: id, runId: browserRun(noteId), onAction: (key, actionId) => { presentation = { kind: 'browser', session: key.session, generation: key.generation, actionId }; report() } })
+        else if (typeof name === 'string' && name.startsWith('mobile_') && mobileTools.some((tool) => tool.name === name)) result = await mobileCall(name, args)
         else if (name === 'vellum_pending') result = content(pending(noteId))
         else if (name === 'vellum_watch') {
           const timeout = args.timeoutSec === undefined ? 30 : args.timeoutSec
@@ -185,8 +190,25 @@ export function createBridge(callbacks: Callbacks) {
       if (segments[0] === 'mcp' && segments.length === 2 && request.method === 'POST') {
         const noteId = segments[1]!
         if (!plainName(noteId) || !owner && scoped !== noteId) return json({ error: 'Note access refused' }, 403)
+        if (!callbacks.notes().some(note => note.id === noteId)) return json({ error: 'Note is closed' }, 404)
         const result = await mcp(noteId, await request.json(), request.signal, url.searchParams.get('server') ?? undefined)
         return result === null ? new Response(null, { status: 202, headers }) : json(result)
+      }
+      if (url.pathname === '/browser/execute' && request.method === 'POST') {
+        const body: any = await request.json()
+        if (!plainName(body.noteId) || scoped && scoped !== body.noteId) return json({ error: 'Note access refused' }, 403)
+        if (!callbacks.notes().some(note => note.id === body.noteId)) return json({ error: 'Note is closed' }, 404)
+        return json(await browserCommand(body.noteId, body, { signal: request.signal, runId: browserRun(body.noteId) }))
+      }
+      if (url.pathname === '/browser/capture' && owner && request.method === 'POST') {
+        const body: any = await request.json()
+        if (typeof body.lease === 'string') { await releaseBrowserCapture(body.lease); return json({ ok: true }) }
+        if (typeof body.installationId !== 'string' || !Number.isInteger(body.tabId)) throw new Error('Invalid capture target')
+        return json(await acquireBrowserCapture(body.installationId, body.tabId))
+      }
+      if (url.pathname === '/browser/targets' && owner) {
+        if (request.method === 'POST') { recordToolbarPresence(await request.json()); return json({ ok: true }) }
+        if (request.method === 'GET') return json(listToolbarTargets())
       }
       if (scoped) {
         if (url.pathname !== '/browser' || request.method !== 'POST') return json({ error: 'Note access refused' }, 403)
@@ -235,7 +257,6 @@ export function createBridge(callbacks: Callbacks) {
         if (browser.url !== undefined && (typeof browser.url !== 'string' || browser.url.length > 8192)) throw new Error('Invalid browser URL')
         const clean = { noteId: browser.noteId, session: browser.session, streamPort: browser.streamPort, ...(browser.url ? { url: browser.url } : {}), ...(browser.screenshot ? { screenshot: browser.screenshot } : {}) }
         callbacks.record(browser.noteId, { type: 'vellum/browser', browser: clean, at: new Date().toISOString() })
-        rememberBrowser(browser.noteId)
         emit({ type: 'browser', browser: clean })
         return json({ ok: true })
       }
@@ -280,6 +301,7 @@ export function createBridge(callbacks: Callbacks) {
     update, send, recover,
     stop() {
       stopped = true
+      stopBrowserEvents()
       for (const done of [...waiters]) done()
       server!.stop(true)
       if (existsSync(paths.bridge) && readJson<Pairing | undefined>(paths.bridge, undefined)?.endpoint === endpoint) rmSync(paths.bridge, { force: true })

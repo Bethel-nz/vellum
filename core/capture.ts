@@ -46,7 +46,7 @@ export type CaptureSnapshot = {
 
 export type CaptureStatus = 'queued' | 'acknowledged' | 'resolved' | 'dismissed'
 export type SavedCapture = { capture: Capture; noteId: string; status: CaptureStatus; summary?: string; reply?: string; delivery?: 'send' | 'sent' }
-export type BrowserSession = { noteId: string; session: string; streamPort: number; url?: string; screenshot?: string }
+export type BrowserSession = { noteId: string; session: string; streamPort: number; url?: string; screenshot?: string; generation?: string; phase?: import('./browser-types').BrowserPhase; mode?: 'managed' | 'toolbar'; targetId?: string; lastActionId?: string; runId?: string; error?: string; recording?: boolean; recordStartedAt?: number; activities?: import('./browser-types').BrowserActivity[] }
 
 export const extensionId = 'bckocnpligjignaclimdoelhpobpjehh'
 export const bridgePort = 47470
