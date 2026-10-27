@@ -14,5 +14,5 @@
     "allowImportingTsExtensions": true
   },
   "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules", "clones"]
+  "exclude": ["node_modules", "clones", "extension"]
 }
