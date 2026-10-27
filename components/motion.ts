@@ -76,6 +76,6 @@ export function tween(t: SpringTransition): SpringTransition {
 }
 
 export const enter = (d: keyof typeof duration = 'standard', delay = 0) => tween({ duration: duration[d], ease: ease.enter, delay })
-export const leave = (d: keyof typeof duration = 'exit') => tween({ duration: duration[d], ease: ease.standard })
+export const leave = (d: keyof typeof duration = 'exit') => tween({ duration: duration[d], ease: ease.exit })
 /** Hover and press washes. */
 export const wash = () => tween({ duration: 0.1, ease: ease.standard })
