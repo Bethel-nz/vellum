@@ -11,16 +11,12 @@ import path from 'node:path'
 import type { Profile } from '../core/profiles'
 import { agentChoices, agentFor, type AgentId } from '../core/agents'
 import { Dot, Icon, Meta, Quiet, useM } from './kit'
-import { closedByOutsidePress, Menu, Segmented, Sheet } from '../components'
+import { closedByOutsidePress, Field, Label, Menu, Segmented, Sheet } from '../components'
 import { keys, primary } from '../core/platform'
-import { accentFor, concentric, radiusXl, shortPath } from './theme'
+import { accentFor, concentric, radiusBase, radiusXl, shortPath, type } from './theme'
 import { useLoaded } from './useLoaded'
 
-function SectionLabel({ children }: { children: ReactNode }) {
-  const m = useM()
-  return <text style={{ fontSize: 12, lineHeight: 16, color: m.textMuted, fontWeight: 500 }}>{children}</text>
-}
-
+/** A selectable row in a dialog list (recipes reuse it): quiet fill, hover wash, token radius. */
 export function Row({ selected, onPress, children, testId }: { selected?: boolean; onPress: () => void; children: ReactNode; testId?: string }) {
   const m = useM()
   return (
@@ -56,10 +52,10 @@ function PrimaryButton({ children, onPress, disabled, testId, shortcut }: { chil
       onClick={onPress}
       onKeyDown={(event) => { if (primary(event.modifiers) && event.key === 'enter') event.preventDefault() }}
       style={{
-        height: 34,
+        height: 32,
         paddingLeft: 14,
         paddingRight: 14,
-        borderRadius: 8,
+        borderRadius: concentric(radiusBase, 2),
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'center',
@@ -73,8 +69,8 @@ function PrimaryButton({ children, onPress, disabled, testId, shortcut }: { chil
         focusVisible: { outlineWidth: 2, outlineColor: m.focusRing, outlineOffset: 2 },
       }}
     >
-      <text style={{ fontSize: 13, lineHeight: 16, color: m.pane, fontWeight: 500 }}>{children}</text>
-      {shortcut ? <text style={{ fontSize: 11, lineHeight: 16, color: m.pane, opacity: 0.6 }}>{keys(shortcut)}</text> : null}
+      <text style={{ ...type.label, fontWeight: 500, color: m.pane }}>{children}</text>
+      {shortcut ? <text style={{ ...type.caption, color: m.pane, opacity: 0.6 }}>{keys(shortcut)}</text> : null}
     </Button>
   )
 }
@@ -146,41 +142,41 @@ export function NewThreadDialog({
       <div ref={root} testId="new-note-body" tabIndex={0} onKeyDown={(event) => {
         if (primary(event.modifiers) && event.key === 'enter') { event.preventDefault(); event.stopPropagation(); if (!adding) create() }
       }} style={{ display: 'flex', flexDirection: 'column', keyboardFocusDim: false }}>
-        <div style={{ padding: 20, paddingBottom: 14 }}>
-          <text style={{ fontSize: 16, lineHeight: 22, color: m.text, fontWeight: 600 }}>New note</text>
+        <div style={{ padding: 18, paddingBottom: 12 }}>
+          <text style={{ ...type.title, fontWeight: 600, color: m.text }}>New note</text>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 16, paddingRight: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 18, paddingRight: 18 }}>
           <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', paddingLeft: 6, paddingRight: 4 }}>
-            <SectionLabel>Project</SectionLabel>
+            <Label muted>Project</Label>
             <div style={{ flexGrow: 1 }} />
-            <Quiet onPress={browse} testId="choose-folder" title="Choose another project folder"><Icon name="folderPlus" size={13} /><Meta color={m.textMuted}>Choose folder…</Meta></Quiet>
+            <Quiet onPress={browse} testId="choose-folder" title="Choose another project folder"><Icon name="folderPlus" size={13} /><Meta>Choose folder…</Meta></Quiet>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             {folders.map((item) => {
               const selected = item === folder
               const recentIndex = shownFolders.indexOf(item)
-              return <Button key={item} onClick={() => chooseFolder(item)} testId={recentIndex >= 0 ? `recent-${recentIndex}` : 'selected-folder'} aria-label={`Use ${item}`} aria-pressed={selected} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, paddingLeft: 12, paddingRight: 12, borderRadius: 10, borderWidth: 1, borderColor: selected ? m.borderFocused : '#00000000', backgroundColor: selected ? m.popupHover : '#00000000', hover: { backgroundColor: m.popupHover }, focusVisible: { outlineWidth: 2, outlineColor: m.focusRing }, cursor: 'pointer' }}>
+              return <Button key={item} onClick={() => chooseFolder(item)} testId={recentIndex >= 0 ? `recent-${recentIndex}` : 'selected-folder'} aria-label={`Use ${item}`} aria-pressed={selected} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, paddingLeft: 12, paddingRight: 12, borderRadius: radiusBase, borderWidth: 1, borderColor: selected ? m.borderFocused : '#00000000', backgroundColor: selected ? m.popupHover : '#00000000', hover: { backgroundColor: m.popupHover }, focusVisible: { outlineWidth: 2, outlineColor: m.focusRing }, cursor: 'pointer' }}>
                 <Icon name={selected ? 'folderOpen' : 'folderClosed'} size={18} color={selected ? m.textUi : m.textMuted} />
                 <div style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <text style={{ fontSize: 13.5, lineHeight: 18, fontWeight: 500, color: m.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{path.basename(item) || item}</text>
+                  <text style={{ ...type.label, fontWeight: 500, color: m.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{path.basename(item) || item}</text>
                   <text style={{ fontSize: 11.5, lineHeight: 16, color: m.textMuted, whiteSpace: 'nowrap', textOverflow: 'ellipsis-start' }}>{shortPath(path.dirname(item))}</text>
                 </div>
                 {selected ? <Icon name="check" size={14} color={m.textUi} /> : null}
               </Button>
             })}
-            {!folders.length ? <div style={{ padding: 14, borderRadius: 10, borderWidth: 1, borderColor: m.border }}><Meta color={m.textMuted}>Choose a folder to start your first project note.</Meta></div> : null}
+            {!folders.length ? <div style={{ padding: 14, borderRadius: radiusBase, borderWidth: 1, borderColor: m.border }}><Meta>Choose a folder to start your first project note.</Meta></div> : null}
           </div>
-          {config.length ? <div testId="trust-warning" style={{ padding: 10, borderRadius: 8, backgroundColor: m.dangerBg }}><text style={{ fontSize: 12, lineHeight: 17, color: m.danger }}>{`This folder has ${config.join(', ')}. Its hooks and MCP servers can run without approval. Continue only if you trust this folder.`}</text></div> : null}
+          {config.length ? <div testId="trust-warning" style={{ padding: 10, borderRadius: concentric(radiusBase, 2), backgroundColor: m.dangerBg }}><text style={{ fontSize: 12, lineHeight: 17, color: m.danger }}>{`This folder has ${config.join(', ')}. Its hooks and MCP servers can run without approval. Continue only if you trust this folder.`}</text></div> : null}
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 20, paddingTop: 16, paddingBottom: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 18, paddingTop: 16, paddingBottom: 16 }}>
           <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <SectionLabel>With</SectionLabel>
+            <Label muted>With</Label>
             <div style={{ position: 'relative', minWidth: 0, flexGrow: 1, display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
-              <Quiet onPress={() => setAccountOpen((value) => !value && !closedByOutsidePress('new-note-account'))} testId="new-note-account" title="Choose an agent and account" style={{ height: 32, justifyContent: 'flex-start', paddingLeft: 10, paddingRight: 8, borderRadius: 8, backgroundColor: m.pane, borderWidth: 1, borderColor: m.border, gap: 8, maxWidth: '100%' }}>
+              <Quiet onPress={() => setAccountOpen((value) => !value && !closedByOutsidePress('new-note-account'))} testId="new-note-account" title="Choose an agent and account" style={{ height: 32, justifyContent: 'flex-start', paddingLeft: 10, paddingRight: 8, borderRadius: concentric(radiusBase, 2), backgroundColor: m.pane, borderWidth: 1, borderColor: m.border, gap: 8, maxWidth: '100%' }}>
                 {profile ? <Dot color={accentFor(m, profiles, profile.id)} size={7} /> : null}
-                <text style={{ fontSize: 12.5, lineHeight: 17, color: m.textUi, minWidth: 0, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{profile ? `${agentFor(profile).title} · ${profile.name}` : 'Choose an account'}</text>
+                <text style={{ fontSize: 12.5, lineHeight: 16, color: m.textUi, minWidth: 0, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{profile ? `${agentFor(profile).title} · ${profile.name}` : 'Choose an account'}</text>
                 <Icon name="chevronDown" size={12} color={m.textMuted} />
               </Quiet>
               <Menu open={accountOpen} onClose={() => setAccountOpen(false)} width={300} side="top" testId="new-note-accounts" closeKey="new-note-account" items={[
@@ -190,35 +186,25 @@ export function NewThreadDialog({
               ]} />
             </div>
           </div>
-          {profile?.loggedIn === false ? <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}><Meta color={m.textMuted}>Sign in to ask {agentFor(profile).title}.</Meta><Quiet onPress={() => onLogin(profile.id)} testId={`profile-login-${profile.id}`}><Meta color={m.textUi}>Log in</Meta></Quiet></div> : null}
+          {profile?.loggedIn === false ? <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}><Meta>Sign in to ask {agentFor(profile).title}.</Meta><Quiet onPress={() => onLogin(profile.id)} testId={`profile-login-${profile.id}`}><Meta color={m.textUi}>Log in</Meta></Quiet></div> : null}
           {adding ? (
-            <div testId="new-profile-form" style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: m.border }}>
+            <div testId="new-profile-form" style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 12, borderRadius: radiusBase, borderWidth: 1, borderColor: m.border }}>
             <div style={{ alignSelf: 'start' }}><Segmented<AgentId> testId="new-profile-agent" value={newAgent} onChange={setNewAgent} options={choices.map((c) => ({ value: c.agent.id, label: c.agent.title }))} width={84} /></div>
-            {cannot ? <Meta color={m.textMuted}>{cannot}</Meta> : null}
+            {cannot ? <Meta>{cannot}</Meta> : null}
             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0 }}>
-              <div style={{ flexGrow: 1, flexBasis: 0, minWidth: 0, height: 30, paddingLeft: 8, paddingRight: 8, borderRadius: 8, borderWidth: 1, borderColor: m.border, display: 'flex', alignItems: 'center' }}>
-                <input
-                  testId="new-profile-name"
-                  autoFocus
-                  value={newName}
-                  placeholder="Work"
-                  onChange={(e) => setNewName(e.value ?? '')}
-                  onSubmit={addProfile}
-                  style={{ flexGrow: 1, minWidth: 0, fontSize: 13, color: m.text }}
-                />
-              </div>
-              <Quiet onPress={() => setAdding(false)} style={{ height: 30 }}>
-                <Meta color={m.textMuted}>Cancel</Meta>
+              <Field testId="new-profile-name" autoFocus value={newName} placeholder="Work" onChange={setNewName} onSubmit={addProfile} style={{ flexGrow: 1 }} />
+              <Quiet onPress={() => setAdding(false)} style={{ height: 32 }}>
+                <Meta>Cancel</Meta>
               </Quiet>
-              <Quiet onPress={addProfile} disabled={!newName.trim() || Boolean(cannot)} testId="new-profile-add" style={{ height: 30, paddingLeft: 12, paddingRight: 12 }}><Meta color={m.textUi}>Add</Meta></Quiet>
+              <Quiet onPress={addProfile} disabled={!newName.trim() || Boolean(cannot)} testId="new-profile-add" style={{ height: 32, paddingLeft: 12, paddingRight: 12 }}><Meta color={m.textUi}>Add</Meta></Quiet>
             </div>
             </div>
           ) : null}
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'end', gap: 8, padding: 20, paddingTop: 2 }}>
+        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'end', gap: 8, padding: 18, paddingTop: 2 }}>
           <Quiet onPress={onClose} testId="new-note-cancel">
-            <text style={{ fontSize: 13, lineHeight: 16, color: m.textMuted }}>Cancel</text>
+            <Label muted>Cancel</Label>
           </Quiet>
           <PrimaryButton testId="create-thread" disabled={!ready || adding} onPress={create} shortcut="⌘↵">
             Create note
