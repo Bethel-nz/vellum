@@ -8,6 +8,7 @@ import { worker, type CaptureSettings, type ContentMessage, type PageScreenshot,
 import { CapturePanel, type CaptureOptions } from './ui/CapturePanel'
 import { loadFonts, setAppearance, type Appearance } from './ui/appearance'
 import { shadowStyles } from './ui/styles'
+import { copyAnnotations } from './copy'
 import overlayStyles from './overlay.css?inline'
 import { inlineStyle, readStyles, styleProperties, type StyleField, type StyleChange } from './ui/element-controls'
 
@@ -456,6 +457,10 @@ function install() {
       onSpeed: (speed) => { for (const animation of currentAnimations()) { saveAnimation(animation); animation.playbackRate = speed } render() },
       onSeek: (progress) => { const selection = activeSelection(); if (selection && !previewSampledFrame(selection, progress)) seek(selection.element, progress); render(); draw() },
       onRecord: () => { clearSampledReplay(); void recordInteraction() }, onSend: () => { void send() },
+      onCopy: async () => {
+        try { await copyAnnotations(makeCapture([...selections])); status('') }
+        catch (error) { status((error as Error).message || 'Couldn’t copy the annotations. Try again.', true); throw error }
+      },
     })))
   }
   function choose(element: Element, point?: { x: number; y: number }) {
@@ -606,6 +611,14 @@ function install() {
     status('Motion recorded. Sampled motion is marked as inferred.')
     draw()
   }
+  async function makeCapture(selected: Selection[]): Promise<Capture> {
+    return { version: 1, id: crypto.randomUUID(), createdAt: new Date().toISOString(), page: { url: location.href, title: document.title, viewport: { w: innerWidth, h: innerHeight, dpr: devicePixelRatio } }, elements: await Promise.all(selected.map((selection) => {
+      const changes = [...(previews.get(selection.element) ?? []), ...(motionChanges.get(selection.ref) ?? [])].map(([property, change]) => `- ${property}: ${change.before} → ${change.after}`)
+      const note = [...(comments.get(selection.ref) ?? []).map((comment) => comment.text), selection.note, changes.length ? `Apply these changes to the owning source styles or animation (use the captured viewport as context):\n${changes.join('\n')}` : ''].filter(Boolean).join('\n\n')
+      const saved = snapshots.get(selection.ref) ?? []
+      return extract({ ...selection, note }).then((node) => ({ ...node, snapshots: saved }))
+    })), assets: assets(selected) }
+  }
   async function send() {
     const pending = selections.filter((selection) => ready.has(selection.ref) && hasContent(selection))
     if (capturing || recording || !pending.length) return
@@ -651,11 +664,7 @@ function install() {
         case 'extract': {
           const selected = message.ref ? selections.filter((selection) => selection.ref === message.ref) : selections
           if (!selected.length) throw new Error('Select an element before sending.')
-          const capture: Capture = { version: 1, id: crypto.randomUUID(), createdAt: new Date().toISOString(), page: { url: location.href, title: document.title, viewport: { w: innerWidth, h: innerHeight, dpr: devicePixelRatio } }, elements: await Promise.all(selected.map((selection) => {
-            const changes = [...(previews.get(selection.element) ?? []), ...(motionChanges.get(selection.ref) ?? [])].map(([property, change]) => `- ${property}: ${change.before} → ${change.after}`)
-            const note = [...(comments.get(selection.ref) ?? []).map((comment) => comment.text), selection.note, changes.length ? `Apply these changes to the owning source styles or animation (use the captured viewport as context):\n${changes.join('\n')}` : ''].filter(Boolean).join('\n\n')
-            return extract({ ...selection, note }).then((node) => ({ ...node, snapshots: snapshots.get(selection.ref) ?? [] }))
-          })), assets: assets(selected) }
+          const capture = await makeCapture(selected)
           return { capture, scroll: { x: scrollX, y: scrollY }, files: [...await downloadAssets(capture), ...selected.flatMap((selection) => (snapshots.get(selection.ref) ?? []).map((snapshot) => ({ name: snapshot.image.file, mime: snapshot.image.mime, data: snapshot.image.dataUrl.slice(snapshot.image.dataUrl.indexOf(',') + 1) })))] }
         }
         case 'seek': {

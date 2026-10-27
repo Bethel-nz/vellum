@@ -104,6 +104,9 @@ kbd { font: 400 11px/1.5 var(--font-body); color: var(--text-secondary); }
 .vellum-tool-button:disabled, .vellum-text-button:disabled { opacity: .35; cursor: default; }
 .vellum-tool-button[aria-pressed='true'] { background: var(--accent-subtle); color: var(--identity); }
 .vellum-send { margin-inline: 3px; background: var(--identity); color: var(--background); border-radius: 9px; }
+.vellum-delivery-actions { display: flex; align-items: center; flex-shrink: 0; gap: 2px; padding: 3px; margin-inline: 3px; border-radius: 9px; background: var(--surface-muted); }
+.vellum-delivery-actions .vellum-send { margin: 0; border-radius: 6px; }
+.vellum-delivery-actions .vellum-copy { border-radius: 6px; }
 .vellum-annotation-popover { display: flex; flex-direction: column; position: fixed; left: 12px; top: 76px; width: 358px; max-width: calc(100vw - 24px); max-height: var(--vellum-editor-room, calc(100dvh - 90px)); overscroll-behavior: contain; pointer-events: none; }
 .vellum-comment-row, .vellum-comment-stack, .vellum-expanded-capture, .vellum-capture-stack { pointer-events: auto; }
 .vellum-comment-row { --comment-gap: 7px; --comment-padding: 7px; --comment-control: 32px; position: relative; flex-shrink: 0; display: grid; grid-template-columns: var(--comment-control) minmax(0, 1fr) var(--comment-control); grid-template-areas: 'settings input send'; align-items: center; gap: var(--comment-gap); padding: var(--comment-padding); border: 1px solid var(--border); border-radius: 24px; background: var(--surface); box-shadow: 0 4px 14px #0002; transition: border-radius .2s cubic-bezier(.22,1,.36,1); }

@@ -17,6 +17,7 @@ import { IconSettingsSliderHor } from '@central-icons-react/round-outlined-radiu
 import { IconTrashCan } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconTrashCan'
 import { IconArrowUndoUp } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowUndoUp'
 import { IconCrossMedium } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossMedium'
+import { IconSquareBehindSquare2 } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconSquareBehindSquare2'
 import { motionTokens } from '../arc/motion-tokens'
 import { CaptureDials } from './Dials'
 import type { PageScreenshot } from '../messages'
@@ -67,6 +68,12 @@ export function CapturePanel(props: CapturePanelProps) {
   const [bridgePort, setBridgePort] = useState(String(props.bridge.port))
   const [bridgeStatus, setBridgeStatus] = useState('')
   const [multiline, setMultiline] = useState(false)
+  const [copyState, setCopyState] = useState<'idle' | 'copying' | 'copied'>('idle')
+  useEffect(() => {
+    if (copyState !== 'copied') return
+    const timer = setTimeout(() => setCopyState('idle'), 1800)
+    return () => clearTimeout(timer)
+  }, [copyState])
   const [dragPosition, setDragPosition] = useState<{ ref: string; x: number; y: number } | null>(null)
   const dragOffset = useRef<{ pointerId: number; x: number; y: number; startX: number; startY: number; moved: boolean } | null>(null)
   const reduced = useReducedMotion()
@@ -179,7 +186,14 @@ export function CapturePanel(props: CapturePanelProps) {
       <button type="button" className="vellum-tool-button" aria-label="Hold to view original" title="Hold to view original" disabled={!props.selections.some((selection) => selection.changes)} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); props.onOriginal(true) }} onPointerUp={() => props.onOriginal(false)} onPointerCancel={() => props.onOriginal(false)} onLostPointerCapture={() => props.onOriginal(false)} onKeyDown={(event) => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); props.onOriginal(true) } }} onKeyUp={() => props.onOriginal(false)} onBlur={() => props.onOriginal(false)}><IconLayoutColumn size={18} /></button>
       <button type="button" className="vellum-tool-button" aria-label="Discard annotations" title="Discard annotations" disabled={!props.selections.length || props.capturing || props.recording} onClick={props.onDiscard}><IconTrashCan size={18} /></button>
       {props.onUndo ? <button type="button" className="vellum-tool-button" aria-label="Undo removal" title="Undo removal" onClick={props.onUndo}><IconArrowUndoUp size={18} /></button> : null}
-      <button type="button" className="vellum-tool-button vellum-send" aria-label="Send annotations" title="Send annotations to the queue" disabled={!count || props.capturing || props.recording} onClick={props.onSend}><IconCheckmark1 size={19} /></button>
+      <div className="vellum-delivery-actions" role="group" aria-label="Annotation actions">
+        <button type="button" className="vellum-tool-button vellum-send" aria-label="Send annotations" title="Send annotations to the queue" disabled={!count || props.capturing || props.recording || copyState === 'copying'} onClick={props.onSend}><IconCheckmark1 size={19} /></button>
+        <button type="button" className="vellum-tool-button vellum-copy" aria-label={copyState === 'copied' ? 'Annotations copied' : 'Copy all annotations'} title={copyState === 'copied' ? 'Copied' : 'Copy all annotations'} disabled={!props.selections.length || props.capturing || props.recording || copyState === 'copying'} onClick={async () => {
+          setCopyState('copying')
+          try { await props.onCopy(); setCopyState('copied') } catch { setCopyState('idle') }
+        }}>{copyState === 'copied' ? <IconCheckmark1 size={18} /> : <IconSquareBehindSquare2 size={18} />}</button>
+        <span className="vellum-sr-only" role="status">{copyState === 'copied' ? 'All annotations copied' : ''}</span>
+      </div>
       <button ref={connectionSettingsButton} type="button" className="vellum-tool-button" aria-label="Connection settings" title="Connection settings" aria-expanded={connectionSettingsOpen} aria-controls={connectionControlsId} onClick={() => { setConnectionSettingsOpen(!connectionSettingsOpen); setBridgeStatus('') }}><IconSettingsGear2 size={18} /></button>
       <button type="button" className="vellum-tool-button" aria-label="Close Snapshot" title="Close Snapshot (Esc)" disabled={props.capturing || props.recording} onClick={props.onClose}><IconCrossMedium size={18} /></button>
 
