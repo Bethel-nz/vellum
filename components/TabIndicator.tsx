@@ -1,5 +1,5 @@
 // A single selected wash slides behind the strip's active pill, without moving its hit area.
-import { motion } from '@gpuix/react'
+import { motion } from './spring'
 import { duration, ease, tween, useReducedMotion } from './motion'
 import { useM } from './theme'
 

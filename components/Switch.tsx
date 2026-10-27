@@ -1,6 +1,6 @@
-// A toggle, after arc's switch: the thumb glides on the snappy curve, the track colour follows.
+// A softly squared track with a rounded thumb; movement uses Vellum's spring.
 
-import { motion } from '@gpuix/react'
+import { motion } from './spring'
 import { Button as Base } from '@gpuix/react/button'
 import { spring, tween, useReducedMotion } from './motion'
 import { useM } from './theme'
@@ -21,8 +21,8 @@ export function Switch({ checked, onChange, testId, label }: { checked: boolean;
       style={{
         width: W,
         height: H,
-        borderRadius: H / 2,
-        backgroundColor: checked ? m.blue : m.selected,
+        borderRadius: 4,
+        backgroundColor: checked ? m.action.background : m.selected,
         position: 'relative',
         flexShrink: 0,
         cursor: 'pointer',
@@ -33,7 +33,7 @@ export function Switch({ checked, onChange, testId, label }: { checked: boolean;
         initial={false}
         animate={{ left: checked ? W - THUMB - 2 : 2, opacity: 1 }}
         transition={tween(spring.snappy)}
-        style={{ position: 'absolute', top: (H - THUMB) / 2, width: THUMB, height: THUMB, borderRadius: THUMB / 2, backgroundColor: '#ffffff', pointerEvents: 'none' }}
+        style={{ position: 'absolute', top: (H - THUMB) / 2, width: THUMB, height: THUMB, borderRadius: 4, backgroundColor: checked ? m.action.text : m.text, pointerEvents: 'none' }}
       />
       {/* A motion.div keeps presses to itself: the click is taken by this layer above the thumb. */}
       <div onClick={() => onChange(!checked)} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />

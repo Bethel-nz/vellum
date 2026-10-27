@@ -2,7 +2,7 @@
 // curve. GPUIX has no repeating motion, so the dot flips its target every half cycle.
 
 import { useEffect, useState } from 'react'
-import { motion } from '@gpuix/react'
+import { motion } from './spring'
 import { ease, tween, useReducedMotion } from './motion'
 
 const HALF = 0.9

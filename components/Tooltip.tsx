@@ -2,7 +2,7 @@
 // GPUIX tooltip so every one shares the delay and the popup recipe.
 
 import type { ReactNode } from 'react'
-import { motion } from '@gpuix/react'
+import { motion } from './spring'
 import { Tooltip as Root, TooltipContent, TooltipProvider, TooltipTrigger } from '@gpuix/react/tooltip'
 import { keys } from '../core/platform'
 import { concentric, radiusBase } from '../ui/theme'

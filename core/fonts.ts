@@ -5,7 +5,8 @@
 //
 // Font files are found by name ("*Nerd*"), then their family is read from the `name` table.
 
-import { closeSync, existsSync, openSync, readdirSync, readSync } from 'node:fs'
+// Folders are node:fs's (Bun's docs send directory work there); reading a font is Bun.file's.
+import { readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { os } from './platform'
@@ -22,7 +23,7 @@ function fontDirs(): string[] {
 }
 
 function nerdFiles(dir: string, depth = 3, out: string[] = []): string[] {
-  if (depth < 0 || !existsSync(dir)) return out
+  if (depth < 0) return out
   let entries
   try {
     entries = readdirSync(dir, { withFileTypes: true })
@@ -38,17 +39,12 @@ function nerdFiles(dir: string, depth = 3, out: string[] = []): string[] {
 }
 
 /** The family name (nameID 16, else 1) of a TrueType/OpenType file, reading only its `name` table. */
-export function familyOf(file: string): string | undefined {
-  let fd: number | undefined
+export async function familyOf(file: string): Promise<string | undefined> {
+  const font = Bun.file(file)
+  const at = async (pos: number, len: number) => Buffer.from(await font.slice(pos, pos + len).arrayBuffer())
   try {
-    fd = openSync(file, 'r')
-    const at = (pos: number, len: number) => {
-      const b = Buffer.alloc(len)
-      readSync(fd!, b, 0, len, pos)
-      return b
-    }
-    const tables = at(4, 2).readUInt16BE(0)
-    const dir = at(12, 16 * tables)
+    const tables = (await at(4, 2)).readUInt16BE(0)
+    const dir = await at(12, 16 * tables)
     let offset = -1
     let length = 0
     for (let i = 0; i < tables; i++) {
@@ -57,7 +53,7 @@ export function familyOf(file: string): string | undefined {
       length = dir.readUInt32BE(16 * i + 12)
     }
     if (offset < 0 || length > 1 << 20) return
-    const d = at(offset, length)
+    const d = await at(offset, length)
     const count = d.readUInt16BE(2)
     const strings = d.readUInt16BE(4)
     const found: Record<number, string> = {}
@@ -72,22 +68,17 @@ export function familyOf(file: string): string | undefined {
     return found[16] ?? found[1]
   } catch {
     return
-  } finally {
-    if (fd !== undefined) closeSync(fd)
   }
 }
 
-let cached: string | null | undefined
+let cached: Promise<string | undefined> | undefined
 /** A Nerd Font family installed on this machine, the SF Mono build first; undefined when none is. */
-export function nerdFamily(): string | undefined {
-  if (cached !== undefined) return cached ?? undefined
-  const families = new Set<string>()
-  for (const dir of fontDirs()) for (const f of nerdFiles(dir)) {
-    const fam = familyOf(f)
-    if (fam) families.add(fam)
-  }
-  cached = families.has(PREFERRED) ? PREFERRED : ([...families].find((f) => /Nerd Font Mono$/.test(f)) ?? [...families][0] ?? null)
-  return cached ?? undefined
+export function nerdFamily(): Promise<string | undefined> {
+  return (cached ??= (async () => {
+    const files = fontDirs().flatMap((dir) => nerdFiles(dir))
+    const families = new Set((await Promise.all(files.map(familyOf))).filter((f) => f !== undefined))
+    return families.has(PREFERRED) ? PREFERRED : ([...families].find((f) => /Nerd Font Mono$/.test(f)) ?? [...families][0])
+  })())
 }
 
 export const preferredTerminalFamily = PREFERRED

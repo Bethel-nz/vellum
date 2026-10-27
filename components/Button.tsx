@@ -20,6 +20,7 @@ export const controlRadius = concentric(radiusBase, 3)
 export function Button({
   children,
   onPress,
+  onPressStart,
   variant = 'quiet',
   testId,
   title,
@@ -30,6 +31,7 @@ export function Button({
 }: {
   children: ReactNode
   onPress: () => void
+  onPressStart?: () => void
   variant?: 'quiet' | 'solid' | 'danger'
   testId?: string
   title?: string
@@ -41,7 +43,7 @@ export function Button({
 }) {
   const m = useM()
   const solid = variant === 'solid'
-  const bg = solid ? m.text : selected ? m.pressed : '#00000000'
+  const bg = solid ? m.action.background : selected ? m.pressed : '#00000000'
   return (
     <Base
       ref={buttonRef}
@@ -49,6 +51,8 @@ export function Button({
       aria-label={title === undefined ? undefined : keys(title)}
       disabled={disabled}
       onClick={onPress}
+      onMouseDown={onPressStart}
+      onKeyDown={(event) => { if (event.key === 'enter' || event.key === 'space') onPressStart?.() }}
       style={{
         display: 'flex',
         flexDirection: 'row',
@@ -65,8 +69,8 @@ export function Button({
         opacity: disabled ? 0.45 : 1,
         userSelect: 'none',
         flexShrink: 0,
-        hover: disabled ? undefined : { backgroundColor: solid ? m.textUi : m.hover },
-        active: disabled ? undefined : { backgroundColor: solid ? m.textMuted : m.pressed },
+        hover: disabled ? undefined : { backgroundColor: solid ? m.action.hover : m.hover },
+        active: disabled ? undefined : { backgroundColor: solid ? m.action.pressed : m.pressed },
         focusVisible: { outlineWidth: 2, outlineColor: m.focusRing, outlineOffset: 1 },
         ...style,
       }}
@@ -79,7 +83,7 @@ export function Button({
 /** Button label in the right colour for its variant. */
 export function Label({ children, variant = 'quiet', muted }: { children: ReactNode; variant?: 'quiet' | 'solid' | 'danger'; muted?: boolean }) {
   const m = useM()
-  const color = variant === 'solid' ? m.pane : variant === 'danger' ? m.danger : muted ? m.textMuted : m.textUi
+  const color = variant === 'solid' ? m.action.text : variant === 'danger' ? m.danger : muted ? m.textMuted : m.textUi
   return <text style={{ fontSize: 12.5, lineHeight: 16, fontWeight: 500, color, whiteSpace: 'nowrap' }}>{children}</text>
 }
 

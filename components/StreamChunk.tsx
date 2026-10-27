@@ -1,7 +1,7 @@
 // Streaming text is committed in immutable batches. Each batch gets its own virtual-list
 // row and one opacity entrance; later deltas never grow a row already measured by GPUIX.
 import { memo, useEffect, useRef, useState } from 'react'
-import { motion } from '@gpuix/react'
+import { motion } from './spring'
 import { splitFences } from '../core/fences'
 import { safeEnd, settlePoints } from '../core/stream'
 import { concentric, nativeTheme, radiusBase, replyText, replyTheme } from '../ui/theme'

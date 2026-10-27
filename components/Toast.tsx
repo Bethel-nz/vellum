@@ -2,7 +2,7 @@
 // 1.5s, then unmounts whole: its elevation cannot fade with node opacity.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { motion } from '@gpuix/react'
+import { motion } from './spring'
 import { concentric, elevation, radiusBase } from '../ui/theme'
 import { Dot } from './Dot'
 import { enter, offset, useReducedMotion } from './motion'

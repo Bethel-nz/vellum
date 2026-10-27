@@ -1,14 +1,15 @@
 // Motion tokens, translated from arc-library (~/dev/arc-library/registry/motion-tokens.ts) to GPUIX.
 //
-// GPUIX motion is tweens only: width/height/top/right/bottom/left/opacity/borderRadius, with a
-// duration, delay and cubic-bezier ease. There are no springs, scale or keyframes. Arc's springs
-// are all critically damped (bounce 0), so each becomes a tween of the same visual duration on
-// arc's enter curve, which settles the same way without overshooting.
+// GPUIX motion animates width/height/top/right/bottom/left/opacity/borderRadius. Its own motion
+// is tweens only, so `motion.div` in Vellum is components/spring.tsx: the same props, run as
+// springs that keep their speed when retargeted, the way SwiftUI and UIKit animate. A transition
+// may name its spring (`spring.*` below do); any other tween converts to a smooth spring of
+// about the same pace. `duration`/`ease` stay on each token for the renderer's fallback.
 //
 // Every animation goes through `tween()`, which collapses to duration 0 under reduced motion.
 // Full renderer and hit-testing rules: ../MOTION-CONTRACT.md.
 
-import type { MotionTransition } from '@gpuix/react'
+import { springs, type SpringTransition } from './spring'
 import { useSyncExternalStore } from 'react'
 import { systemReduceMotion } from '../core/platform'
 
@@ -22,16 +23,24 @@ export const ease = {
   inOut: [0.65, 0, 0.35, 1] as Bezier,
   /** Loops such as the running-agent pulse. */
   material: [0.4, 0, 0.2, 1] as Bezier,
+  /**
+   * Arc's `smooth` spring itself (critically damped from rest, visual duration .4s), fitted
+   * within 1%: it starts gently, where `enter` jumps 75% of the way in the first fifth.
+   * For panels whose entrance should read as a slide, not a pop.
+   */
+  spring: [0.25, 0.2, 0.15, 0.95] as Bezier,
 }
 
 export const duration = { instant: 0.12, fast: 0.16, exit: 0.18, standard: 0.24, considered: 0.48 }
 
 /** Arc's springs as tweens: snappy for presses, thumbs and indicators; smooth for panels; morph for shape changes. */
 export const spring = {
-  snappy: { duration: 0.26, ease: ease.enter },
-  smooth: { duration: 0.4, ease: ease.enter },
-  morph: { duration: 0.42, ease: ease.standard },
-}
+  snappy: { duration: 0.26, ease: ease.enter, spring: springs.snappy },
+  smooth: { duration: 0.4, ease: ease.enter, spring: springs.smooth },
+  morph: { duration: 0.42, ease: ease.standard, spring: springs.smooth },
+  /** Docked panels opening their space (components/DockPanel.tsx): arc's drawer motion. */
+  panel: { duration: 0.4, ease: ease.spring, spring: springs.smooth },
+} satisfies Record<string, SpringTransition>
 
 /** Stagger steps in seconds; only the first few items stagger so the total stays short. */
 export const stagger = { item: 0.035, maxItems: 4 }
@@ -62,7 +71,7 @@ export function setReducedMotion(value: boolean | undefined) {
 export const useReducedMotion = () => useSyncExternalStore(subscribe, reducedMotion, reducedMotion)
 
 /** A transition that respects reduced motion. */
-export function tween(t: MotionTransition): MotionTransition {
+export function tween(t: SpringTransition): SpringTransition {
   return reduced ? { duration: 0 } : t
 }
 

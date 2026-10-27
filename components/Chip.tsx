@@ -52,7 +52,7 @@ export function Chip({
     >
       {path && (kind === 'file' || kind === 'line') ? (
         <FileIcon path={path} size={11} />
-      ) : skill ? null : <Icon name="folder" size={11} color={m.textMuted} />}
+      ) : <Icon name={skill ? 'zap' : 'folder'} size={11} color={skill ? m.accent : m.textMuted} />}
       {/* A reference, not a form field: text on a 1px rule. GPUIX has no dotted border; dashed is closest. */}
       <div style={{ display: 'flex', flexDirection: 'row', borderBottomWidth: 1, borderStyle: 'dashed', borderColor: rule, paddingBottom: 1, hover: onHover ? { borderColor: skill ? m.accent : m.blue } : undefined }}>
         <text style={{ fontSize: 12.5, lineHeight: 16, color: ink, fontFamily: skill ? font.sans : font.mono, whiteSpace: 'nowrap' }}>{base}</text>

@@ -12,7 +12,7 @@
 // needs you, light when a reply is waiting unread, dim otherwise. Hover shows the title.
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { motion } from '@gpuix/react'
+import { motion } from './spring'
 import { Button as Base } from '@gpuix/react/button'
 import { font } from '../ui/theme'
 import { Button } from './Button'

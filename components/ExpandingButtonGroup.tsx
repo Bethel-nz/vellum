@@ -1,7 +1,8 @@
 // Arc's expanding pill, using the same width tween as the tab strip. The icon keeps its
 // inset while the label is revealed by clipping; the native button owns every press.
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { motion, useGpuixRequired, type EventPayload, type KeyEvent, type PublicInstance } from '@gpuix/react'
+import { useGpuixRequired, type EventPayload, type KeyEvent, type PublicInstance } from '@gpuix/react'
+import { motion } from './spring'
 import { Button as Base } from '@gpuix/react/button'
 import { enter, leave, spring, tween, useReducedMotion } from './motion'
 import { useM } from './theme'

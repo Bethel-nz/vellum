@@ -1,6 +1,7 @@
 // One shadowless wash travels between targets. The hit areas and their content stay still.
 import { useRef } from 'react'
-import { motion, type MotionTransition } from '@gpuix/react'
+import { type MotionTransition } from '@gpuix/react'
+import { motion } from './spring'
 import { spring, tween, useReducedMotion } from './motion'
 import { useM } from './theme'
 
