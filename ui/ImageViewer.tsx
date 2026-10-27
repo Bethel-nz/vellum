@@ -3,7 +3,8 @@
 // paragraph's other images. Esc, the ✕ or a click on the dark around it closes it.
 
 import { useMemo, useRef } from 'react'
-import { DismissableLayer, motion, useWindowSize, type KeyEvent, type PublicInstance } from '@gpuix/react'
+import { DismissableLayer, useWindowSize, type KeyEvent, type PublicInstance } from '@gpuix/react'
+import { motion } from '../components/spring'
 import { Button, Icon } from '../components'
 import { duration, ease, tween, useReducedMotion } from '../components/motion'
 import { imageSize } from '../core/imagesize'

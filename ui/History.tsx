@@ -1,11 +1,12 @@
 // Past notes and recipes, as a sidebar from the left (the shelf in the strip; ⌘Y opens past notes,
 // ⇧⌘Y recipes). Tabs stop at nine, so this is where everything else lives: every note, newest
 // first, grouped by day, with a filter that has focus as it opens. ↑↓ or ⌃N ⌃P move, ↩ opens,
-// esc closes. ⌘K stays the quick jump. Recipes are the other side (ui/Recipes.tsx).
+// esc closes. ⌘K opens the same Library search. Recipes are the other side (ui/Recipes.tsx).
 
-import { useRef } from 'react'
-import { motion, type KeyEvent, type PublicInstance } from '@gpuix/react'
-import { Segmented, SidePanel } from '../components'
+import { useEffect, useRef } from 'react'
+import { useGpuixRequired, type KeyEvent, type PublicInstance } from '@gpuix/react'
+import { motion } from '../components/spring'
+import { Button, Icon, Segmented, SidePanel, useM } from '../components'
 import { enter, offset, useReducedMotion } from '../components/motion'
 import { primary } from '../core/platform'
 import type { Profile } from '../core/profiles'
@@ -53,9 +54,20 @@ export function History({
   const inputRef = useRef<PublicInstance>(null)
   const recipesRef = useRef<PublicInstance>(null)
   const search = useSearchResultsState()
+  const renderer = useGpuixRequired()
+  const m = useM()
+  useEffect(() => {
+    if (!open) return
+    const timer = setTimeout(() => { const field = view === 'recipes' ? recipesRef.current : inputRef.current; if (field) renderer.focusElement?.(field.id) }, 16)
+    return () => clearTimeout(timer)
+  }, [open, view, renderer])
 
   const onKeyDown = (e: KeyEvent) => {
-    if (e.key === 'escape' || (primary(e.modifiers) && e.key === 'y' && !e.modifiers?.shift)) {
+    if (primary(e.modifiers) && e.key === 'k') {
+      e.preventDefault()
+      if (view === 'history') onClose()
+      else onView('history')
+    } else if (e.key === 'escape' || (primary(e.modifiers) && e.key === 'y' && !e.modifiers?.shift)) {
       e.preventDefault()
       onClose()
     } else if (primary(e.modifiers) && e.key === 'y' && e.modifiers?.shift) {
@@ -74,8 +86,9 @@ export function History({
 
   return (
     <SidePanel open={open} onClose={onClose} side="left" width={WIDTH} initialFocus={view === 'recipes' ? recipesRef : inputRef} testId="history">
-      <div style={{ display: 'flex', flexDirection: 'row', paddingLeft: 14, paddingRight: 14, paddingTop: 14, flexShrink: 0 }}>
-        <Segmented<'history' | 'recipes'> pill testId="history-view" value={view} onChange={onView} width={96} options={[{ value: 'history', label: 'Past notes' }, { value: 'recipes', label: 'Recipes' }]} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingLeft: 14, paddingRight: 14, paddingTop: 14, flexShrink: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}><text style={{ fontSize: 14, lineHeight: 20, fontWeight: 600, color: m.text, flexGrow: 1 }}>Library</text><Button onPress={onClose} title="Close Library"><Icon name="x" size={13} /></Button></div>
+        <Segmented<'history' | 'recipes'> pill testId="history-view" value={view} onChange={onView} width="fill" options={[{ value: 'history', label: 'Past notes' }, { value: 'recipes', label: 'Recipes' }]} />
       </div>
       <motion.div
         key={view}
