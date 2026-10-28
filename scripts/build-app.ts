@@ -9,6 +9,7 @@ import pkg from '../package.json'
 import config from '../packager.json'
 import { remove } from './scratch'
 import { prepareNotificationHelper } from './notification-helper'
+import { prepareAgentBrowser } from './agent-browser-runtime'
 
 const root = path.resolve(import.meta.dir, '..')
 const dist = path.join(root, 'dist')
@@ -43,6 +44,7 @@ const built = await Bun.build({
 if (!built.success) throw new AggregateError(built.logs, 'bun build failed')
 
 const helpers = path.join(dist, 'helpers')
+await prepareAgentBrowser({ platform: process.platform, arch: process.arch })
 await prepareNotificationHelper(path.join(helpers, 'Vellum Notifications.app'))
 await Bun.write(path.join(helpers, 'browser'), Bun.file(path.join(root, 'bin/browser')))
 await Bun.$`chmod 755 ${path.join(helpers, 'browser')}`.quiet()
@@ -68,9 +70,9 @@ await remove(path.join(dist, 'bundle', 'Vellum.app'))
 run(['cargo', 'packager', '--release', '--config', 'packager.json'])
 const bundledHelpers = path.join(dist, 'bundle/Vellum.app/Contents/MacOS/helpers')
 cpSync(path.join(helpers, 'Vellum Notifications.app'), path.join(bundledHelpers, 'Vellum Notifications.app'), { recursive: true })
-for (const file of ['browser', 'vellum-mcp.ts']) await Bun.write(path.join(bundledHelpers, file), Bun.file(path.join(helpers, file)))
+for (const file of ['browser', 'vellum-mcp.ts', 'agent-browser', 'agent-browser.manifest.json', 'agent-browser.LICENSE']) await Bun.write(path.join(bundledHelpers, file), Bun.file(path.join(helpers, file)))
 cpSync(path.join(helpers, 'simdriver'), path.join(bundledHelpers, 'simdriver'), { recursive: true })
-await Bun.$`chmod 755 ${path.join(bundledHelpers, 'browser')}`.quiet()
+await Bun.$`chmod 755 ${path.join(bundledHelpers, 'browser')} ${path.join(bundledHelpers, 'agent-browser')}`.quiet()
 // Ad hoc: enough to open on this Mac. Handing it to someone else needs a Developer ID and notarizing.
 run(['codesign', '--force', '--deep', '--sign', '-', path.join(dist, 'bundle', 'Vellum.app')])
 console.log('dist/bundle/Vellum.app')
