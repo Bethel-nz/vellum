@@ -42,14 +42,12 @@ try {
   await wait(1200)
   const shown = await titleY()
 
-  // + asks where, starting on this note's folder; Create adds the tab
+  // + creates a blank page in this project.
   const before = await tabCount()
   await app.getByTestId('new-thread').click()
   await wait(1200)
-  expect('+ asks where', (await app.getByTestId('choose-folder').count()) === 1)
-  await app.getByTestId('create-thread').click()
-  await wait(900)
-  expect('Create adds a tab', (await tabCount()) === before + 1, `${before} → ${await tabCount()}`)
+  expect('+ keeps the page composer visible', (await app.getByTestId('composer').count()) === 1)
+  expect('+ adds a tab', (await tabCount()) === before + 1, `${before} → ${await tabCount()}`)
   await shot('1-plus')
 
   // ⌃⇧⇥ ⌃⇥ step through the tabs, even from the composer, and leave its mode alone. The current tab is the wide one.

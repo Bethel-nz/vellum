@@ -113,9 +113,7 @@ try {
   await wait(400)
 
   await app.getByTestId('new-thread').click()
-  await app.getByTestId('create-thread').waitFor({ timeoutMs: 5_000 })
-  await wait(800)
-  await app.getByTestId('create-thread').click()
+  await c.waitFor({ timeoutMs: 5_000 })
   await wait(1200)
   const metas = (await Promise.all(names(path.join(home, 'threads'), '*.jsonl').map((f) => Bun.file(path.join(home, 'threads', f)).text()))).map((t) => JSON.parse(t.split('\n')[0]!).meta)
   const made = metas.sort((x, y) => y.createdAt.localeCompare(x.createdAt))[0]
@@ -138,11 +136,12 @@ try {
   await app.getByTestId('set-at-launch-new').click()
   await wait(300)
   expect('At launch saves', (await settings()).atLaunch === 'new')
+  const previousNote = (await settings()).lastThreadId
   await app.close()
   app = await launch({ command: 'bun', args: ['app.tsx'], env })
   c = app.getByTestId('composer')
   await c.waitFor({ timeoutMs: 60_000 })
-  expect('…and the next launch opens New note', await until(async () => (await count('create-thread')) === 1))
+  expect('…and the next launch opens a blank note', await until(async () => (await settings()).lastThreadId !== previousNote && (await count('composer')) === 1))
   await shot('4-at-launch')
 } finally {
   await app.close()

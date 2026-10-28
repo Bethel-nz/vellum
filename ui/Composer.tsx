@@ -1,5 +1,5 @@
 // The end of the note, where new writing goes: a plain textarea, the last paragraph of the document.
-// Enter = newline, ⌘↵ = send. "!" runs a shell command, "@" tags skills, folders and
+// Page composers use Enter to send and Shift+Enter for a new line; ⌘↵ also sends. "!" runs a shell command, "@" tags skills, folders and
 // files, "#" tags files only (type ":42" after one to point at a line), and "$" at the start
 // picks a recipe (core/recipes.ts), whose prompt is sent in place of `$name …`.
 //
@@ -13,7 +13,7 @@
 // the draft is empty, ↵ ⌘↵ esc answer the approval card instead of editing.
 
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
-import { DismissableLayer, useGpuixRequired, type KeyEvent, type PublicInstance } from '@gpuix/react'
+import { DismissableLayer, useGpuixRequired, useWindowSize, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { FloatingLayer } from '@gpuix/react/floating'
 import { cycleModes, modes as allModes, type PermissionMode } from '../core/asks'
 
@@ -155,6 +155,8 @@ export function Composer({
   queue = [],
   onSteerQueued,
   onUnqueue,
+  variant = 'note',
+  submitOnEnter = false,
 }: {
   value: string
   tags: Tag[]
@@ -169,10 +171,10 @@ export function Composer({
   /** The draft's chips, while you're not writing in it. */
   tokenCtx?: TokenContext
   composerRef: RefObject<PublicInstance | null>
-  mode: PermissionMode
+  mode?: PermissionMode
   /** The modes the note's agent has (core/agents.ts); ⇧⇥ cycles the ones among Ask, Edits, Plan and Auto. */
-  modes: { id: PermissionMode; label: string; hint: string }[]
-  onMode: (mode: PermissionMode) => void
+  modes?: { id: PermissionMode; label: string; hint: string }[]
+  onMode?: (mode: PermissionMode) => void
   /** Claude is waiting on an approval in this note. */
   asking?: boolean
   onAskKey?: (key: 'allow' | 'always' | 'deny') => void
@@ -195,10 +197,18 @@ export function Composer({
   queue?: QueuedMessage[]
   onSteerQueued?: (index: number) => void
   onUnqueue?: (index: number) => void
+  /** New note shares tagging, with Enter to open the draft and a larger writing surface. */
+  variant?: 'note' | 'new-note'
+  /** Page composer: Enter sends; Shift+Enter inserts a line. ⌘Enter still sends. */
+  submitOnEnter?: boolean
 }) {
   const m = useM()
   const agent = useAgent()
   const renderer = useGpuixRequired()
+  const window = useWindowSize()
+  const newNote = variant === 'new-note'
+  const enterSends = newNote || submitOnEnter
+  const minRows = newNote ? window.height < 680 ? 2 : 4 : 1
   // It autofocuses, and an autofocused textarea never reports focus, so it starts focused.
   const [focused, setFocused] = useState(true)
   // focusElement doesn't report onFocus, so this says so itself.
@@ -251,8 +261,10 @@ export function Composer({
 
   const onKeyDown = (e: KeyEvent) => {
     const mods = e.modifiers
+    // The sheet also owns ⌘Enter; this input handles it first, including completion picks.
+    if (enterSends && e.key === 'enter') e.stopPropagation()
     if (primary(mods) && e.key === 'v') onPaste?.()
-    if (e.key === 'tab' && mods?.shift && !mods.ctrl && !open) {
+    if (onMode && mode && modes && e.key === 'tab' && mods?.shift && !mods.ctrl && !open) {
       e.preventDefault()
       const cycle = cycleModes.filter((id) => modes.some((x) => x.id === id))
       const i = cycle.indexOf(mode)
@@ -268,6 +280,11 @@ export function Composer({
       }
     }
     if (open) {
+      if (enterSends && (e.key === 'down' || e.key === 'up')) {
+        e.preventDefault()
+        setActive((a) => (a + (e.key === 'down' ? 1 : count - 1)) % count)
+        return
+      }
       if ((e.key === 'tab' && !mods?.ctrl) || (primary(mods) && e.key === 'enter')) {
         e.preventDefault()
         pickActive()
@@ -290,14 +307,14 @@ export function Composer({
     }
   }
 
-  const shell = value.startsWith('!')
+  const shell = !newNote && value.startsWith('!')
   const chips = !focused && !shell && tokenCtx && tagsIn(value, tags).length > 0
   const called = value.startsWith('$') ? recipeCall(value, recipes) : undefined
   const folder = workspace ? workspace.split(/[\\/]/).filter(Boolean).pop() : undefined
   return (
     // A click elsewhere doesn't take a GPUI field's focus, so it's what "writing elsewhere" means
     // here, as for a paragraph being edited (ui/blocks.tsx). Typing brings the textarea back.
-    <div onMouseDownOutside={() => setFocused(false)} style={{ display: 'flex', flexDirection: 'column', gap: 6, position: 'relative' }}>
+    <div onMouseDownOutside={() => setFocused(false)} style={{ display: 'flex', flexDirection: 'column', gap: 6, position: 'relative', ...(newNote ? { minHeight: minRows * 33 } : {}) }}>
       {open ? (
         <DismissableLayer onEscapeKeyDown={() => setDismissed(recipesOpen ? value : query)}>
           <TagPopup items={rows} active={active} onPick={(i) => (recipesOpen ? pickRecipe(recipeItems[i]!) : pick(items[i]!))} onHover={setActive} onClose={() => setDismissed(recipesOpen ? value : query)} />
@@ -306,17 +323,19 @@ export function Composer({
       {queue.length ? <Queued queue={queue} canSteer={canSteer} tokenCtx={tokenCtx} onSteer={onSteerQueued} onRemove={onUnqueue} /> : null}
       <textarea
         ref={composerRef}
-        testId="composer"
+        testId={newNote ? 'new-note-writing' : 'composer'}
+        aria-label={newNote ? 'New note draft' : undefined}
         value={value}
         placeholder={placeholder}
-        minRows={1}
-        maxRows={10000}
+        minRows={minRows}
+        maxRows={newNote ? window.height < 680 ? 3 : 6 : 10000}
         autoFocus
         theme={{ caret: m.appearance === 'dark' ? m.text : m.accent, textFaint: m.textFaint }}
         style={{
           width: '100%',
           minWidth: 0,
           ...(shell ? { fontFamily: font.mono, fontSize: 13, lineHeight: 21 } : { fontFamily: font.sans, ...type.user, fontWeight: 500 }),
+          ...(newNote ? { fontSize: 22, lineHeight: 33, fontWeight: 400 } : {}),
           color: m.text,
           backgroundColor: '#00000000',
           borderWidth: 0,
@@ -333,7 +352,7 @@ export function Composer({
           if (dismissed !== undefined && activeQuery(next) !== dismissed && next !== dismissed) setDismissed(undefined)
         }}
         // Plain ↵ arrives here, not in onKeyDown: it picks a tag, or allows a waiting ask.
-        onSubmit={open ? pickActive : asking && onAskKey && !value.trim() ? () => onAskKey('allow') : undefined}
+        onSubmit={open ? pickActive : asking && onAskKey && !value.trim() ? () => onAskKey('allow') : enterSends ? () => onSend() : undefined}
         onKeyDown={onKeyDown}
         onFocus={() => {
           setFocused(true)
@@ -345,6 +364,13 @@ export function Composer({
         }}
       />
       {chips ? <TokenText testId="draft-read" chipPrefix="draft-chip" text={value} tags={tags} ctx={tokenCtx} color={m.text} onPress={focusInput} /> : null}
+      {submitOnEnter && !running && !asking && !open ? <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Meta color={m.textMuted}>{keys('↵ send · ⇧↵ new line · @ skills & files')}</Meta>
+        <div style={{ flexGrow: 1 }} />
+        <Quiet testId="send-message" title="Send message (Enter)" onPress={() => onSend()}>
+          <Icon name="send" size={14} color={m.textMuted} />
+        </Quiet>
+      </div> : null}
       {shell ? <Meta>{keys(`⌘↵ runs this in ${folder ?? 'the folder'}`)}</Meta> : null}
       {called && !open ? <Meta>{keys(`⌘↵ sends the $${called.recipe.name} recipe${called.recipe.mode ? ` in ${modeLabel(called.recipe.mode)}` : ''}${called.input.trim() ? ', with what follows as its input' : ''}`)}</Meta> : null}
       {running && value.trim() && !shell && !called && !open ? (

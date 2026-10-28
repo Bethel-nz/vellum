@@ -58,6 +58,8 @@ export function writeJson(file: string, value: unknown) {
 }
 
 export type Settings = {
+  /** First-run setup was completed or explicitly skipped. */
+  onboardingComplete?: boolean
   /** dark (default) or light. Older files say groknight, smoke or frost (ui/theme.ts materialNamed). */
   material?: 'dark' | 'light' | 'groknight' | 'smoke' | 'frost'
   /** Tab strip: always shown, collapsed while writing, or hidden (⌘⇧T reveals). */
@@ -87,7 +89,7 @@ export type Settings = {
   /** What a new note starts with; unset is Edits and the agent's own effort. */
   newNoteMode?: PermissionMode
   newNoteThink?: Think
-  /** The account the New note dialog starts on; unset is the open note's. A folder's own account still wins. */
+  /** The default account for new notes; unset follows the current note or the project's account. */
   newNoteProfile?: string
   /** At launch: the note you had open, or a new one. */
   atLaunch?: 'last' | 'new'
@@ -100,6 +102,9 @@ export type Settings = {
   /** Local active-time and agent-runtime counters, paused when false. */
   activityTracking?: boolean
   lastThreadId?: string
+  /** Project shown when no note is open, and the last active note in each project. */
+  lastProject?: string
+  lastProjectNotes?: Record<string, string>
   /** Thread ids open as tabs, in order. */
   openTabs?: string[]
 }

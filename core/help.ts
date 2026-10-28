@@ -13,7 +13,8 @@ export const helpMarkdown = `Vellum is a note you talk to. You write; Claude ans
 
 | Key | What it does |
 |---|---|
-| ⌘↵ | Send what you wrote |
+| ↵ or ⌘↵ | Send what you wrote |
+| ⇧↵ | Start a new line |
 | ⇧⇥ | Change the mode: Ask, Edits, Plan, Auto |
 | @ | Tag a file, folder or skill |
 | # | Tag a file; \`#path:42\` points at a line |
@@ -48,7 +49,8 @@ A queued message has Steer now and Remove under it until it goes.
 
 | Key | What it does |
 |---|---|
-| ⌘N | New note |
+| ⌘N | Blank note in this project |
+| ⌘O | Open a project folder |
 | ⇧⌘W | Close the tab |
 | ⌘1–⌘8 | Go to that tab; ⌘9 the last |
 | ⌃⇥ ⌃⇧⇥ | Next or previous tab (also ⇧⌘] ⇧⌘[) |
