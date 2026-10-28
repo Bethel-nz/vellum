@@ -1,11 +1,30 @@
 ---
 name: simdriver
-description: Drive a live iOS simulator on the user's Mac — see the screen, tap, type, fill, gesture, and manage apps — through the simdriver Node package. Use when a task involves an iPhone or iPad simulator: launching or testing an app, tapping or typing on the phone, filling forms, screenshots, accessibility snapshots, permissions, notifications, location or appearance changes, or resetting app data. Triggers include "test on the simulator", "open the app in the simulator", "tap / type / swipe on the phone", "screenshot the simulator", "grant camera permission", "push a test notification", "wipe the app and start over". Prefer simdriver over xcrun simctl UI scripting, AppleScript, or screenshot-diffing for anything that reads or touches the screen.
+description: Drive a live iOS simulator on the user's Mac — see the screen, tap, type, fill, gesture, and manage apps — through the simdriver Node package. Use when a task involves an iPhone or iPad simulator: launching or testing an app, tapping or typing on the phone, filling forms, screenshots, accessibility snapshots, permissions, notifications, location or appearance changes, or resetting app data. Triggers include "test on the simulator", "open the app in the simulator", "tap / type / swipe on the phone", "screenshot the simulator", "grant camera permission", "push a test notification", "wipe the app and start over", "open this deep link". Use simdriver instead of xcrun simctl for everything it covers (deep links/URLs, launch, permissions, push, location, appearance, status bar, clipboard, app data), and instead of AppleScript or screenshot-diffing for anything that reads or touches the screen.
 ---
 
 # simdriver
 
-Control apps on the user's iOS simulator by reading or operating the screen. Prefer purpose-built interfaces when available — the app's own test target, deep links, or `xcrun simctl` for device lifecycle — and use simdriver for the live UI those cannot reach.
+Control apps on the user's iOS simulator by reading or operating the screen. simdriver is the one tool for the simulator: the screen, input, deep links, apps, permissions, notifications, location, appearance, status bar, clipboard, and app data all go through the driver, so every action targets the same device and a flow stays in one `steps()` run. Reach for `xcrun simctl` only for what simdriver does not do (see "Not covered" below). From a shell without Node, the `simdriver` command line does the same things (the simdriver-cli skill).
+
+### Use simdriver instead of `xcrun simctl`
+
+| Instead of | Use |
+|---|---|
+| `simctl openurl booted <url>` (deep links, universal links, `https://`) | `driver.openUrl(url)`, or `{ action: "openUrl", url }` inside `steps()` followed by a `waitFor` |
+| `simctl launch` / `terminate` | `launch(bundleId)` / `terminate(bundleId)` |
+| `simctl listapps` | `driver.apps()` or `listApps(udid)` |
+| `simctl io booted screenshot` | `agent.snapshot({ image: true })` (elements listed too) |
+| `simctl privacy …` | `grantPermission` / `revokePermission` / `resetPermission` |
+| `simctl push` | `pushNotification(bundleId, payloadPath)` |
+| `simctl location … set` | `setLocation(lat, lon)` |
+| `simctl ui … appearance` / `content_size` | `setAppearance(…)` / `setContentSize(…)` |
+| `simctl status_bar …` | `statusBarOverride()` / `statusBarClear()` |
+| `simctl pbcopy` / `pbpaste` | `clipboardWrite(text)` / `clipboardRead()` |
+| `simctl keychain … reset`, wiping an app's data container | `resetKeychain()` / `clearAppData(bundleId)` |
+| `simctl list devices`, `boot`, `shutdown` | `listDevices()`, `boot(udid)`, `shutdown(udid)` |
+
+**Not covered — use `xcrun simctl` for these:** installing or uninstalling a build (`simctl install <udid> <path.app>`, `uninstall`), creating, erasing or cloning devices, adding photos/videos (`addmedia`), streaming device logs (`simctl spawn <udid> log stream …`), and recording video (to see what a step does frame by frame, use `record` — stills, not video). After any of them, take a fresh `snapshot()` before touching the screen.
 
 - Use the `simdriver` package (Bun, Node 20+, or an Electron main process; macOS on Apple Silicon with Xcode and an iOS runtime installed) for all simulator UI actions.
 - Do not drive the simulator with AppleScript, `osascript`, CGEvent synthesis, or screenshot differencing. Do not infer state from `simctl io screenshot` output; `snapshot()` already returns the elements.
@@ -93,12 +112,26 @@ type StepsReport = {
   failed: { index: number; code: string; error: string } | null;
   screenshots?: { target: string; png: Uint8Array }[];
   snapshot: { text: string } | null; // the screen as it is where the run stopped
+  record?: Recording; // present when the first step was `record`
+};
+
+type Recording = {
+  ended: "idle" | "time" | "stepFailed" | "error"; // idle = actions done and the screen stayed still
+  extended: boolean; // actions ran past timeMs and the recording with them
+  settledMs: number | null; // last change, ms from the start; null = still changing at the end
+  sheets: Uint8Array[]; // contact sheets, read first
+  sheetFiles: string[]; // empty from Node (only the CLI writes files)
+  frames: { index: number; tMs: number; change: number; png: Uint8Array; file: string | null }[]; // full size, only what changed
+  health: { received: number; sampled: number; skippedByPipeline: number; skippedByRecorder: number; maxGapMs: number; gapsOver34ms: number };
+  requestedMs: number; durationMs: number; actionStartMs: number | null; actionEndMs: number | null; error: string | null;
 };
 
 declare class Agent {
   snapshot(options?: { settleMs?: number; image?: boolean; grid?: boolean; cols?: number }): Promise<Snapshot>;
   tap(target: string, options?: { expect?: string }): Promise<{ target: string; name: string; at: [number, number] }>;
   steps(steps: Step[]): Promise<StepsReport>;
+  /** Record the screen around `steps` (none: just watch) = steps([{ ...options, action: "record" }, ...steps]). */
+  record(options: { timeMs?: number; idleMs?: number; full?: boolean; fps?: number; maxFrames?: number }, steps?: Step[]): Promise<StepsReport>;
 }
 
 /** A named grid over a screen: rows lettered down (A, B, …), columns numbered across. */
@@ -139,7 +172,8 @@ type Step =
   | { action: "setLocation"; lat: number; lon: number }
   | { action: "appearance"; appearance: "light" | "dark" }
   | { action: "clipboardRead" }
-  | { action: "clipboardWrite"; text: string };
+  | { action: "clipboardWrite"; text: string }
+  | { action: "record"; timeMs?: number; idleMs?: number; full?: boolean; fps?: number; maxFrames?: number }; // first step only
 ```
 
 `listDevices()`, `listApps(udid)`, `boot(udid)`, and `shutdown(udid)` run without a driver. Everything else needs a started `Driver`. Permission services: `all, calendar, contacts, contacts-limited, location, location-always, media-library, microphone, motion, photos, photos-add, reminders, siri`. Content sizes: `extra-small … extra-extra-extra-large` and the `accessibility-` sizes.
@@ -166,6 +200,7 @@ After performing one or more actions, take a `snapshot()` before deciding what t
 - When a screen exposes no accessibility elements (games, maps, camera), pass `grid: true` and address cells by name (`B3`); `pinch`, `rotate`, `pan`, and `transform` default to the target's centre, or the screen's.
 - Prefer `fill` over tap-and-type for text fields: it verifies the committed value and reports a mismatch or an unobserved commit. Pass `secret: true` for passwords so the value is redacted from reports.
 - Use `waitFor` instead of a fixed delay, and `alert` to get, wait for, accept, or dismiss a system alert; dismiss only presses known safe labels, so prefer accept with the button the user named.
+- When the result shows up over time (a transition, a toast, a spinner, a stutter), `record` the step and read `report.record.sheets[0]` first, then pull `frames[i]` by index. `agent.record({ timeMs: 5000 }, [{ action: "tap", target: "Save" }])`; `record` is valid only as the first step and covers the whole run. Defaults: `timeMs` 5000 (max 30000), `idleMs` 400, `fps` 30 (25-30), `maxFrames` 24 (2-32). It ends once the screen is still for `idleMs` after the actions finish; `timeMs` caps it, but actions still running then extend it (`extended`); `full` records the whole time. It samples 25-30 frames a second, so a change shorter than ~33 ms can be missed: hold the state longer (a long press) or record again. Check `ended` (`error` = stream lost), `settledMs` (null = never settled) and `health` (`gapsOver34ms`, `maxGapMs` = stutter). On the sheet each tile is labelled `#<index> +<t>ms` and its border says when it was taken: grey before the actions, blue during, green after (a legend at the top repeats this). A stalled stream (the frame helper restarting) looks like a still screen, so it can read as `idle`/settled. Needs the `simdriver` package 0.2.0 or newer.
 - Scrolls avoid the detected keyboard; `keyboardDismiss` removes it and verifies it is gone. In Safari, send `cmd+l` before the snapshot to expose and focus the address field.
 
 ```javascript
