@@ -53,6 +53,24 @@ export function saveProfiles(list: Profile[]) {
   writeJson(paths.profiles, list)
 }
 
+/** Onboarding can use an agent's existing local sign-in without making an isolated account. */
+export function existingAgentProfile(agent: AgentId): Profile {
+  const list = loadProfiles()
+  const existing = list.find((p) => agentFor(p).id === agent && p.configDir === null) ?? list.find((p) => agentFor(p).id === agent)
+  if (existing) return existing
+  const title = agentFor({ agent }).title
+  const profile: Profile = {
+    id: slug(title, new Set(list.map((p) => p.id))),
+    name: title,
+    agent,
+    configDir: null,
+    color: PROFILE_COLORS[list.length % PROFILE_COLORS.length]!,
+    workspaces: [],
+  }
+  saveProfiles([...list, profile])
+  return profile
+}
+
 function slug(name: string, taken: Set<string>) {
   const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'profile'
   let id = base

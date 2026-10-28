@@ -1,8 +1,8 @@
 // Inline context references. A tag in your text (`@skill`, `@folder`, `#file`, `#file:42`) reads
 // as a link in a document, not a form chip (UI-FIXES §7): its file-type glyph, then the path on a
-// 1px dashed blue rule, with `:42` in muted. Skills are violet text on a violet rule.
+// 1px dotted blue rule, with `:42` in muted. Skills are violet text on a violet rule.
 
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { diffInk, font, radiusBase } from '../ui/theme'
 import { FileIcon } from './FileIcon'
 import { Icon } from './Icon'
@@ -27,6 +27,7 @@ export function Chip({
   testId?: string
 }) {
   const m = useM()
+  const [ruleWidth, setRuleWidth] = useState(0)
   const skill = kind === 'skill'
   const label = String(children)
   // `:42` and `:12-18` read as a suffix of the path, not part of it.
@@ -53,10 +54,13 @@ export function Chip({
       {path && (kind === 'file' || kind === 'line') ? (
         <FileIcon path={path} size={11} />
       ) : <Icon name={skill ? 'zap' : 'folder'} size={11} color={skill ? m.accent : m.textMuted} />}
-      {/* A reference, not a form field: text on a 1px rule. GPUIX has no dotted border; dashed is closest. */}
-      <div style={{ display: 'flex', flexDirection: 'row', borderBottomWidth: 1, borderStyle: 'dashed', borderColor: rule, paddingBottom: 1, hover: onHover ? { borderColor: skill ? m.accent : m.blue } : undefined }}>
+      {/* Native borders don't draw dots. Measured dots keep the reference's rule exact. */}
+      <div onLayout={(event) => setRuleWidth(event.width ?? 0)} style={{ position: 'relative', display: 'flex', flexDirection: 'row', paddingBottom: 2 }}>
         <text style={{ fontSize: 12.5, lineHeight: 16, color: ink, fontFamily: skill ? font.sans : font.mono, whiteSpace: 'nowrap' }}>{base}</text>
         {line ? <text style={{ fontSize: 12.5, lineHeight: 16, color: m.textMuted, fontFamily: font.mono, whiteSpace: 'nowrap' }}>{`:${line[1]}`}</text> : null}
+        <div aria-hidden style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 1, display: 'flex', flexDirection: 'row', gap: 3, overflow: 'hidden', pointerEvents: 'none' }}>
+          {Array.from({ length: Math.ceil(ruleWidth / 4) }, (_, index) => <div key={index} style={{ width: 1, height: 1, flexShrink: 0, borderRadius: 0.5, backgroundColor: rule }} />)}
+        </div>
       </div>
     </div>
   )
