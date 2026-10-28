@@ -146,7 +146,9 @@ async function prompt(sessionId: string, text: string) {
     return { stopReason: 'end_turn' }
   }
   if (/\bstream\b/i.test(text)) {
-    for (const piece of STREAMED.match(/[\s\S]{1,6}/g)!) {
+    // "overflow" streams it six times over: a reply taller than the window, for following.
+    const reply = /\boverflow\b/i.test(text) ? Array(6).fill(STREAMED).join('\n\n') : STREAMED
+    for (const piece of reply.match(/[\s\S]{1,6}/g)!) {
       update(sessionId, { sessionUpdate: 'agent_message_chunk', messageId: `m${turn}`, content: { type: 'text', text: piece } })
       await Bun.sleep(25)
     }

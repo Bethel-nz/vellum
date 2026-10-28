@@ -154,6 +154,7 @@ export function Composer({
   canSteer,
   queue = [],
   onSteerQueued,
+  onForceQueued,
   onUnqueue,
   variant = 'note',
   submitOnEnter = false,
@@ -191,11 +192,13 @@ export function Composer({
   recipes?: Recipe[]
   /** Claude is working in this note: ⌘↵ queues what you write for after the turn. */
   running?: boolean
-  /** …and ⌥⌘↵ (or a queued message's Send now) can put it into the turn instead. */
+  /** …and ⌥⌘↵ (Steer) can put it into the turn instead; without this, Steer stops the turn and sends it now. */
   canSteer?: boolean
   /** Messages queued while Claude works, oldest first. */
   queue?: QueuedMessage[]
   onSteerQueued?: (index: number) => void
+  /** Stop the running turn and send this queued message right away, ahead of the rest. */
+  onForceQueued?: (index: number) => void
   onUnqueue?: (index: number) => void
   /** New note shares tagging, with Enter to open the draft and a larger writing surface. */
   variant?: 'note' | 'new-note'
@@ -320,7 +323,7 @@ export function Composer({
           <TagPopup items={rows} active={active} onPick={(i) => (recipesOpen ? pickRecipe(recipeItems[i]!) : pick(items[i]!))} onHover={setActive} onClose={() => setDismissed(recipesOpen ? value : query)} />
         </DismissableLayer>
       ) : null}
-      {queue.length ? <Queued queue={queue} canSteer={canSteer} tokenCtx={tokenCtx} onSteer={onSteerQueued} onRemove={onUnqueue} /> : null}
+      {queue.length ? <Queued queue={queue} canSteer={canSteer} tokenCtx={tokenCtx} onSteer={onSteerQueued} onForce={onForceQueued} onRemove={onUnqueue} /> : null}
       <textarea
         ref={composerRef}
         testId={newNote ? 'new-note-writing' : 'composer'}
@@ -376,14 +379,12 @@ export function Composer({
       {running && value.trim() && !shell && !called && !open ? (
         // Under what you're writing while Claude works: after this turn, or into it now.
         <div testId="draft-actions" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: -8 }}>
-          <Quiet testId="draft-queue" title="Claude picks it up next turn" onPress={() => onSend(false)}>
+          <Quiet testId="draft-queue" title={`${agent.title} picks it up next turn`} onPress={() => onSend(false)}>
             <Meta color={m.textMuted}>{keys('Queue ⌘↵')}</Meta>
           </Quiet>
-          {canSteer ? (
-            <Quiet testId="draft-steer" title="Tell Claude now, in this turn" onPress={() => onSend(true)}>
-              <Meta color={m.textMuted}>{keys('Steer ⌥⌘↵')}</Meta>
-            </Quiet>
-          ) : null}
+          <Quiet testId="draft-steer" title={canSteer ? `Tell ${agent.title} now, in this turn` : 'Stop this turn and send it now'} onPress={() => onSend(true)}>
+            <Meta color={m.textMuted}>{keys('Steer ⌥⌘↵')}</Meta>
+          </Quiet>
         </div>
       ) : null}
       {asking && !value.trim() ? <Meta color={m.blue}>{keys(`${agent.title} is waiting on you · ↵ allow · ⌘↵ always · esc deny`)}</Meta> : null}
@@ -397,10 +398,12 @@ export type QueuedMessage = { id?: string; text: string; tags?: Tag[]; images?: 
 
 /**
  * What you queued, above the paragraph you're writing: your paragraphs as they'll be sent,
- * faded until Claude picks them up next turn. Each can still go now (Steer now) or be taken out.
+ * faded until Claude picks them up next turn. Each can still go now — into this turn
+ * (Steer now) or as its own turn right away (Send now) — or be taken out.
  */
-function Queued({ queue, canSteer, tokenCtx, onSteer, onRemove }: { queue: QueuedMessage[]; canSteer?: boolean; tokenCtx?: TokenContext; onSteer?: (index: number) => void; onRemove?: (index: number) => void }) {
+function Queued({ queue, canSteer, tokenCtx, onSteer, onForce, onRemove }: { queue: QueuedMessage[]; canSteer?: boolean; tokenCtx?: TokenContext; onSteer?: (index: number) => void; onForce?: (index: number) => void; onRemove?: (index: number) => void }) {
   const m = useM()
+  const agent = useAgent()
   return (
     <div testId="queue" style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 12 }}>
       {queue.map((item, i) => (
@@ -415,8 +418,13 @@ function Queued({ queue, canSteer, tokenCtx, onSteer, onRemove }: { queue: Queue
           <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 2 }}>
             <Meta>Picked up next turn</Meta>
             {canSteer && onSteer ? (
-              <Quiet testId={`queued-steer-${i}`} title="Tell Claude now, in this turn" onPress={() => onSteer(i)}>
+              <Quiet testId={`queued-steer-${i}`} title={`Tell ${agent.title} now, in this turn`} onPress={() => onSteer(i)}>
                 <Meta color={m.textMuted}>Steer now</Meta>
+              </Quiet>
+            ) : null}
+            {onForce ? (
+              <Quiet testId={`queued-send-${i}`} title="Stop this turn and send it right away" onPress={() => onForce(i)}>
+                <Meta color={m.textMuted}>Send now</Meta>
               </Quiet>
             ) : null}
             {onRemove ? (

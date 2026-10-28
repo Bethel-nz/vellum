@@ -174,6 +174,22 @@ export function glideToItem(r: Renderer, list: number, index: number, offset = 0
   return glide(r, list, Math.round(lo), at, land, onDone)
 }
 
+/**
+ * Keeps a streaming list pinned to its end: while the viewport sits within `slack` px
+ * of the end, glides it back down as new rows land above; further up, leaves the reader
+ * where they are. A scroll of your own stops the glide, and then reads as further away,
+ * so nothing restarts it. A glide already running is left to land: restarting it on every
+ * chunk kept it from ever reaching the end, so the list never followed the tail again.
+ */
+export function followStreaming(r: Renderer, list: number, slack = 160): void {
+  if (running) return
+  const viewport = anchorOf(r, list)?.[2] ?? 0
+  if (!viewport) return
+  const from = distanceToEnd(r, list, viewport * FAR)
+  if (from > slack) return
+  glideToEnd(r, list, from)
+}
+
 /** A CSS-style cubic-bezier easing: progress for time `t` in [0, 1]. */
 function bezier([x1, y1, x2, y2]: [number, number, number, number]) {
   const at = (a: number, b: number, s: number) => 3 * a * (1 - s) ** 2 * s + 3 * b * (1 - s) * s ** 2 + s ** 3

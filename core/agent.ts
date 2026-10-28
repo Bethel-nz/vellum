@@ -253,6 +253,11 @@ export class AgentRunner {
       .catch((e) => this.#fail(e))
   }
 
+  /** Whether this agent said, as it started, that it takes messages mid-turn at all. */
+  get steers() {
+    return this.#steering
+  }
+
   /** Whether a message now could go into the running turn rather than wait for the next one. */
   get canSteer() {
     return this.#steering && this.#turn && this.#prompting && !this.#stopping && this.#session !== undefined && this.#conn !== undefined && !this.#conn.closed
