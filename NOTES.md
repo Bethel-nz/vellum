@@ -2,6 +2,54 @@
 
 Findings, choices and deviations from the build prompt. Newest decisions win.
 
+## 2026-10-26 — the agent's simulator settings tools
+
+simdriver's agent layer was already the agent's (mobile_snapshot, mobile_tap, mobile_steps).
+The Driver surface below it had no tools, so the agent could act on the screen but not on
+the phone around it. Four tools joined them (core/bridge.ts), all on the live phone the
+mobile view holds, all through `withMobileAgent` so the view says "An agent is using the phone":
+
+- **mobile_apps** lists installed apps with their bundle ids — the ids launch, terminate,
+  permissions, notifications and data resets all take. System apps included.
+- **mobile_configure** runs settings actions in order: `permission{op: grant|revoke|reset,
+  service, bundleId}`, `contentSize{size}`, `statusBar{op: override|clear}` (override pins
+  9:41 and a full battery). Every action is validated before any runs — a typo in the last
+  action touches nothing — and it stops at the first real failure saying how far it got.
+  Services and sizes are the lists this Xcode's simctl documents, verified against
+  `xcrun simctl privacy` / `xcrun simctl ui` on 27.x, not guessed.
+- **mobile_notify** delivers an APNs payload as a local notification: the JSON is written to
+  a temp file under VELLUM_HOME for `simctl push`, then removed.
+- **mobile_reset** is the destructive one, alone so an approval card names it: `app-data`
+  erases one app's container (terminating it first), `keychain` empties the whole phone's.
+
+`pan{dx,dy}` and `transform{dx,dy,scale,degrees}` were missing from mobile_steps' advertised
+actions (simdriver takes them); the description now lists them.
+
+- **simdriver fix found by the check:** `clearAppData` errored when the app wasn't running —
+  simctl says "found nothing to terminate" (ESRCH), which simdriver only tolerated as "not
+  running". Fixed in simdriver (6f33384), released as **simdriver 0.1.1**; a second release,
+  **0.1.2** (7d8b9fb), corrected the package's hand-written `index.d.ts`, which had been
+  declaring the napi surface instead of the wrapper — `Driver.agent()` was missing and the
+  Agent layer's signatures were wrong. Vellum pins 0.1.2; the lockfile carries the published
+  tarball's sha512. Not-running is the common case for an erase.
+- `mobile_steps`'s description keeps naming every action; schemas stay loose the way the
+  existing tools are, and validation lives in the tool.
+- Checks: check-mobile now covers all seven tools — apps lists bundle ids, a configure batch
+  runs in order (grant→reset photos, extra-large→large text, status bar override→clear, so
+  the phone ends as it was), a bad service is refused before anything runs, a notification
+  delivers, app-data erases (verified with the fixed simdriver), and an unknown `what`
+  errors. First full run passed everything but the erase (the simdriver bug above).
+  check-bridge's stdio round trip now names every tool (it counted 6, which mobile had
+  already outgrown); the vellum six always, the mobile seven where a simulator can run.
+- **Never overwrite a signed native addon in place.** `cp` new bytes over the existing
+  `.node` in node_modules leaves the old file object's `com.apple.provenance` xattr behind;
+  the cdhash no longer matches and macOS SIGKILLs every process at `require` — no error, no
+  log, exit 137. A check whose app dies that way doesn't fail fast: the automation spins at
+  ~98% CPU waiting on a window that will never paint (two check runs wedged this way, and a
+  bare probe died at import). Replace the file (`rm` then `cp`) so the new bytes carry their
+  own attributes; then the load works. If a bun process exits 137 with no output right after
+  touching a native module, suspect this before anything else.
+
 ## Stack and versions
 
 - Bun 1.4.3, TypeScript 7.0.2, React 19.3.1
@@ -110,6 +158,11 @@ Not used: `ghostty-web`, `restty` (no need once option 1 worked).
 
 ## GPUIX findings
 
+- **`<svg source>` honours `fill-rule="evenodd"`** (spiked with the Model Context Protocol
+  logo, whose bands are single paths with counter-space): it renders the knot exactly, tinted
+  by the `color` style when the svg carries no `fill` — the way the bundled brand marks work.
+  `McpMark`'s generic fallback is the MCP logo now (`assets/brands/mcp/mcp.svg`), not the
+  `layers` glyph.
 - **⌘W can't be taken.** GPUIX binds ⌘W natively to `gpuix_app::CloseWindow` (with ⌘Q, ⌘H, ⌥⌘H, ⌘M).
   Key actions run before JS handlers, and there's no option to unbind them, so ⌘W closes the only
   window and the app quits with exit 0 (`spikes/launch-exit.ts cmd-w`). Close tab is ⇧⌘W instead.
@@ -1117,6 +1170,51 @@ still reach it. "Not writing" is a press outside the composer (`onMouseDownOutsi
 paragraph being edited, because a click on empty space doesn't take a GPUI field's focus. Typing
 brings the textarea straight back. Editing a tag's name turns it back into a `#` search.
 
+## 2026-10-24 — JSON in tool details
+
+Tool inputs and JSON object/array results use components/JsonViewer.tsx with type colors, nested branches, search with match navigation, paged children,
+copy value/path, and the current path below the tree. Text results keep the existing text view.
+Tool cards keep their frameless surface; the standalone viewer can draw its own frame.
+
+Rows unfold with height/opacity tweens, and the active wash moves with top. Branch closure is
+atomic. Native scroll offsets jump after row layout settles, since scroll position cannot be
+tweened. Plain treeitem overlays own row clicks and keyboard input. Tool headers now use the
+same visual/overlay split, so the parent entrance cannot consume a JSON control's click.
+
+Native checks passed at 800px dark/full motion and 460px light/reduced motion: nested paths,
+search beyond the first page, revealing the match, clearing search, arrow/Home/End navigation,
+paging, expand/collapse, ten rapid toggle pairs, immediate tool/header clicks during entrance,
+and JSON/text tool results. A scratch Vellum document at 1080px also passed structured input,
+result search and composer draft persistence. The source passed scoped Biome checks. No build
+or tsc was run. Preview data stayed in scratch storage.
+
+## 2026-10-24 — notification center in the component kit
+
+components/NotificationCenter.tsx provides the notification panel and bell control.
+It exports NotificationCenter and NotificationTrigger. The component accepts items
+and read/dismiss/open callbacks; fresh caller data replaces its local view. It is deliberately
+not mounted in app.tsx and has no agent-event producer or notification storage.
+
+The panel has All/Unread views, expandable descriptions, mark read/unread, mark all read,
+dismiss, clear read, and empty states. The bell badge uses the real unread count, showing 9+
+above nine. Actor photos are optional and otherwise use initials. Counts fade/rise, the view wash
+slides, details reveal to measured heights, and the read action tweens between measured widths.
+All motion uses kit tokens and reduced motion; the elevated panel closes atomically.
+
+Native checks found that mouse-down could reach the full-window backdrop beneath click-only
+panel controls. PopoverBackdrop now accepts an optional excluded content ref, used here to
+ignore presses inside the panel. The bell suppresses only the click associated with that outside
+press, reset by the next mouse/key down. Native scrollIntoView did not reveal the last row in
+this anchored list, so keyboard navigation uses measured bounds and the scroll parent's offset;
+Scroll exposes an optional native ref for that. Existing callers keep their prior defaults.
+
+Checks passed at 860px dark/full motion (uncontrolled open) and 360px light/reduced motion
+(controlled open): real badge counts, read/unread and bulk callbacks, filtering, dismiss, empty
+states, caller-data updates, a 30-row scroll list, keyboard End/reveal, focus restoration,
+composer input, ten rapid close-button cycles, ten rapid bell-toggle cycles, and outside dismissal.
+The panel stays within the window at both widths. Scoped Biome and diff whitespace checks passed.
+The temporary preview used sample data only; no build, tsc, app wiring or agent integration ran.
+
 ## 2026-10-24 — the tree as a card, git status, a right-click menu, resizing, long lists
 
 The tree is an inset card down the pane's left side: the folder's name, then search, new file
@@ -1155,59 +1253,586 @@ on; a block highlights alone, so a comment that crosses into the next can lose i
 Long markdown goes in pages split at a blank line before a heading or paragraph, outside fences.
 The tree's rows are windowed the same way, for node_modules.
 
-## 2026-10-24 — the pane opens on a file, more types highlight, effort closes the picker
+## Session and weekly usage banners (2026-10-24)
 
-The files button opens the pane on a file, never on an empty side: the one this note changed
-last (newest change group first, and in it the file edited last), else the folder's README,
-else its first file (app.tsx `defaultFile`). History's icon is the books drawing supplied for it.
+`components/UsageLimitBanner.tsx` follows the supplied usage notices: a neutral rounded
+surface, a gauge, a muted reset time and a grey Get more usage button. Approaching notices
+can be dismissed; reached notices use red on the gauge and title. The copy and actions
+stack at narrow widths. Light and dark colours come from the current material.
 
-Tried and taken back: an action bar over the file (staged/unstaged, chunk arrows, find, diff,
-word wrap) and a full view with the agent docked beside it. Both were more than the pane needs;
-the file only scrolls sideways, as code does.
+`core/usage.ts` reads Claude's actual `allowed_warning` / `rejected` rate-limit metadata
+from ACP `usage_update._meta['_claude/rateLimit']`. Five-hour limits are session limits;
+seven-day limits are weekly, preserving Opus/Sonnet scope. Reset timestamps are supplied by
+the adapter, converted from seconds and formatted locally; session resets within an hour
+show minutes. No threshold, percentage or reset time is invented. `allowed` clears the live
+notice, and moving to another account clears it too. Old logs with known quota-error wording
+still get a banner, keeping their reported reset text when no timestamp exists. Context-length,
+API throttling and other errors retain their normal error presentation.
 
-Fenced code in markdown and the markdown source already highlight. GPUIX's `<code>` has grammars
-for bash, c, css, go, html, js/ts, json, markdown, python, rust, toml and yaml only; the
-binary names more (Swift, SQL, Dockerfile…) but `language` doesn't reach them, checked one by
-one. So a type without a grammar borrows the nearest (core/preview.ts `codeLanguage`): XML,
-SVG and plist read as html; .env, Dockerfile, Makefile, .gitignore and shell rc files as bash;
-C++, Objective-C, Java and C# as c; Swift, Kotlin, Scala and Dart as typescript; Ruby as python.
-That's enough for comments, strings and keywords. SQL and Lua have nothing near and stay plain.
+Warnings appear above the draft. A reached error replaces the old error surface; the same
+live notice is suppressed when the current turn already contains that error. Identical quota
+replies emitted before an ACP or legacy error are removed. Historical errors stay in the note;
+active timestamped notices hide after their reset. Get more usage opens Claude's Usage settings
+through `core/platform.ts`; it does not purchase usage, retry a turn or send the draft.
 
-Effort: picking a level left the model menu open, and the menu jumped sideways as the pill's
-label changed width under it ("Default" to "Max"), since it hangs from the pill's end. A level
-now closes the picker as a model does, and both lists open on what's chosen, not the first row.
-In a background automation window the menus' fade-ins don't advance on their own; checks that
-look at them pause the clock and fast-forward it (`app.clock`).
+Verification: temporary reducer/native preview checks passed for warning/rejected/allowed,
+weekly model scopes, reset formatting, account changes, duplicate replies and legacy errors.
+Native previews at 1000px dark and 360px light (Reduce Motion on) passed layout, recovery-button,
+dismiss/restore, expired-notice and composer checks. Scratch-home Vellum checks passed session,
+weekly, warning and ordinary-error cases, including saved drafts and one notice per failure.
+All account/agent fixtures were isolated; no live quota was exhausted. Previews are in
+`screenshots/usage-dark.png`, `usage-light.png` and `usage-in-vellum.png`.
 
-## 2026-10-24 — code scrolls sideways, all of it at once
+Biome passed the new banner/helper and component export. Hook/unreachable checks passed the
+four integration files; their broader lint run still reports existing findings elsewhere in
+those files. `git diff --check` passed. No build, tsc or permanent test files were added.
 
-Code in the file pane didn't scroll sideways at all. Each <code> is its own sideways scroller, but
-only when something holds it to a width: a row in a <virtual-list> with no width of its own grows
-to its content, so the <code> was as wide as its longest line and clipped, with nothing to scroll.
-Given `width: '100%'` it scrolls (checked one by one, after first blaming the list for taking the
-wheel; it doesn't). And a block that did scroll would have moved alone, its hundred lines apart
-from the rest, since <code> reports no scroll of its own to sync the others by.
+Usage-banner follow-up: removed Get more usage and its URL plumbing at the user's request.
+The banner now fits its content up to the note's width, with title and reset on one row at
+all sizes. Both labels use single-line ellipsis; the reset yields space first. The warning's
+close button remains fixed and clear of the text. Native dark/light previews verified widths
+900, 600, 400, 280 and 200: no wrapping, overlap or recovery button. Current previews are
+`screenshots/usage-row-dark.png` and `usage-row-light.png`. Earlier screenshots above show the
+superseded button/stacked layout. Scoped Biome and whitespace checks passed; no build or new
+permanent tests.
 
-So the pane's code (ui/CodeLines.tsx) left the list for a plain scroller with two columns: the
-line numbers, which stay put, and the code, the one sideways scroller. Every block is as wide as
-the longest line (tabs to the next stop of 4, wide characters as two), so no <code> scrolls on
-its own and the lines move together. The windowing stays: rows are 18 high, so the blocks that
-aren't mounted are a spacer of exact height in each column, and the window follows
-`onScrollChange`. The outer scroller is set to scroll both ways though only its height overflows,
-because a scroller that only scrolls down turns a sideways swipe into a vertical one. Mid-drag one
-cover lies over both columns for the pick. Markdown keeps the list; its pages have no exact height.
+## v2 — Browser and capture (2026-10-25)
 
-## 2026-10-24 — a sideways swipe stays sideways; fenced code in a reply scrolls too
+- Added an authenticated loopback bridge, capture files under `paths.captures`, and append-only
+  capture/browser records. The extension Origin is fixed by its public manifest key. Agent
+  credentials are separate, scoped to one note, and passed through session-local stdio MCP.
+  Stdio ships without a paid capability probe; `/mcp/<noteId>` backs the forwarding adapter.
+- Pairing lives in Settings › Browser. Replacing the pairing token also closes existing event
+  streams. Page scripts cannot read the token. Extracted page material is labelled and fenced as
+  untrusted data; the user's annotations remain the instructions.
+- Send requests retain a durable delivery intent until a user turn is recorded. Busy notes use
+  the existing queue; pending sends recover after restart. Taking browser control cancels the
+  running turn and holds the note's queue until hand-back. Commands already running may finish,
+  so the viewer says this explicitly.
+- The `browser` helper registers the isolated note session before navigating, uses acknowledgement
+  pacing for frames, and saves implicit screenshots under the note. Existing browser records
+  restore lifecycle tracking at launch. Native packaging copies the browser launcher and stdio
+  MCP helper beside the executable under `helpers/`; the browser implementation is compiled
+  through `bin.ts --browser`. Native bundle packaging itself was not run in this change.
+- The extension was scaffolded from Vite+'s vanilla TypeScript application template, per the
+  latest user instruction. Its own package adds Vite+ 1.1.0, the public selection primitives
+  package 0.2.0, and Chrome development types. These replace the plan's older handwritten-picker
+  and Bun-only bundler restrictions. The native runtime gained no dependencies.
+- Selection, annotation, style/layout/source extraction, debugger screenshots, animation timing,
+  triggered pseudo-states, sampled interaction motion, frame seeking and readable asset downloads
+  are implemented. Infinite animation timing is preserved explicitly. Frame selections are
+  rejected with a useful message; React source details remain best effort in the isolated world.
+- `bun run build:extension` produces `extension/dist/` for Load unpacked. Optional browser video
+  recording is left out. No real Claude turn was run. Cross-origin styles/assets and React source
+  availability retain the browser limitations described in extension/IMPLEMENTATION.md.
+- Verification passed: `scripts/check-bridge.ts` (auth, Origin, traversal, note scope, stdio MCP,
+  status replay, token rotation, trash/restore, durable send recovery); `scripts/check-browser.ts`
+  (native inspector/settings, fake stream frames and input, take-control queue hold, fake-agent
+  delivery and MCP injection); existing check-tabs, check-queue, check-approval, check-help and
+  check-settings. An isolated real browser also opened a local animated page, reported its
+  stream, saved a screenshot and delivered acknowledged live frames. Focused Biome checks had
+  no errors; existing unused-import/suppression warnings were left alone. No tsc was run. A real
+  unpacked Chrome extension then paired with a scratch bridge, injected its selector, selected
+  a local animated component, extracted CSS/timing, took debugger screenshots and delivered the
+  multipart capture to its selected note. All temporary browser sessions were closed.
 
-A sideways swipe over the pane's code walked the file up and down. GPUI moves a scroller by both
-parts of every wheel event, and a trackpad's sideways swipe carries a few points of vertical in
-most of them: 24 events moved the file ten lines. Mac views lock a swipe to the axis it starts
-on; GPUI doesn't, and GPUIX has no wheel event to do it with. So ui/CodeLines.tsx does it from
-the scrollers' own reports: the moves of one frame are weighed together, the larger picks the
-swipe's axis for as long as it keeps moving (150 ms between moves), and the other scroller is
-put back with `scrollTo`. The stray move shows for a frame at most.
+### Automatic extension connection (2026-10-25)
 
-The clipping above also held fenced code in Claude's replies (ui/blocks.tsx `CodeCard`): the card
-set no display, so its <code> grew to its longest line and the card cut it off. As a flex column
-the card holds the code to its width and it scrolls. Shell output in the note and fenced code in
-a markdown preview already scrolled; both sit in flex columns.
+The user removed setup from the connection flow. Both sides now share port 47470; the extension
+checks the desktop's nearby fallback ports only when necessary. A POST /connect restricted to
+the fixed extension Origin and extension-ID header supplies an internal credential to the
+service worker. It is kept in memory and refreshed automatically after revocation. Web origins
+and requests without extension provenance cannot discover it. Old stored addresses/tokens are
+removed. The popup has no setup form or pasted link, retries while Vellum is closed, and opens
+straight to capture controls when available. Desktop Browser settings show readiness only.
+The rest of the extension design is deliberately unchanged pending the user's later direction.
+
+### Extension follows the desktop (2026-10-25)
+
+The popup and page capture panel share Button, Textarea, Checkbox and SegmentedControl
+components and motion tokens. React DOM, Motion, Radix Checkbox and Lucide are
+extension-only dependencies for these components. Geist faces are bundled from Vellum's assets.
+
+The default surfaces are the desktop's #0a0a0a shell, #141414 page and #1c1c1c popover, with the
+same neutral controls, blue selection/focus and small violet identity mark. The extension asks
+the existing authenticated /health route for the desktop's current material, instead of taking
+its theme from the website or OS. Both extension surfaces share the same tokens and components.
+No connection setup was reintroduced. Copy uses note, capture, agent and Pending consistently.
+
+Design verification: the unpacked extension's popup and injected capture panel were inspected in
+Chrome using a scratch bridge. Desktop dark/light colors and bundled Geist loading matched;
+320px, popup 200% zoom, RTL layout, visible keyboard focus, note-empty state, annotation,
+selection Undo and real screenshot/style/animation delivery passed. The border correction in
+the light material clears 3:1. Scope and remaining verification limits are recorded in
+extension/DESIGN-REVIEW.md. The only generated build is the updated unpacked extension.
+
+## 2026-10-25 — scripts, app.tsx and the extension build on Bun's file APIs
+
+Everything outside `core/` now uses Bun's APIs instead of `node:fs`, `node:url`, `node:readline` and `node:assert`. Only `node:os` and `node:path` stay. `scripts/scratch.ts` holds the few helpers Bun doesn't have. Gaps found on Bun 1.4.3 that the `core/` pass will hit too:
+
+- **No mkdtemp.** `scratchDir(prefix)` makes `<tmp>/<prefix><uuidv7>` with `/bin/mkdir -m 700`. Bun's shell has its own `mkdir`, which doesn't take `-m`, so call the system one by path.
+- **`Bun.file(p).exists()` is files only.** It returns false for a folder or a socket that's there. `present(p)` uses `stat()`.
+- **`Bun.write(p, data, { mode })` ignores `mode`** (0o600 came out 644). Anything that must be private (tokens, the bridge file) needs a `chmod`, or the system tool, after writing.
+- **No append.** `Bun.file(p).writer()` truncates. `scripts/fake-acp.ts` keeps `appendFileSync`, since several fake agents append to one log. The notes' `.jsonl` files are append-only, so `core/threads.ts` has the same question.
+- **No synchronous read.** `Bun.file().text()` / `.json()` are async. app.tsx reads its fonts with a top-level `await` before `render`. `core/store.ts`'s `readSettings()` and the `useState` initialisers that call it read synchronously at launch, and that's the main design question for `core/`.
+- **What does map one-to-one:**
+  - `Bun.write(dest, Bun.file(src))` copies, and `Bun.write` creates missing parent folders, so a `mkdir -p` before it is redundant.
+  - `new Bun.Glob('*').scanSync({ cwd, onlyFiles: false, dot: true })` lists a folder like readdir.
+  - `` Bun.$`rm -rf ${p}` `` removes.
+  - `for await (const line of console)` reads stdin by line.
+  - `expect` from `bun:test` works in a plain script and takes a message as its second argument.
+  - `Uint8Array#toBase64()`.
+- **What the typechecker doesn't catch** when a sync helper turns async: a spread (`{ ...settings() }` spreads a Promise into `{}`), template strings and `JSON.stringify`. Grep for un-awaited calls after converting.
+
+### core/ on Bun: what went async, and why the rest didn't
+
+The rule is the frame, not the API. A read that can land inside a render, or that spawns a process, went async. A small read outside render stayed synchronous, because Bun's sync read of a small file is faster than its async one (measured: 10 MB of notes is 4–8 ms either way, and parsing them is 20 ms).
+
+- **Launch:**
+  - app.tsx reads the drafts, every note (side by side), the fonts and the account picture in one `Promise.all` before `render`.
+  - Settings, accounts, the model cache and the activity ledger each load with a top-level `await` in their own module.
+  - The 30-day trash purge no longer runs before the first frame.
+- **Render:**
+  - A reply's pasted images and the new-note sheet's folder-config warning used to stat files on every render. They now check once per list or folder through `ui/useLoaded.ts`.
+  - Recipes are read in parallel through `useLoaded`. Only a `$recipe` send waits on the disk; any other send goes out in the same tick.
+- **Writes:**
+  - A note's `.md` copy is written with `Bun.write`, queued per note so they land in order.
+  - The `.jsonl` records keep `appendFileSync`, so a record survives a quit.
+- **Still synchronous, on purpose:**
+  - Renames, links, lstat, readdir and realpath, which have no `Bun.file` form.
+  - `filePatch` (its 2 MB cap makes the diff, not the read, the cost).
+  - `readPreview` (≤ 1.3 ms on this repo).
+- **The file tree is listed from memory** (`core/filetree.ts`):
+  - **Stamps:** each folder's listing is kept with a stamp: its modified time, plus every `.gitignore` that applies.
+    - Adding, removing or renaming anything in a folder moves its time. Editing a file's contents doesn't.
+    - So FileTree's re-read after every agent edit costs a few `stat`s per folder, not a `git` process. Before, each folder took 5–10 ms in render; from memory it's 0.01–0.3 ms.
+  - **Background mapping:**
+    - Listing a folder maps its subfolders in the background.
+    - `prepareTree` maps a note's folder two levels deep when the note becomes active.
+  - **Not covered:** ignore rules from outside the workspace (a parent repo's `.gitignore`, the global excludes file) aren't in the stamp. A change there shows on the folder's next real change.
+
+## 2026-10-26 — Codex and OpenCode notes (v3)
+
+An account now has an agent: Claude, Codex or OpenCode (`core/agents.ts`). VELLUM-V3-PLAN.md has the spike results and the decisions. What wasn't obvious:
+
+- **Modes:**
+  - Vellum keeps its six modes; each agent maps them onto its own config options, matched by category, not id.
+  - Codex's Plan is two options, the sandbox and `collaboration_mode`. A response to Vellum's own `set_config_option` is therefore never read as "the agent changed its mode": between the two sets, the half-applied state looks like Ask.
+- **Codex runs your `codex`:** the adapter bundles a 327 MB Codex that can't go into the compiled app, so `CODEX_PATH` points it at yours. Codex refuses a `CODEX_HOME` that doesn't exist, so a new Codex account makes its folder.
+- **Codex sign-in:** the adapter's sign-in methods are ones it runs itself, but `codex login` works in Vellum's login terminal, and `codex login status` exits 0 or 1 without a session.
+- **OpenCode sign-in:** OpenCode lists retired free models as available (`exo-free` fails with "deprecated"). A fresh home's default can fail like that; the note shows OpenCode's error.
+- **Vellum's prompt:** only Claude's adapter takes `systemPrompt`. For the others the prompt goes ahead of a new session's first message, once, without the lines about Claude Code's own tools.
+# New note — project selection, October 26
+
+New note leads with project names and their parent paths. The agent/account selection is a
+compact menu; adding an account and signing in remain available. Cmd-Enter creates the note.
+The existing native check-new-note script passed for current-folder/account defaults and a
+different folder. Native GPUIX checks also verified account switching and exactly one new
+note when Cmd-Enter is pressed from the sheet, account selector, or Create button. The final
+dialog and account menu were inspected in screenshots. Scoped Biome passed; no build run.
+
+
+# Library search and global annotations — October 26
+
+⌘K now opens Library on Past notes with search focused, or closes it on a second press.
+From Recipes it switches to Past notes. The separate note switcher and right-side Find button
+are removed; Library keeps its existing search, filtering and windowed results.
+
+The right-side pencil opens Annotations across all loaded notes, grouped by page host/path.
+Cards retain their destination note/project and show captured elements together, because status
+belongs to the capture. Open is queued/acknowledged; Resolved and All, site/project filters and
+text/component/selector search are available. Bridge capture records update the panel live.
+Open note reveals the capture block, thumbnails open its inspector, and actions resolve,
+dismiss, reopen, send to the agent, or send to another note. Sending to another note atomically
+copies all capture assets with a fresh id, preserves the source files/history, dismisses the
+source and queues the destination. A failed asset copy cleans up its temporary directory.
+
+Verified with scratch homes and a fake ACP agent: Library keyboard toggling and Recipes switch;
+page grouping across projects; status/site/project/search filters and empty state; live bridge
+summary updates; resolve/dismiss/reopen persistence; capture jump above 45 later paragraphs;
+thumbnail inspection; destination input focus and arrow/Enter selection; complete asset copying,
+source preservation, missing-asset cleanup, destination recording/delivery; reduced-motion
+panel dismissal. Inspected the native panel screenshot. A native input submits Enter separately
+from key bubbling, so Menu headers can now receive a submit callback for the highlighted item.
+Scoped Biome undeclared-variable checks and git diff whitespace checks passed. No build or tsc,
+and no permanent test file added.
+
+# Browser connection port — October 26
+
+Browser settings now show the active loopback address and a persisted connection-port field.
+Blank means Automatic: use the default discovery range and skip occupied ports. A custom port
+binds exactly that port; a conflict is reported instead of silently choosing another. Changes
+apply at the next app launch to preserve active agent/MCP connections. VELLUM_BRIDGE_PORT keeps
+its launch override (including port 0 for scratch checks). Snapshot's popup has matching
+Connection settings, available while offline, for choosing the same custom port.
+
+Scratch native checks verified invalid input rejection, save persistence, clearing to Automatic,
+keeping the running endpoint intact, and binding the saved port after restart. Direct bridge
+checks covered occupied custom ports and automatic fallback. Inspected the settings screenshot.
+Scoped Biome and whitespace checks passed. Rebuilt only the Snapshot extension into extension/dist;
+no desktop app build or permanent test file. Reload the unpacked extension to use its new field.
+
+OpenCode investigation: Vellum already resolves local opencode from PATH and starts `opencode acp`,
+retaining its default environment/configuration. The installed /Users/APPLE/.opencode/bin/opencode
+(v2.0.26) successfully answered Vellum's initialize request with ACP protocolVersion 1. No session
+prompt was sent. No OpenCode launcher change was needed; a separate custom executable path is
+not currently exposed as a setting.
+
+# OpenCode stale login status — October 26
+
+OpenCode's accountStatus previously returned undefined unconditionally, so a persisted loggedIn:
+false could never refresh after an external login. It now asks the local `opencode auth list
+--format json` for provider connection metadata. Model-provider credentials mark the profile
+connected; MCP-only credentials, no stored credentials (free models/environment keys may work),
+unsupported CLI output and failures leave its status unknown rather than logged out. Unknown
+status clears stale identity/plan labels. No credential files are read or copied.
+
+An OpenCode provider authentication error no longer marks the whole profile logged out. The
+note preserves the agent's actual message with its login action, instead of replacing it with
+"Not logged in". ACP -32000 remains authentication-required; text matching is restricted to
+explicit authentication phrases. Finishing login with unknown status reports "sign-in finished".
+
+Verified local OpenCode reports three model-provider connections and creates an ACP session;
+the inspection session was deleted without a prompt. A scratch native profile seeded loggedOut
+refreshed to connected, rendered its provider count, and stayed connected after a fake ACP
+provider authentication error whose real message was preserved. Existing scripts/check-agents.ts
+passed for all three agents. Isolated CLI-output checks passed for connected, empty, MCP-only
+and unsupported output. Scoped Biome and whitespace checks passed. No app build or permanent
+test file added.
+
+# Provider tools, settings and simulator guidance — October 27
+
+OpenCode defaults to opencode/big-pickle unless the note has an explicit model.
+A real Big Pickle ACP request returned OK. The earlier Go-provider request used an
+expired API key; ACP reported generic authentication-required. Signing into
+OpenCode does not renew that provider key. Accounts now labels the provider action
+Manage providers rather than Sign in; provider presence is not a validity guarantee.
+Manual status refresh is available per account. Background status checks use separate
+Claude/OpenCode/Codex cadences (5/10/30 minutes), not assumed token lifetimes. The
+agent remains responsible for refreshing OAuth. Claude's authentication docs describe
+renewal and expiry warnings without promising a fixed eight-hour logout interval;
+Codex's auth docs describe cached sessions and automatic renewal during use.
+References: https://code.claude.com/docs/en/authentication and
+https://learn.chatgpt.com/docs/auth .
+
+Tool updates across Claude, Codex and OpenCode now pass through core/tools.ts.
+Canonical inputs and real outputs stay separate; OpenCode metadata-only completion
+and Codex terminal deltas no longer replace output with transport metadata. Replaying
+the affected OpenCode note recovered eight command outputs. The focused ACP reducer
+checks passed (13); the agent configuration checks passed (4). Tools use readable
+input/output details rather than the JSON tree viewer. Auth errors use one compact
+row with a shield-cross icon and login action.
+
+Model search filters names, ids and descriptions, supports spaces and keyboard
+selection, and has a bounded results viewport. Model and effort popups use the custom
+spring wrapper. Native checks covered filtering, empty results, selection, effort
+opening/escape, row padding and reopening. Thinking visibility is persisted, defaults
+to the simple view, and does not hide tool results. GPUIX wheel containment uses
+pointerEvents: auto on the nested scroll surface: native scroll events do not expose
+stopPropagation. Scratch native checks verified the thinking content scrolls while
+the note and composer stay fixed.
+
+Settings sidebar is Accounts, Vellum, Appearance, Browser, Activity and Trash.
+Vellum groups thinking, note defaults, instructions and notifications. Appearance
+groups theme, tabs and motion. Persisted keys are unchanged. Scratch native checks
+verified grouping, provider label/manual refresh, thought preference and containment;
+inspected the settings and picker screenshots. Updated existing smoke-script selectors.
+
+The mobile prompt now prefers the existing native tools, allows an installed CLI,
+and reserves scripts for deeper workflows instead of banning scripts. It maps all
+seven mobile tools and explains snapshots, failures and fill verification. The
+installed SimDriver 0.1.2 package does not ship a CLI executable. docs/mobile-tools.md
+records the tool/step arguments and a proposed future CLI mapping using the same
+handlers. An MCP SDK client discovered all seven tools through the real stdio proxy;
+a fake connected driver verified snapshot text/images and failed-step/current-screen
+results, plus the disconnected-phone error. No live simulator actions were taken.
+Scoped Biome undeclared-variable checks passed on 19 files; whitespace checks passed.
+No desktop build or tsc was run. Temporary verification scripts were removed.
+
+# Complete mobile SDK surface and settings structure — October 27
+
+Expanded the earlier seven mobile tools to ten. core/mobile-tools.ts now owns the
+schemas/dispatch; the bridge retains authentication and note scoping. Added
+mobile_connection (devices, status, connect, disconnect, boot, shutdown), mobile_input
+(raw coordinates/phases, two-finger input, keys/combinations/text and held/repeated
+buttons), and mobile_inspect (status, stats, raw accessibility, dimensions, every Grid
+operation and recent diagnostic/frame metadata). Snapshot forwards settleMs/cols and
+preserves all returned metadata. Every Rust Step variant is advertised with its
+arguments, rather than an action-only schema. Existing configuration actions have
+explicit schemas too. Calls across notes share one queue; raw input validates its
+whole batch before dispatch and releases active contacts after runtime failure.
+
+Checked the actual ~/dev/simdriver/bindings/node/index.js and Rust agent Step enum;
+the installed JS wrapper matches the checkout. Its drag signature uses an options
+object and accessibility returns parsed JSON, despite stale generated declarations.
+The view still owns streaming BGRA frames and the driver. MCP connect opens that view,
+passes start options, reuses the selected connection, and disconnect updates the UI.
+The existing mobile view's cancelled scroll phase is normalized to native ended.
+Driver event-pump internals stay inside the SDK; diagnostics/frame metadata are exposed
+without draining the view's stream. The full method mapping is docs/mobile-tools.md.
+
+Verified through the real stdio MCP proxy with a fake driver and simulated xcrun:
+all ten tools; schema parity with every Rust Step; snapshot metadata/options; all raw
+input families; drag/button parameters; validation before input; failure contact
+release; all inspection/Grid methods; events; tap expectations; failure screen state;
+concurrent request order; configure/notify/reset; device lifecycle and shared-driver
+status. The native window check used a mocked SDK and fake devices: tool-driven view
+opening, connection, start options, driver reuse, disconnection and closing passed.
+Existing scripts/check-bridge.ts passed its capture, token and note-isolation checks.
+No input was sent to the user's simulator and no paid agent prompt was sent.
+
+Settings uses grouped navigation and content surfaces with Vellum tokens:
+
+| Surface | Implementation |
+| --- | --- |
+| 248px sidebar with search and grouped icon links | ui/settings/Navigation.tsx |
+| Inset content card, 720px content and page heading | ui/Settings.tsx |
+| Searchable settings metadata | ui/settings/catalog.ts |
+| Rounded groups, 64px rows and inset dividers | ui/settings/controls.tsx |
+| Theme previews | ThemeCards with the existing dark/light materials |
+
+Vellum is the initial page, keeping thinking, note defaults, instructions and
+notifications together. Appearance holds theme previews, tabs and motion. Accounts,
+Browser, Activity and Trash keep their controls and saved keys. Search indexes groups
+and account names, filters navigation, shows page links and edits the actual stored
+preferences. Browser/Activity/Trash use the same settings group surface without
+changing the shared modal Sheet components. Existing settings/tab smoke selectors
+were updated; long-page checks find notifications/instructions through search.
+
+Scratch native checks passed for the 248px sidebar/content split, initial page, note
+defaults, cross-page search and empty state, edits in results, browser port, both theme
+cards, tab/motion persistence, accounts controls and Back to note. Inspected 1200x900
+screenshots of Vellum, search results and Appearance in dark/light.
+Scoped Biome checks passed on 17 files and diff whitespace checks passed. No build or
+tsc. Temporary verification scripts were removed; existing user work was preserved.
+
+# Native notifications and compact New note dialog — October 27
+
+Replaced AppleScript notifications with a branded accessory app using macOS
+UserNotifications. native/Notifications.swift owns permission, delivery, dismissal
+and click callbacks; scripts/notification-helper.ts caches/signs the small helper
+for source runs, and packaging includes the helper bundle. Native clicks activate
+the parent process and open the relevant note; they never approve a request. macOS
+controls notification materials/appearance, including the system glass treatment.
+The GPUIX layerShell reference is Wayland-only and does not provide macOS banners.
+
+core/native-notify.ts prefers GPUIX native methods when present; installed 0.11.0
+uses AppKit key-window focus detection and the helper fallback. core/notify.ts now
+records live requests, errors and replies in an in-memory inbox, with pending Dock
+badges and compact foreground alerts for other notes. Background native delivery
+respects Never/Requests/All. Reading does not resolve requests; answering/cancelling
+settles and dismisses the exact alert immediately. Delayed startup/permission work
+rechecks focus and request relevance. Settings exposes native permission status.
+
+ui/Notifications.tsx supplies the shared inbox, Needs you filter and note actions.
+New note uses a 440px panel, compact plain header,
+52px folder rows and a same-surface footer, retaining existing account/folder flows.
+
+Temporary policy/helper checks passed for focus, routing, deduplication, preferences,
+resolution, stale delivery suppression and helper callbacks. Scratch native UI with
+a fake agent passed approval/question navigation and immediate badge resolution,
+outside dismissal/reopening, the compact dialog and notification settings. No paid
+agent prompts or real simulator input were sent. Helper self-check and OS status
+query passed; latest permission is authorized. A visible desktop banner and actual
+OS notification click have not yet been exercised. Only the small Swift helper was
+compiled; no desktop build or tsc. Scoped Biome undeclared-variable checks passed
+on 12 files with the Bun global configured; diff whitespace checks passed.
+
+# Compact tool disclosures — October 27
+
+Tool disclosures use a 38px group summary,
+40px call rows with tool-category marks, real status/duration and result counts,
+then separate Input/Output details with copy controls. Native code renders results;
+long output starts at 12 lines and expands within a 260px scroll area. Thinking
+remains optional and has its own disclosure inside the group. Mobile code wrappers
+get recognizable action labels without showing their entire script in the row.
+No retry control is shown because this view has no tool-level retry operation.
+
+Consecutive activity/agent-shell blocks share one group. Empty virtual-list slots
+retain their original indices for the timeline. Shell blocks retain their normalized
+call arguments and timing in core/threads.ts, including execute wrappers that carry
+code instead of a command. File diffs, subagent tasks, capture activity and user
+terminals retain their dedicated views. Inspecting tools pauses follow-tail until
+the next user paragraph so opening results does not pull the reader to the composer.
+
+Disclosures use Vellum motion/spring tokens and respect reduced motion. The outer
+call list follows nested height changes naturally; nested details measure absolute
+content so a second height animation cannot clip them. Closed/exiting bodies do
+not remain interactive.
+
+Existing core/acp-reduce.test.ts passed: 13 tests, 41 assertions, including all three
+agent normalizers and OpenCode content versus completion metadata. Temporary native
+UI checks passed at 1200x900 in dark/full-motion and light/reduced-motion modes:
+group counts/collapse, execute input retention, separate results, previews, copy,
+internal scrolling with unchanged page offset, thinking, rapid reversal and composer
+use. Inspected collapsed, call-list and expanded-result screenshots. No paid agent
+prompt, simulator input, desktop build or tsc. Scoped Biome checks passed on four
+files; whitespace checks passed. Removed the temporary UI verification script.
+
+# Annotations as a compact task list — October 27
+
+ui/Annotations.tsx presents captures as a compact task list.
+A 600px side panel contains search/site/project filters,
+equal-width All/Open/Resolved/Dismissed filters with counts, and one continuous list
+of annotation rows. Each capture row leads with the annotation, source URL, linked
+note, real Queued/Seen/Resolved/Dismissed state, element count and capture age. Counts
+refer to visible capture rows and update with search/site/project scope. Default
+Open retains the existing inbox behavior. No running/review/PR state is invented.
+
+Rows expand with Vellum springs into selected-element thumbnails/full notes, recorded
+summary/agent response and workspace context. Details use a bounded scroll surface.
+Open note, Resolve, Inspect, Send to agent, route to another note and Dismiss/Reopen
+retain their existing callbacks. Escape in filter/action/routing menus is contained
+so it closes the menu rather than the entire annotations panel. No core format or
+bridge changes were needed. Measurements use Vellum tokens and density.
+
+Temporary native UI checks passed at 1200x900 in dark/full motion and light/reduced
+motion: compact rows/counts, all statuses, expansion/collapse, search, site filter,
+actual saved Resolve/Reopen updates, destination-note search, contained Escape,
+Open note and capture viewer navigation. Inspected both themes and expanded rows.
+Destination dispatch/agent execution was not invoked; no paid prompt was sent. Scoped
+Biome and diff whitespace checks passed. No desktop build or tsc. Removed the owned
+temporary verification script.
+
+# Approval card and MCP connections — October 27
+
+Updated approval and server-connection surfaces. A single
+approval has its pending count, real agent/server identity and elapsed wait, tool
+title/reason, full argument rows, Deny, exact-rule disclosure and Approve. Existing
+command/folder and diff previews remain. No risk labels or broader rules are guessed.
+Arrival still leaves composer focus alone; the elevated card closes atomically.
+
+Settings → Connections adds a live MCP manager, expandable tool rows, switches,
+read policy, pause/remove, searchable Add server, remote URL and local command forms,
+and real browser authorization. Context is an explicitly labeled estimate; the bar
+shows server contributions without inventing an 8k limit. Server details use measured
+height and the existing spring/reduced-motion tokens. Nested sheets contain Escape.
+The directory uses verified vendor endpoints and displays Vercel's client restriction.
+
+core/mcp.ts owns official SDK HTTP/SSE/stdio clients. All three adapters receive
+note-scoped proxies using the existing bridge token. Credentials stay in Vellum;
+OAuth uses PKCE, random callback state, discovery/registration and refresh. Enabling
+reads only trusts explicit read-only/non-destructive annotations. Every invocation
+rechecks switches and cancellation after approval; a deny never reaches upstream.
+Changing configuration refreshes idle ACP sessions on the next message. Direct CLI
+MCP configuration remains with that CLI. Details/limits: docs/mcp-connections.md.
+
+Temporary loopback fixtures passed OAuth callback/state/PKCE and tool pagination,
+private credentials/config separation, read/write/unknown/destructive policies,
+disabled/paused tools, switch changes during approval, persistence/removal, local
+stdio, proxy round trips and note-token isolation. A separate SSE fixture verified
+bearer auth, discovery and a tool result; cancellation aborted its proxy request.
+A check caught stdin EOF cancelling a request before its reply; EOF now drains
+in-flight responses, while explicit MCP cancellation still aborts the exact request.
+
+Native 1200×900 checks passed in dark/full and light/reduced motion: real connection
+states, tool expansion/persisted switches, authorization sheet, catalog search,
+custom URL connection, one approval, exact scoped read rule, automatic next-message
+read, write approval/full arguments and denial. Inspected tool rows and approval
+screenshots. The check caught the read rule missing the app's existing suggestions
+flag; fixed so the native Always allow action records the chosen policy.
+Existing check-agents (all three adapters), check-bridge and check-approval passed.
+Scoped Biome undeclared-variable checks passed on 12 files; new modules also passed
+unused import/variable checks. No desktop build, tsc, paid prompt or live vendor
+sign-in was run. Temporary verification sources were removed.
+
+# Inherited MCP servers, controls and theme — October 27
+
+Connections now reads Codex config.toml via Bun.TOML and Claude/OpenCode JSON/JSONC
+into one connection shape. Reads global/user paths, account profile configs and
+explicit CLI config-path overrides; OpenCode's local array commands and this Mac's
+nested mcp.servers are handled. Project-specific MCP definitions stay out of global
+notes. Remote entries deduplicate by normalized URL, retaining query distinctions.
+Local entries deduplicate by executable/args/environment/cwd. Source badges identify
+providers; Refresh rereads configs. Disabled sources, Vellum overrides, tool switches
+and read policies persist. Removed imports stay suppressed locally. Changed local
+environments update the same row. Imported HTTP headers use the private credential
+file and reach SDK requests; OAuth sessions owned by other CLIs are not copied.
+Imported this Mac's 12 distinct definitions without starting their processes or
+contacting their servers; source-file hashes were unchanged.
+
+Replaced service initials with bundled vendor vectors for the directory and known
+inherited services (Linear, Notion, Figma, Vercel, GitHub, Mobbin, Solana, HeroUI).
+Unknown/custom services use a connection glyph. Asset provenance is in
+assets/brands/mcp/README.md; there is no runtime favicon request.
+
+Settings pages carried padding on their native scroll host, which GPUIX counted as
+overflow. Moved that padding into the non-shrinking content region: short pages now
+have no scroll range/thumb, and long pages still scroll. Shared Switch now has a
+4px track and 4px thumb, retaining its existing spring and plain click target.
+
+The tool summary's hover was painted by a square child despite the rounded parent.
+Its own top/bottom radii now follow the group's inner radius and open state.
+Groknight's body/chrome tokens already matched the files under
+~/dotfiles/themes/editors/zed and themes/terminals/ghostty. Added semantic primary
+control tokens from Groknight's violet button treatment; Button and Switch use them.
+Prose and terminal ANSI stay Groknight. All native code/fenced Markdown now use the
+same Pierre syntax mapping as diffs, matching ~/dev/pierre-theme/zed/themes/pierre.json
+for both appearances. Primary control text contrast across default/hover/pressed was
+measured: minimum 7.63:1 dark and 7.16:1 light.
+
+Removed the Native notifications status/Enable row. Desktop-alert preferences remain;
+the existing native service requests OS access automatically on its first delivery.
+There is no separate Vellum enable step. macOS still owns system permission.
+
+Temporary fixtures verified TOML/JSON/JSONC conversion, nested commands, headers,
+working directory, URL dedup/query distinctions, project isolation, refresh/policy
+persistence, environment changes, private storage and persistent local removal.
+Native dark/full and light/reduced checks covered rounded tool hover/expand, Pierre
+code, service marks/source badges, short/overflowing scroll pages, saved square toggles
+and the hidden native-notification row. Inspected the dark hover/syntax and controls.
+Existing check-bridge passed. Scoped Biome checks passed on 11 source files. No build,
+tsc, real server authentication or paid agent turn. Temporary check scripts removed.
+
+# Tool values, runtime capture and virtual output — October 27
+
+Tool activity retains original args, structured results and actual MCP schema/source
+metadata across the three ACP providers. Inputs render as named fields; output lists
+render readable rows with complete fields on expansion, a raw view and copy actions.
+The note-scoped bridge captures actual calls made inside code runners, including
+variable-driven loops and caught failures. Only unambiguous active parents group
+their children; original script/aggregate output remains behind View code. Older
+code-only records have conservative literal fallback; dynamic args cannot be recovered
+from those old logs. See docs/tool-display.md.
+
+Output now uses a 260px virtual viewport with 16 mounted top-level rows. The installed
+GPUIX virtual-list lost range notifications on a fast jump beyond mounted children;
+a measured spacer window driven by ordinary native scroll offsets passed the same
+1,000-result jump. Raw/plain output is split into virtual text chunks too. Header
+bottom corners remain square until the exit body unmounts, including rapid reopen.
+
+Codex uses the supplied vector; OpenCode's supplied two-tone mark uses a raster asset
+to avoid GPUIX's SVG tint-mask behavior. Native notifications no longer show the note
+title as an unexplained subtitle; quota/auth text is concise and raw errors persist.
+
+Temporary fixtures passed provider normalization/partial updates, literal fallback,
+real loopback MCP runtime traces (status/devices/connect variable args), distinct ids,
+caught failure state and note-token isolation. Native dark/full and light/reduced
+checks passed formatted inputs/results, source/raw disclosures, a 16-row window over
+1,000 results, fast scrolling, exit retention/removal and rapid reopen. Inspected
+screenshots of the results, brand marks and closing/closed corners. Notification
+delivery was mocked: checked empty subtitle, formatted quota message, preserved raw
+error and original-note click routing. Existing ACP reducer, bridge and all-three-agent
+checks passed. Scoped Biome checks passed on 22 files with Bun declared as a runtime
+global; new rendering/helper modules also passed unused checks. No build, tsc, paid
+prompt, live simulator call or real OS notification was run. Temporary fixtures removed.
+
+# Captioned snapshots and tool syntax — October 27
+
+The supplied real snapshot was text prefixed by a device name, so JSON parsing left
+the result as plain text. Result decoding now separates that caption from complete
+JSON, including old records; new mobile snapshots also return structuredContent.
+The supplied result now reports 10 elements and renders ref/label/role rows. Raw
+transport output and the screenshot attachment remain preserved. Empty input objects
+no longer produce a No fields panel. Literal runner discovery `search({query:...})`
+shows the named query with a Find tools title and retains View code.
+
+Pierre syntax colors now cover formatted scalars and compact scalar arrays, with
+native highlighting for code/script inputs and shell commands as well as source/raw
+views. Multiline object fields use virtual text chunks. A focused check passed against
+the actual pasted snapshot, its structured-content variant, caption/attachment/raw
+preservation, malformed JSON fallback and conservative search parsing. Native checks
+passed in both appearances: actual element rows/count, omitted empty input, search
+query/source access and native code nodes for raw/source/input. Inspected dark snapshot
+and syntax screenshots. Scoped Biome passed six changed modules. No build or live
+simulator/provider call; temporary native fixtures removed.

@@ -3,3 +3,5 @@ dist
 screenshots
 *.log
 spikes/out
+tree.txt
+clones/
