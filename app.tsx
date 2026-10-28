@@ -2,7 +2,7 @@
 //
 // Layout: a tab bar of open notes on the glass, then the page: its title (with
 // a menu) and the note itself. The note is one editable document; new writing
-// goes at its end, and ⌘↵ asks Claude. Cmd+K finds any note; Cmd+N starts one.
+// goes at its end, and Enter asks the agent. Cmd+K finds any note; Cmd+N starts one.
 
 import { homedir } from 'node:os'
 import path from 'node:path'
@@ -17,7 +17,7 @@ import { AgentWorking } from './components/AgentWorking'
 import { ConfirmMorph } from './components/ConfirmMorph'
 import { UsageLimitBanner } from './components/UsageLimitBanner'
 import { usageLimitFromText, usageLimitKey } from './core/usage'
-import { duration, ease, setReducedMotion, tween, useReducedMotion } from './components/motion'
+import { duration, ease, setReducedMotion, tween } from './components/motion'
 import { AgentRunner, killAllAgents } from './core/agent'
 import { mcp } from './core/mcp'
 import { recoverCaptureDeliveries, startBridge, updateCapture } from './core/bridge'
@@ -40,7 +40,7 @@ import { cacheModels, cachedModels, shortModel, type EffortOption, type ModelOpt
 import { StatusBar } from './ui/StatusBar'
 import { AskUserQuestions } from './components/AskUserQuestions'
 import type { QuestionContent } from './core/questions'
-import { defaultMode, type Ask, type PermissionMode, type Think } from './core/asks'
+import { type Ask, type PermissionMode, type Think } from './core/asks'
 import { createProfile, existingAgentProfile, loadProfiles, profileEnv, profileForWorkspace, rememberWorkspace, updateProfile, type Profile } from './core/profiles'
 import { loadJson, paths, readSettings, updateSettings, writeJson } from './core/store'
 import { promptFor, relabel, tagsIn, tagText } from './core/tags'
@@ -74,7 +74,7 @@ import {
 } from './core/threads'
 import { BlockView, DiffCard, toolActivityGroups, type BlockActions } from './ui/blocks'
 import { Composer, type QueuedMessage } from './ui/Composer'
-import { NewThreadDialog } from './ui/dialogs'
+import { ProjectPicker } from './ui/ProjectPicker'
 import { History } from './ui/History'
 import { expandRecipe, gitBranch, loadRecipes, recipeCall, type Recipe } from './core/recipes'
 import { useLoaded } from './ui/useLoaded'
@@ -89,13 +89,14 @@ import { uncommittedFiles } from './core/gitsnap'
 import type { ChangeSummary } from './components/ChangesSummary'
 import { Icon, Kbd, MaterialContext, Meta, Quiet, useM } from './ui/kit'
 import { SettingsPage, type MotionPref, type TabMode } from './ui/Settings'
+import { Onboarding } from './ui/Onboarding'
+import { StartupScreen } from './ui/Startup'
 import { CELL_W, TerminalBlock } from './ui/TerminalBlock'
 import {
   accentFor,
   concentric,
   elevation,
   radiusBase,
-  contentInset,
   font,
   readingWidthFor,
   shellInset,
@@ -410,26 +411,51 @@ function initialMaterial(): MaterialName {
 const NO_RECIPES: Recipe[] = []
 
 /**
- * Read side by side before the first render: unsent writing and the notes from last time, the
+ * Read side by side while the startup screen shows: unsent writing and the notes from last time, the
  * bundled fonts (one that's missing is skipped), and your Mac account picture (core/avatar.ts).
  */
-const [savedDrafts, savedQueues, savedThreads, fontFaces, machinePicture] = await Promise.all([
-  loadJson<Record<string, Draft>>(paths.drafts, {}),
-  loadJson<Record<string, QueuedMessage[]>>(paths.queues, {}),
-  loadThreads(),
-  Promise.all(FONTS.map((file) => Bun.file(file).arrayBuffer().then((data) => ({ file, bytes: Buffer.from(data) }), () => undefined))).then((faces) => faces.filter((face) => face !== undefined)),
-  machineAvatar(),
-])
-/** Your Mac account picture and name. */
-const MACHINE_ME = { src: machinePicture, name: realName() }
+async function loadStartup() {
+  const [savedDrafts, savedQueues, savedThreads, fontFaces, machinePicture] = await Promise.all([
+    loadJson<Record<string, Draft>>(paths.drafts, {}),
+    loadJson<Record<string, QueuedMessage[]>>(paths.queues, {}),
+    loadThreads(),
+    Promise.all(FONTS.map((file) => Bun.file(file).arrayBuffer().then((data) => ({ file, bytes: Buffer.from(data) }), () => undefined))).then((faces) => faces.filter((face) => face !== undefined)),
+    machineAvatar(),
+  ])
+  return { savedDrafts, savedQueues, savedThreads, fontFaces, machine: { src: machinePicture, name: realName() } }
+}
 
-function App() {
+type StartupData = Awaited<ReturnType<typeof loadStartup>>
+
+function Startup() {
+  const [data, setData] = useState<StartupData>()
+  const [error, setError] = useState<string>()
+  const [attempt, setAttempt] = useState(0)
+  useEffect(() => {
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    // A brief minimum avoids flashing the screen when local files load immediately.
+    const minimum = new Promise<void>((resolve) => { timer = setTimeout(resolve, 900) })
+    void Promise.all([loadStartup(), minimum]).then(([loaded]) => {
+      if (!cancelled) setData(loaded)
+    }).catch((cause) => { if (!cancelled) setError(String((cause as Error)?.message ?? cause)) })
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [attempt])
+  if (data) return <App startup={data} />
+  return <MaterialContext.Provider value={materials[initialMaterial()]}><StartupScreen error={error} onRetry={() => { setError(undefined); setAttempt((value) => value + 1) }} /></MaterialContext.Provider>
+}
+
+function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, machine } }: { startup: StartupData }) {
   const renderer = useGpuixRequired()
   const windowSize = useWindowSize()
   const [materialName, setMaterialName] = useState<MaterialName>(initialMaterial)
   const material = materials[materialName]
 
   const [profiles, setProfiles] = useState<Profile[]>(loadProfiles)
+  const [onboarding, setOnboarding] = useState(() => !readSettings().onboardingComplete && !savedThreads.length && !readSettings().helpShown)
+  const [onboardingStep, setOnboardingStep] = useState(0)
+  const [onboardingProfile, setOnboardingProfile] = useState(() => profiles.find((p) => p.id === readSettings().newNoteProfile)?.id ?? profiles[0]?.id)
+  const [onboardingError, setOnboardingError] = useState('')
   const [threads, setThreadsState] = useState<Thread[]>(savedThreads)
   const [activeId, setActiveId] = useState<string | undefined>(() => {
     const { lastThreadId: last, helpShown } = readSettings()
@@ -450,7 +476,7 @@ function App() {
   const [efforts, setEfforts] = useState<Record<string, EffortOption[]>>({})
   const [denying, setDenying] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, Draft>>(savedDrafts)
-  // Settings › New notes › At launch: "New note" opens its dialog over the last note.
+  // At-launch New note uses the same page creation path as ⌘N.
   const [overlay, setOverlay] = useState<null | 'new' | 'settings' | 'history' | 'changes' | 'annotations'>(() => (readSettings().atLaunch === 'new' ? 'new' : null))
   /** Each note's file open beside it (ui/FilePreview.tsx); pressing the same chip again closes it. */
   const [previews, setPreviews] = useState<Record<string, Previewing>>({})
@@ -548,6 +574,17 @@ function App() {
   notificationView.current = { noteId: activeId, visible: view === 'notes' && overlay === null }
 
   const active = threads.find((t) => t.id === activeId)
+  const [selectedProject, setSelectedProject] = useState(() => active?.workspace ?? readSettings().lastProject ?? profiles.flatMap((p) => p.workspaces)[0] ?? homedir())
+  const project = active?.workspace ?? selectedProject
+  const [projectMenu, setProjectMenu] = useState(false)
+  const lastProjectNotes = useRef(readSettings().lastProjectNotes ?? {})
+  const projectTabs = tabs.filter((id) => id === HELP_ID || threads.find((thread) => thread.id === id)?.workspace === project)
+  useEffect(() => {
+    setSelectedProject(project)
+    if (active) lastProjectNotes.current[project] = active.id
+    updateSettings({ lastProject: project, lastProjectNotes: { ...lastProjectNotes.current } })
+  }, [project, active?.id])
+
   const annotationCaptures = useMemo(() => collectAnnotations(threads), [threads])
   const annotationOpenCount = annotationCaptures.filter(({ saved }) => captureOpen(saved)).reduce((sum, { saved }) => sum + saved.capture.elements.length, 0)
   const previewing = active ? previews[active.id] : undefined
@@ -1049,7 +1086,8 @@ function App() {
     setTabs((t) => {
       if (t.includes(id)) return t
       // The Help note doesn't count toward the nine, and never makes room.
-      const notes = t.filter((x) => x !== HELP_ID)
+      const folder = threadsRef.current.find((thread) => thread.id === id)?.workspace
+      const notes = t.filter((x) => x !== HELP_ID && threadsRef.current.find((thread) => thread.id === x)?.workspace === folder)
       if (notes.length < MAX_TABS) return [...t, id]
       const drop = notes.find((x) => !threadsRef.current.find((th) => th.id === x)?.running) ?? notes[0]!
       const title = threadsRef.current.find((th) => th.id === drop)?.title ?? 'a note'
@@ -1110,9 +1148,12 @@ function App() {
       void runners.current.get(id)?.dispose()
       runners.current.delete(id)
       setTabs(next)
-      if (id === activeId) setActiveId(next[Math.min(Math.max(i, 0), next.length - 1)])
+      if (id === activeId) {
+        const local = next.filter((tab) => tab === HELP_ID || threadsRef.current.find((thread) => thread.id === tab)?.workspace === project)
+        setActiveId(local[Math.min(Math.max(i, 0), local.length - 1)])
+      }
     },
-    [tabs, activeId],
+    [tabs, activeId, project],
   )
 
   /** A note to the trash (Settings › Trash keeps it 30 days): its tab closes and its agent ends. */
@@ -1145,10 +1186,10 @@ function App() {
 
   /** What you started writing in the Help note, on its way to the note it starts… */
   const fromHelp = useRef('')
-  /** …and that note, once it exists, for the keys that still land in Help. */
+  /** The note started from Help, for keys that still land there before focus moves. */
   const helpNote = useRef<string | undefined>(undefined)
   const createThread = useCallback(
-    (profileId: string, folder: string) => {
+    (profileId: string, folder: string, text?: string, tags: Tag[] = []) => {
       const meta = { id: newThreadId(), title: 'Untitled', profileId, workspace: folder, createdAt: new Date().toISOString() }
       appendRecord(meta.id, { type: 'vellum/meta', meta })
       // Settings › New notes: the mode and effort a note starts with.
@@ -1159,7 +1200,8 @@ function App() {
       setThreads((prev) => [thread, ...prev])
       setProfiles(rememberWorkspace(profileId, folder))
       openNote(meta.id)
-      if (fromHelp.current) setDraft(meta.id, fromHelp.current, [])
+      const initialText = text ?? fromHelp.current
+      if (initialText) setDraft(meta.id, initialText, tags)
       fromHelp.current = ''
       setOverlay(null)
       setTimeout(focusComposer, 50)
@@ -1167,6 +1209,40 @@ function App() {
     },
     [focusComposer, openNote, setDraft, setThreads],
   )
+
+  const startNewNote = useCallback((folder = project) => {
+    const current = threadsRef.current.find((thread) => thread.id === activeRef.current)
+    const list = profilesRef.current
+    const profileId = list.find((profile) => profile.id === readSettings().newNoteProfile)?.id
+      ?? (current?.workspace === folder ? current.profileId : profileForWorkspace(list, folder)?.id) ?? list[0]?.id
+    if (!profileId) { setOverlay('settings'); return }
+    setView('notes')
+    createThread(profileId, folder)
+  }, [createThread, project])
+
+  const selectProject = (folder: string) => {
+    setProjectMenu(false)
+    setNoteMenu(false)
+    setSelectedProject(folder)
+    setOverlay(null)
+    setView('notes')
+    const last = lastProjectNotes.current[folder]
+    const note = threadsRef.current.find((thread) => thread.id === last && thread.workspace === folder)
+      ?? threadsRef.current.find((thread) => thread.workspace === folder)
+    if (note) { openNote(note.id); setTimeout(focusComposer, 32) }
+    else startNewNote(folder)
+  }
+  const browseProject = async () => {
+    setProjectMenu(false)
+    try {
+      const folders = await renderer.promptForPaths?.({ directories: true, files: false, multiple: false, prompt: 'Open project' })
+      if (folders?.[0]) selectProject(folders[0])
+    } catch (error) { showToast(`Couldn’t open folder: ${String((error as Error).message)}`) }
+  }
+  // Existing entry points (Help, onboarding and At launch) also land on a fresh page.
+  useEffect(() => {
+    if (overlay === 'new' && !onboarding) startNewNote()
+  }, [overlay, onboarding, startNewNote])
 
   // ---- terminals: their own view, one tab each
 
@@ -1518,7 +1594,7 @@ function App() {
     [active?.id, active?.workspace, togglePreview],
   )
 
-  const me = useMemo(() => identityFor(activeProfile, MACHINE_ME), [activeProfile?.avatarImage])
+  const me = useMemo(() => identityFor(activeProfile, machine), [activeProfile?.avatarImage, machine])
   const actions: BlockActions = useMemo(
     () => ({
       showThoughts,
@@ -1544,8 +1620,8 @@ function App() {
   // ---- shortcuts
 
   const cycleTab = (step: number) => {
-    const i = activeId ? tabs.indexOf(activeId) : -1
-    if (tabs.length) setActiveId(tabs[(i + step + tabs.length) % tabs.length])
+    const i = activeId ? projectTabs.indexOf(activeId) : -1
+    if (projectTabs.length) setActiveId(projectTabs[(i + step + projectTabs.length) % projectTabs.length])
   }
 
   shortcuts.current = (e: KeyEvent) => {
@@ -1553,6 +1629,7 @@ function App() {
     const key = (e.key ?? '').toLowerCase()
     // A list or field that handled the key already (⌃N in a picker is also Ctrl+N, new note, off macOS).
     if (e.defaultPrevented) return
+    if (onboarding && view !== 'terminal') return
     // ⌃⇥ ⌃⇧⇥ step through the tabs, as in a browser (and Ctrl+PgUp/PgDn off macOS).
     const step = tabStep(key, mods)
     if (step) {
@@ -1563,7 +1640,10 @@ function App() {
     if (!mods || !primary(mods)) return
     if ((key === 'n' || key === 't') && !mods.shift) {
       e.preventDefault()
-      setOverlay('new')
+      startNewNote()
+    } else if (key === 'o') {
+      e.preventDefault()
+      void browseProject()
     } else if (key === 'w' && mods.shift) {
       // Plain ⌘W is GPUIX's native Close Window (it quits a one-window app) and never reaches us.
       e.preventDefault()
@@ -1571,7 +1651,7 @@ function App() {
       else if (activeId) closeTab(activeId)
     } else if (/^[1-9]$/.test(key)) {
       e.preventDefault()
-      const id = key === '9' ? tabs[tabs.length - 1] : tabs[Number(key) - 1]
+      const id = key === '9' ? projectTabs[projectTabs.length - 1] : projectTabs[Number(key) - 1]
       if (id) setActiveId(id)
     } else if (mods.shift && (key === '[' || key === ']' || key === '{' || key === '}' || key === 'bracketleft' || key === 'bracketright')) {
       e.preventDefault()
@@ -1645,8 +1725,8 @@ function App() {
   }, [])
   // It opens by itself once: the first launch, before there are notes.
   useEffect(() => {
-    if (activeId === HELP_ID && !readSettings().helpShown) updateSettings({ helpShown: true })
-  }, [activeId])
+    if (!onboarding && activeId === HELP_ID && !readSettings().helpShown) updateSettings({ helpShown: true })
+  }, [activeId, onboarding])
   /** Nothing in Help can be changed: writing in it starts a note, in the latest folder, with what you wrote. */
   const writeFromHelp = useCallback(
     (text: string, first: boolean) => {
@@ -1657,26 +1737,26 @@ function App() {
       }
       helpNote.current = undefined
       fromHelp.current = text
-      const folder = recentFolders[0]
+      const folder = project
       const profileId = folder ? (profileForWorkspace(profiles, folder)?.id ?? profiles.find((p) => p.id === readSettings().newNoteProfile)?.id ?? profiles[0]?.id) : undefined
       if (folder && profileId) helpNote.current = createThread(profileId, folder)
       else setOverlay('new')
     },
-    [createThread, profiles, recentFolders, setDraft],
+    [createThread, profiles, project, setDraft],
   )
 
   const typing = writing && Boolean(draft.text.trim())
   const stripVisible = confirmClose !== null || (tabMode === 'pinned' ? !stripToggled : tabMode === 'auto' ? stripToggled || stripHover || !typing : stripToggled)
   const m = material
   const paneRadius = concentric(windowRadius, shellInset)
-  const tabThreads = tabs.map((id) => threads.find((t) => t.id === id)).filter((t): t is Thread => Boolean(t))
+  const tabThreads = projectTabs.map((id) => threads.find((t) => t.id === id)).filter((t): t is Thread => Boolean(t))
   const editsWaiting = active ? pendingEdits(active).length > 0 : false
   const currentCapture = captureViewing ? threads.flatMap((thread) => thread.blocks).find((block): block is Extract<Block, { kind: 'capture' }> => block.kind === 'capture' && block.saved.capture.id === captureViewing.capture.id && block.saved.noteId === captureViewing.noteId)?.saved ?? captureViewing : undefined
   const activeBrowserSession = activeId && liveBrowser ? getBrowserSession(activeId) : undefined
   const activeBrowser = activeBrowserSession?.generation && validateBrowser(activeBrowserSession as import('./core/browser-types').BrowserKey) ? activeBrowserSession : undefined
   const currentBrowser = browserViewing ? threads.flatMap((thread) => thread.blocks).find((block): block is Extract<Block, { kind: 'browser' }> => block.kind === 'browser' && block.browser.noteId === browserViewing.noteId && block.browser.session === browserViewing.session && block.browser.generation === browserViewing.generation)?.browser ?? browserViewing : undefined
   const placeholder = !active?.blocks.length
-    ? keys(`Start writing.  ⌘↵ asks ${activeAgent.title} · ! runs a command · @ tags a file`)
+    ? 'What would you like to work on?'
     : editsWaiting
       ? keys(`⌘↵ tells ${activeAgent.title} about your edits`)
       : 'Keep writing…'
@@ -1690,6 +1770,7 @@ function App() {
         style={{
           width: '100%',
           height: '100%',
+          position: 'relative',
           display: 'flex',
           flexDirection: 'column',
           padding: shellInset,
@@ -1710,7 +1791,7 @@ function App() {
             style={{ minHeight: 0, flexShrink: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
           >
             <TabStrip
-              tabs={tabs.flatMap((id): StripTab[] =>
+              tabs={projectTabs.flatMap((id): StripTab[] =>
                 id === HELP_ID
                   ? [{ id, title: 'Help', time: '', running: false, unread: false, needsYou: false, dot: m.textFaint, plain: true }]
                   : tabThreads.filter((t) => t.id === id).map((t) => ({
@@ -1741,6 +1822,7 @@ function App() {
               } : undefined}
               leading={
                 <>
+                  <ProjectPicker workspace={project} recent={recentFolders} open={projectMenu} onOpenChange={setProjectMenu} onPick={selectProject} onBrowse={() => { void browseProject() }} />
                   <Button onPress={() => setOverlay((current) => current === 'history' ? null : 'history')} selected={overlay === 'history'} testId="open-history" title={keys('Library · search notes (⌘K) · recipes (⇧⌘Y)')}>
                     <Icon name="library" size={15} />
                   </Button>
@@ -1788,7 +1870,7 @@ function App() {
               }}
               onCloseTerm={closeTerm}
               onNewTerm={hasPty ? newShell : undefined}
-              onNew={() => setOverlay('new')}
+              onNew={() => startNewNote()}
               changes={stripChanges ? { summary: stripChanges, onPress: () => setOverlay('changes') } : undefined}
               trailing={
                 <>
@@ -1839,6 +1921,8 @@ function App() {
                 captureTarget={captureJump?.noteId === active.id ? captureJump : undefined}
                 composer={
                   <Composer
+                    key={active.id}
+                    submitOnEnter
                     value={draft.text}
                     tags={draft.tags}
                     images={draft.images}
@@ -1951,7 +2035,7 @@ function App() {
               </div>
             </>
           ) : (
-            <EmptyState onNew={() => setOverlay('new')} />
+            <EmptyState onNew={() => startNewNote()} />
           )}
           {/* Settings is a page over the note, under the strip (ui/Settings.tsx). */}
           <AnimatePresence>
@@ -1961,6 +2045,7 @@ function App() {
               key="settings"
               top={0}
               onClose={() => setOverlay(null)}
+              onOnboarding={() => { setOverlay(null); setView('notes'); setOnboardingStep(0); setOnboardingProfile(profiles.find((p) => p.id === readSettings().newNoteProfile)?.id ?? profiles[0]?.id); setOnboardingError(''); setOnboarding(true) }}
               material={materialName}
               onMaterial={(next) => {
                 setMaterialName(next)
@@ -2047,24 +2132,7 @@ function App() {
           </DockPanel>
           </div>
         </div>
-        {overlay === 'new' ? (
-          <NewThreadDialog
-            open
-            onClose={() => {
-              // Closed without making a note: what was written in Help doesn't wait for the next one.
-              fromHelp.current = ''
-              setOverlay(null)
-            }}
-            profiles={profiles}
-            recentFolders={recentFolders}
-            initialProfileId={profiles.find((p) => p.id === readSettings().newNoteProfile)?.id ?? active?.profileId}
-            initialFolder={active?.workspace}
-            suggestProfile={(folder) => profileForWorkspace(profiles, folder)?.id}
-            onCreate={createThread}
-            onAddProfile={addAccount}
-            onLogin={openLogin}
-          />
-        ) : null}
+
         <Changes
           open={overlay === 'changes'}
           onClose={() => setOverlay(null)}
@@ -2125,6 +2193,40 @@ function App() {
         {/* While an edge is dragged, moves go to whatever is under the pointer: this covers it all. */}
         {phoneCapture ? <div testId="mobile-cover" onMouseMove={phoneCapture.move} onMouseUp={phoneCapture.up} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, cursor: 'pointer', pointerEvents: 'auto', userSelect: 'none' }} /> : null}
         {resizing ? <div testId="resize-cover" onMouseMove={followResize} onMouseUp={endResize} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, cursor: 'col-resize', pointerEvents: 'auto', userSelect: 'none' }} /> : null}
+        {onboarding ? <Onboarding
+          step={onboardingStep}
+          onStep={setOnboardingStep}
+          profiles={profiles}
+          profileId={onboardingProfile}
+          onAgent={(agent) => {
+            const profile = existingAgentProfile(agent)
+            setProfiles(loadProfiles())
+            setOnboardingProfile(profile.id)
+            setOnboardingError('')
+            void refreshAccount(profile.id, profile)
+          }}
+          busy={authBusy}
+          refreshing={authRefreshing}
+          onRefresh={(id) => { void refreshAccount(id) }}
+          onLogin={(id) => { setOnboardingError(''); void openLogin(id).catch((error) => { busy(id, false); setOnboardingError(`Couldn’t start sign-in: ${String((error as Error).message ?? error)}`) }) }}
+          material={materialName}
+          onMaterial={(next) => { setMaterialName(next); updateSettings({ material: next }) }}
+          tabs={tabMode}
+          onTabs={(next) => { setTabMode(next); setStripToggled(false); updateSettings({ tabs: next }) }}
+          loginActive={view === 'terminal'}
+          error={onboardingError}
+          onFinish={(prompt) => {
+            updateSettings({ onboardingComplete: true, newNoteProfile: onboardingProfile })
+            setOnboarding(false)
+            if (prompt !== undefined) {
+              fromHelp.current = prompt
+              setOverlay('new')
+            } else {
+              setOverlay(null)
+              setTimeout(focusComposer, 50)
+            }
+          }}
+        /> : null}
       </div>
     </AgentContext.Provider>
     </MaterialContext.Provider>
@@ -2136,7 +2238,7 @@ function windowSize(spec: string | undefined) {
   return { width: w || 1080, height: h || 780 }
 }
 
-render(<App />, {
+render(<Startup />, {
   title: 'Vellum',
   appName: 'Vellum',
   appId: 'dev.vellum.app',

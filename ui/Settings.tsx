@@ -50,6 +50,7 @@ export function SettingsPage({
   onLogout,
   onAddProfile,
   onRestore,
+  onOnboarding,
 }: {
   noteId?: string
   /** Where the page starts: under the tab strip while it shows. */
@@ -73,6 +74,7 @@ export function SettingsPage({
   onAddProfile: (name: string, agent: AgentId) => void
   /** A note brought back from Trash, for Past notes. */
   onRestore: (thread: Thread) => void
+  onOnboarding: () => void
 }) {
   const m = useM()
   const root = useRef<PublicInstance>(null)
@@ -85,6 +87,7 @@ export function SettingsPage({
   const open = (page: Page) => { setCurrent(page); setQuery('') }
   const content = (group: SettingsGroup) => {
     switch (group.id) {
+      case 'onboarding': return <SheetSection label="Getting started"><SheetRow label="Welcome to Vellum" detail="Choose an agent, make it yours, and start your first note."><Button onPress={onOnboarding} testId="show-onboarding"><Label>Show onboarding</Label><Icon name="chevronRight" size={12} /></Button></SheetRow></SheetSection>
       case 'thinking': return <SheetSection label="Model activity"><SheetRow label="Show model thinking" detail="Include reasoning in expandable activity. Tool results stay visible either way."><Switch checked={showThoughts} onChange={onShowThoughts} label="Show model thinking" testId="set-show-thoughts" /></SheetRow></SheetSection>
       case 'new-notes': return <NewNotes profiles={profiles} />
       case 'instructions': return <Instructions />
