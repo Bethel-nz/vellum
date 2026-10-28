@@ -79,7 +79,7 @@ import { History } from './ui/History'
 import { expandRecipe, gitBranch, loadRecipes, recipeCall, type Recipe } from './core/recipes'
 import { useLoaded } from './ui/useLoaded'
 import { Changes } from './ui/Changes'
-import { revealEnd } from './ui/glide'
+import { followStreaming, revealEnd } from './ui/glide'
 import { Timeline, watchRows } from './ui/Timeline'
 import { changeSummary, collectChanges, commentTags, hunkTags, type Hunk } from './core/changes'
 import { listDir, prepareTree } from './core/filetree'
@@ -201,6 +201,18 @@ const Document = memo(function Document({
   const lastUser = thread.blocks.map((block) => block.kind).lastIndexOf('user')
   const lastUserId = thread.blocks[lastUser]?.id
   useEffect(() => setInspectingTools(false), [lastUserId])
+  // While Claude streams, new rows land above the composer: keep the end in view while
+  // the viewport is already near it. Further up, leave the reader alone; a scroll of
+  // your own stops the glide and reads as further away, so nothing restarts it.
+  // Inspecting tools pauses it, like followTail.
+  const running = thread.running
+  const blocks = thread.blocks
+  useEffect(() => {
+    if (!running || inspectingTools) return
+    const id = (listRef as React.MutableRefObject<PublicInstance | null> | undefined)?.current?.id
+    if (id == null) return
+    followStreaming(renderer, id)
+  }, [running, blocks, inspectingTools, listRef, renderer])
   const hasLimitError = limit?.state === 'reached' && thread.blocks.slice(lastUser + 1).some((block) => {
     if (block.kind !== 'error') return false
     const error = block.usageLimit ?? usageLimitFromText(block.text)
@@ -1002,10 +1014,15 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
   /**
    * A message into the turn Claude is running (core/agent.ts `steer`): it reads it as soon as it
    * can and answers it before the turn ends. It shows in the note where Claude took it in.
-   * Otherwise (the turn not yet with the agent, or just over; an agent that can't steer; a
-   * recipe, which sets the mode and model as its turn starts) it goes to the front of the queue,
-   * so it's the next turn, or now if the turn has already ended here.
+   * An agent that can't steer at all, or a recipe (which sets the mode and model as its turn
+   * starts), has it sent now: first in line, and the turn stopped, so it goes out as its own turn
+   * as soon as the stop lands. Otherwise (the turn not yet with the agent, or just over) it goes
+   * to the front of the queue, so it's the next turn, or now if the turn has already ended here.
    */
+  const sendNow = useCallback((threadId: string, item: QueuedMessage) => {
+    setQueues((all) => ({ ...all, [threadId]: [item, ...(all[threadId] ?? []).filter((q) => q !== item)] }))
+    runners.current.get(threadId)?.interrupt()
+  }, [])
   const steerIn = useCallback(async (thread: Thread, item: QueuedMessage) => {
     const tags = item.tags ?? []
     const images = item.images ?? []
@@ -1019,8 +1036,9 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
     }
     const now = threadsRef.current.find((t) => t.id === thread.id) ?? thread
     if (!now.running) deliver(now, item.text, tags, images, item.captureId)
+    else if (!runner?.steers || item.text.startsWith('$')) sendNow(thread.id, item)
     else setQueues((all) => ({ ...all, [thread.id]: [item, ...(all[thread.id] ?? [])] }))
-  }, [deliver, record])
+  }, [deliver, record, sendNow])
 
   /**
    * ⌘↵: send what was written at the end, plus any edits made to earlier text. While Claude
@@ -1962,6 +1980,11 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
                       if (!item) return
                       setQueues((all) => ({ ...all, [active.id]: (all[active.id] ?? []).filter((_, j) => j !== i) }))
                       void steerIn(active, item)
+                    }}
+                    onForceQueued={(i) => {
+                      const item = queues[active.id]?.[i]
+                      if (!item) return
+                      sendNow(active.id, item)
                     }}
                     onUnqueue={(i) => { const item = queues[active.id]?.[i]; if (item?.captureId) updateCapture(active.id, item.captureId, { status: 'queued', delivery: undefined }); setQueues((all) => ({ ...all, [active.id]: (all[active.id] ?? []).filter((_, j) => j !== i) })) }}
                     profile={activeProfile}
