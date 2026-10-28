@@ -5,12 +5,17 @@ the GPUIX renderer determines which motion can be implemented.
 
 ## The renderer (what motion can legally be)
 
-1. Motion is tweens only, on width, height, top, right, bottom, left, opacity and borderRadius.
-   Each transition has one cubic-bezier ease, a duration and an optional delay. No springs,
-   transforms, scale, translate, rotate, blur, keyframes, gradient/backdrop animation,
-   letter-spacing animation or box-shadow animation.
-2. Arc's critically damped springs become same-duration tweens using the converted presets:
-   snappy .26s, smooth .4s and morph .42s. They never overshoot.
+1. Motion animates width, height, top, right, bottom, left, opacity and borderRadius. No
+   transforms, scale, translate, rotate, blur, keyframes, gradient/backdrop animation or
+   letter-spacing animation. GPUIX's own motion is tweens only, and a tween interrupted
+   mid-flight restarts from rest; a cubic-bezier that overshoots is clamped.
+2. So `motion.div` is components/spring.tsx, not GPUIX's: the same props, run as springs in
+   SwiftUI's parameters (duration and bounce; stiffness (2π/duration)², mass 1) on one shared
+   ~120 Hz clock. A retarget keeps each value's speed. `spring.*` tokens name their spring;
+   other tweens convert to a smooth spring of ~1.4× their duration. Exits run 0.8× as long,
+   never bounce, and unmount at 1.2× (perceptual duration, not the settling tail). `linear`
+   and `material` loops and duration 0 (reduced motion) stay on the renderer's tweens.
+   Bounce only where a gesture has momentum (WWDC18 "Designing Fluid Interfaces").
 3. Every transition goes through tween(), enter(), leave() or wash(). Reduced motion collapses
    every duration to zero. Use useReducedMotion() for mounted controls and setReducedMotion()
    for the settings override.
@@ -18,8 +23,10 @@ the GPUIX renderer determines which motion can be implemented.
    legacy; a motion migration is not a retheme.
 5. Native markdown has no per-glyph spans. Streaming mounts immutable StreamChunk rows;
    an already measured virtual-list row never grows with later deltas.
-6. Elevated surfaces close atomically. An opacity exit leaves GPUI's separately composited
-   shadow painted. Menus, popovers, approvals and toasts unmount whole. Sheets freeze their
+6. GPUI paints a box shadow at full strength whatever the node's opacity. The spring motion
+   scales a moving surface's shadow alpha with its opacity, so shadowed surfaces may fade in
+   and out; under the renderer's tweens (reduced motion) elevated surfaces still close
+   atomically. Menus, popovers, approvals and toasts unmount whole. Sheets freeze their
    panel while a shadowless scrim fades for .18s, then unmount together; reduced motion skips
    the hold. Lifted defers an entrance shadow until the body has become opaque.
 7. First visible streaming content arrives within 200ms of the first delta. Passive arrivals
@@ -46,7 +53,8 @@ the GPUIX renderer determines which motion can be implemented.
 ## The translate-or-leave checklist
 
 1. Animate only the eight supported properties.
-2. Replace springs with the converted tween presets; no spring physics.
+2. Use the `spring.*` tokens or a named spring from components/spring.tsx; import `motion` and
+   `AnimatePresence` from there, never from @gpuix/react.
 3. Use token-based tween()/enter()/leave()/wash() transitions.
 4. Elevated exits are atomic. Only scrims or other shadowless surfaces may fade with leave().
 5. Reduced motion is duration zero with a correct final layout. Loops stay present and static.
