@@ -1,7 +1,10 @@
-// A passing confirmation, after arc's toast: bottom-left, rises 16px on the enter curve, stays
-// 1.5s, then unmounts whole: its elevation cannot fade with node opacity.
+// A passing confirmation, after arc's toast: bottom-left beside the status bar, where it
+// never covers the note's tail; under 720px wide the bottom line crowds the approval card,
+// so it drops from the top edge instead. Rises once on the enter curve, stays 1.5s, then
+// unmounts whole: its elevation cannot fade with node opacity.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useWindowSize } from '@gpuix/react'
 import { motion } from './spring'
 import { concentric, elevation, radiusBase } from '../ui/theme'
 import { Dot } from './Dot'
@@ -29,19 +32,36 @@ export function useToast() {
 function Toast({ shown }: { shown: Shown | null }) {
   const m = useM()
   const reduced = useReducedMotion()
+  const window = useWindowSize()
+  // Narrow windows stack the approval card nearly full-width over the bottom line;
+  // the toast gets out of the way to the top edge instead of layering on top of it.
+  const narrow = window.width < 720
   const dot = shown?.tone === 'success' ? m.success : shown?.tone === 'danger' ? m.danger : null
   return (
     <>
       {shown ? (
-        <motion.div
+        // Plain wrapper owns position; the motion child only animates (R13).
+        // Nothing here takes presses, so clicks pass straight through to the note.
+        <div
           key={shown.id}
-          initial={reduced ? false : { opacity: 0, bottom: 50 - offset.toast }}
-          animate={{ opacity: 1, bottom: 50 }}
-          transition={enter()}
           style={{
             position: 'absolute',
-            // Bottom-left: the bottom-right corner belongs to the status bar and the approval card.
-            left: 16,
+            left: narrow ? 0 : 16,
+            right: narrow ? 0 : undefined,
+            bottom: narrow ? undefined : 50,
+            top: narrow ? 46 : undefined,
+            display: 'flex',
+            flexDirection: 'row',
+            justifyContent: narrow ? 'center' : 'flex-start',
+            pointerEvents: 'none',
+          }}
+        >
+        <motion.div
+          initial={reduced ? false : { opacity: 0, top: narrow ? -offset.toast : offset.toast }}
+          animate={{ opacity: 1, top: 0 }}
+          transition={enter()}
+          style={{
+            position: 'relative',
             display: 'flex',
             alignItems: 'center',
             height: 32,
@@ -52,6 +72,7 @@ function Toast({ shown }: { shown: Shown | null }) {
             borderWidth: 1,
             borderColor: m.border,
             boxShadow: elevation(m, 'popover'),
+            pointerEvents: 'none',
           }}
         >
           <div testId="toast" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -59,6 +80,7 @@ function Toast({ shown }: { shown: Shown | null }) {
             <text style={{ fontSize: 12.5, lineHeight: 16, color: m.textUi, whiteSpace: 'nowrap' }}>{shown.text}</text>
           </div>
         </motion.div>
+        </div>
       ) : null}
     </>
   )

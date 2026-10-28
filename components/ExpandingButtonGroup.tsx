@@ -5,6 +5,7 @@ import { useGpuixRequired, type EventPayload, type KeyEvent, type PublicInstance
 import { motion } from './spring'
 import { Button as Base } from '@gpuix/react/button'
 import { enter, leave, spring, tween, useReducedMotion } from './motion'
+import { concentric, radiusXl, type } from '../ui/theme'
 import { useM } from './theme'
 
 export type ExpandingButtonGroupItem = {
@@ -79,7 +80,7 @@ export function ExpandingButtonGroup({ label, items, defaultExpanded, testId }: 
     renderer.focusElement?.(button.id)
   }
   return (
-    <div testId={testId} role="toolbar" aria-label={label} onMouseMove={move} onMouseLeave={() => { pointer.current = null; setHover(null) }} style={{ position: 'relative', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 2, padding: 2, flexShrink: 0, borderWidth: 1, borderColor: m.border, borderRadius: 14, backgroundColor: m.panel, userSelect: 'none' }}>
+    <div testId={testId} role="toolbar" aria-label={label} onMouseMove={move} onMouseLeave={() => { pointer.current = null; setHover(null) }} style={{ position: 'relative', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 2, padding: 2, flexShrink: 0, borderWidth: 1, borderColor: m.border, borderRadius: radiusXl, backgroundColor: m.panel, userSelect: 'none' }}>
       {items.map((item) => (
         <div key={item.id} style={{ position: 'relative' }}>
           <ExpandingItem item={item} expanded={expanded === item.id} />
@@ -101,7 +102,7 @@ export function ExpandingButtonGroup({ label, items, defaultExpanded, testId }: 
             onClick={item.onPress}
             style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: height / 2, cursor: item.disabled ? 'default' : 'pointer', active: item.disabled ? undefined : { backgroundColor: m.pressed }, focusVisible: { outlineWidth: 2, outlineColor: m.focusRing, outlineOffset: -2 } }}
           >
-            <text aria-hidden style={{ opacity: 0, pointerEvents: 'none', fontSize: 12, whiteSpace: 'nowrap' }}>{item.detail ? `${item.label} ${item.detail}` : item.label}</text>
+            <text aria-hidden style={{ opacity: 0, pointerEvents: 'none', ...type.label, whiteSpace: 'nowrap' }}>{item.detail ? `${item.label} ${item.detail}` : item.label}</text>
           </Base>
           {item.popover}
         </div>
@@ -131,12 +132,12 @@ function ExpandingItem({ item, expanded }: { item: ExpandingButtonGroupItem; exp
     <>
       {/* A fixed-width measuring row keeps the label's intrinsic width outside the clip. */}
       <div aria-hidden style={{ position: 'absolute', left: 0, top: 0, width: 600, opacity: 0, pointerEvents: 'none', display: 'flex', flexDirection: 'row' }}>
-        <text ref={sizer} style={{ flexShrink: 0, fontSize: 12, lineHeight: 16, fontWeight: 500, whiteSpace: 'nowrap' }}>{label}</text>
+        <text ref={sizer} style={{ flexShrink: 0, ...type.label, fontWeight: 500, whiteSpace: 'nowrap' }}>{label}</text>
       </div>
       <motion.div initial={false} animate={{ width }} transition={tween(measured ? spring.morph : { duration: 0 })} style={{ position: 'relative', height, minWidth: height, overflow: 'hidden', borderRadius: height / 2, pointerEvents: 'none', opacity: item.disabled ? 0.5 : 1, backgroundColor: expanded ? m.selected : '#00000000' }}>
         <div style={{ position: 'absolute', left: inset, top: (height - iconSize) / 2, width: iconSize, height: iconSize, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{item.icon}</div>
         <motion.div initial={false} animate={{ opacity: expanded ? 1 : 0, left: inset + iconSize + (expanded ? gap : 0) }} transition={expanded ? enter() : leave('instant')} style={{ position: 'absolute', top: 3, width: textWidth, height: 16, pointerEvents: 'none' }}>
-          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}><text style={{ fontSize: 12, lineHeight: 16, fontWeight: 500, color: m.textUi, whiteSpace: 'nowrap', flexShrink: 0 }}>{item.label}</text>{item.detail ? <text style={{ fontSize: 12, lineHeight: 16, color: m.textMuted, whiteSpace: 'nowrap', flexShrink: 0 }}>{item.detail}</text> : null}</div>
+          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}><text style={{ ...type.label, fontWeight: 500, color: m.textUi, whiteSpace: 'nowrap', flexShrink: 0 }}>{item.label}</text>{item.detail ? <text style={{ ...type.label, color: m.textMuted, whiteSpace: 'nowrap', flexShrink: 0 }}>{item.detail}</text> : null}</div>
         </motion.div>
       </motion.div>
     </>
