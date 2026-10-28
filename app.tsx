@@ -9,7 +9,7 @@ import path from 'node:path'
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { render, useGpuixRequired, useWindowSize, type EventPayload, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { AnimatePresence, motion } from './components/spring'
-import { ApprovalCard, Button, closedByOutsidePress, DockPanel, Field, Label, Menu, stripHeight, TabStrip, useToast, type MenuItem as MenuEntry, type StripTab } from './components'
+import { ApprovalCard, Button, closedByOutsidePress, DockPanel, Field, Menu, stripHeight, TabStrip, useToast, type MenuItem as MenuEntry, type StripTab } from './components'
 import { FloatingLayer } from '@gpuix/react/floating'
 import { StreamChunk, useStreamChunks } from './components/StreamChunk'
 import { AgentMark } from './components/AgentMark'
@@ -41,7 +41,7 @@ import { StatusBar } from './ui/StatusBar'
 import { AskUserQuestions } from './components/AskUserQuestions'
 import type { QuestionContent } from './core/questions'
 import { defaultMode, type Ask, type PermissionMode, type Think } from './core/asks'
-import { createProfile, loadProfiles, profileEnv, profileForWorkspace, rememberWorkspace, updateProfile, type Profile } from './core/profiles'
+import { createProfile, existingAgentProfile, loadProfiles, profileEnv, profileForWorkspace, rememberWorkspace, updateProfile, type Profile } from './core/profiles'
 import { loadJson, paths, readSettings, updateSettings, writeJson } from './core/store'
 import { promptFor, relabel, tagsIn, tagText } from './core/tags'
 import { heldTerms, holdTerm, killAllTerms, restoreTmuxTerms, startTerm, tmuxShell, type TermSession } from './core/term'
@@ -83,11 +83,11 @@ import { revealEnd } from './ui/glide'
 import { Timeline, watchRows } from './ui/Timeline'
 import { changeSummary, collectChanges, commentTags, hunkTags, type Hunk } from './core/changes'
 import { listDir, prepareTree } from './core/filetree'
-import { agentFor, agentModes, modeFor, type AgentId } from './core/agents'
+import { agentChoices, agentFor, agentModes, modeFor, type AgentId } from './core/agents'
 import { AgentContext } from './components/AgentContext'
 import { uncommittedFiles } from './core/gitsnap'
 import type { ChangeSummary } from './components/ChangesSummary'
-import { Dot, Icon, Kbd, MaterialContext, Meta, Quiet, useM } from './ui/kit'
+import { Icon, Kbd, MaterialContext, Meta, Quiet, useM } from './ui/kit'
 import { SettingsPage, type MotionPref, type TabMode } from './ui/Settings'
 import { CELL_W, TerminalBlock } from './ui/TerminalBlock'
 import {
@@ -272,50 +272,6 @@ async function defaultFile(thread: Thread): Promise<string | undefined> {
   for (const rel of recent) if (!rel.startsWith('..') && (await Bun.file(path.join(workspace, rel)).exists())) return rel
   const files = listDir(workspace).filter((e) => !e.dir)
   return (files.find((e) => /^readme(\.|$)/i.test(e.name)) ?? files.find((e) => !e.ignored) ?? files[0])?.rel
-}
-
-function AccountSwitcher({
-  thread,
-  profiles,
-  colorOf,
-  onMove,
-  onSettings,
-  compact,
-}: {
-  thread?: Thread
-  profiles: Profile[]
-  colorOf: (id: string) => string
-  onMove: (profileId: string) => void
-  onSettings: () => void
-  compact?: boolean
-}) {
-  const [open, setOpen] = useState(false)
-  const profile = profiles.find((p) => p.id === thread?.profileId)
-  if (!thread || !profile) return null
-  const items: MenuEntry[] = [
-    { kind: 'label', label: thread.running ? `Move this note once ${agentFor(profile).title} is done` : 'Move this note to' },
-    ...profiles.map((p) => ({
-      label: p.name,
-      dot: colorOf(p.id),
-      // No email here: the name is enough to pick by, and Settings has the details.
-      hint: p.id === profile.id ? 'This note' : p.loggedIn === false ? 'Not logged in' : undefined,
-      checked: p.id === profile.id,
-      disabled: p.id !== profile.id && (thread.running || p.loggedIn === false),
-      testId: `move-${p.id}`,
-      onSelect: () => p.id !== profile.id && onMove(p.id),
-    })),
-    { kind: 'separator' },
-    { label: 'Settings…', icon: 'settings', testId: 'account-settings', onSelect: onSettings },
-  ]
-  return (
-    <div style={{ position: 'relative' }}>
-      <Button onPress={() => setOpen((v) => !v && !closedByOutsidePress('account'))} selected={open} testId="account-pill" title="This note's account">
-        <Dot color={colorOf(profile.id)} size={7} />
-        {!compact ? <><Label muted>{profile.name}</Label><Icon name="chevronDown" size={11} /></> : null}
-      </Button>
-      <Menu open={open} onClose={() => setOpen(false)} side="bottom" align="start" width={280} testId="account-menu" closeKey="account" items={items} />
-    </div>
-  )
 }
 
 /**
@@ -1792,14 +1748,7 @@ function App() {
                     <Icon name="info" size={15} />
                   </Button>
                   <NotificationInboxButton />
-                  <AccountSwitcher
-                    thread={active}
-                    profiles={profiles}
-                    colorOf={(id) => accentFor(m, profiles, id)}
-                    onMove={(id) => active && moveNote(active, id)}
-                    onSettings={() => setOverlay('settings')}
-                    compact={windowSize.width < 1100}
-                  />
+
                 </>
               }
               menuOpen={noteMenu}
@@ -1968,6 +1917,21 @@ function App() {
               <div style={{ position: 'absolute', left: 0, right: 0, bottom: 10, display: 'flex', flexDirection: 'row', justifyContent: 'center', pointerEvents: 'none' }}>
                 <div style={{ pointerEvents: 'auto' }}>
                 <StatusBar
+                  key={active.id}
+                  accountLabel={activeProfile?.name ?? activeAgent.title}
+                  accountColor={activeProfile?.color}
+                  accounts={[
+                    { kind: 'label', label: active.running ? `Available when ${activeAgent.title} finishes` : 'Agent for this note' },
+                    ...profiles.map((profile) => ({ label: `${agentFor(profile).title} · ${profile.name}`, icon: agentFor(profile).id, checked: profile.id === active.profileId, disabled: profile.id !== active.profileId && active.running, testId: `move-${profile.id}`, onSelect: () => moveNote(active, profile.id) })),
+                    ...agentChoices(profiles).filter((choice) => !profiles.some((profile) => agentFor(profile).id === choice.agent.id)).map((choice) => ({ label: choice.agent.title, icon: choice.agent.id, disabled: active.running || Boolean(choice.why), hint: choice.why, testId: `agent-${choice.agent.id}`, onSelect: () => {
+                      const profile = existingAgentProfile(choice.agent.id)
+                      profilesRef.current = loadProfiles()
+                      setProfiles(profilesRef.current)
+                      moveNote(active, profile.id)
+                    } })),
+                    { kind: 'separator' },
+                    { label: 'Accounts and settings…', icon: 'settings', testId: 'account-settings', onSelect: () => setOverlay('settings') },
+                  ]}
                   mode={modeFor(activeAgent, active.mode)}
                     modes={agentModeList}
                   onMode={setMode}

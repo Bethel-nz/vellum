@@ -151,8 +151,8 @@ try {
   expect('picking Haiku sets it live', (await configs()).some((r) => r.configId === 'model' && r.value === 'haiku'))
   expect('the model reads Haiku 5.5', (await app.getByTestId('model-pill').textContent()).includes('Haiku 5.5'))
 
-  // context: the ring's count, the card, and Compact
-  expect('context shows the tokens', (await app.getByTestId('context-pill').textContent()).includes('24k'))
+  // context: the percent in the sentence, the card, and Compact
+  expect('context shows the percent', (await app.getByTestId('context-pill').textContent()).includes('12%'))
   await app.getByTestId('context-pill').click()
   await wait(400)
   expect('the card shows used of window', (await app.getByTestId('context-used').textContent()).includes('24k / 200k'))
@@ -160,11 +160,11 @@ try {
   await app.getByTestId('compact').click()
   // The agent may first wait for its git snapshot; the completed usage update is authoritative.
   const compactDeadline = Date.now() + 10_000
-  while (!(await app.getByTestId('context-pill').textContent()).includes('1.9k') && Date.now() < compactDeadline) await wait(25)
+  while (!(await app.getByTestId('context-pill').textContent()).includes('1%') && Date.now() < compactDeadline) await wait(25)
   const after = await Bun.file(path.join(home, 'threads', `${JSON.parse(await Bun.file(path.join(home, 'settings.json')).text()).lastThreadId}.jsonl`)).text()
   expect('Compact sends /compact as its own turn', after.includes('"vellum/compact"') && !after.includes('"text":"/compact"'))
   expect('the fold line is in the note', (await ids('compact-')).length === 1)
-  expect('the ring drops to the summary', (await app.getByTestId('context-pill').textContent()).includes('1.9k'))
+  expect('the percent drops to the summary', (await app.getByTestId('context-pill').textContent()).includes('1%'))
   await shot('8-compacted')
 } finally {
   await app.close()

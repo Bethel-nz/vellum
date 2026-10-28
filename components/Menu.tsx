@@ -86,6 +86,7 @@ export function Menu({
   align = 'start',
   testId,
   closeKey,
+  onActiveChange,
 }: {
   open: boolean
   onClose: () => void
@@ -97,15 +98,20 @@ export function Menu({
   testId?: string
   /** Identifies this menu in the outside-press guard (Status bar keys: mode / model). */
   closeKey?: string
+  /** Reports the highlighted row (pointer or keyboard); -1 when none. Lets an owner preview it. */
+  onActiveChange?: (index: number) => void
 }) {
   if (!open) return null
-  return <MenuPanel key="menu" onClose={onClose} items={items} header={header} width={width} side={side} align={align} testId={testId} closeKey={closeKey} />
+  return <MenuPanel key="menu" onClose={onClose} items={items} header={header} width={width} side={side} align={align} testId={testId} closeKey={closeKey} onActiveChange={onActiveChange} />
 }
 
-function MenuPanel({ onClose, items, header, width, side, align, testId }: { onClose: () => void; items: MenuItem[]; header?: MenuHeader; width: number; side: 'top' | 'bottom'; align: 'start' | 'end'; testId?: string; closeKey?: string }) {
+function MenuPanel({ onClose, items, header, width, side, align, testId, onActiveChange }: { onClose: () => void; items: MenuItem[]; header?: MenuHeader; width: number; side: 'top' | 'bottom'; align: 'start' | 'end'; testId?: string; closeKey?: string; onActiveChange?: (index: number) => void }) {
   const m = useM()
   const panel = useRef<PublicInstance>(null)
   const [active, setActive] = useState(-1)
+  const report = useRef(onActiveChange)
+  report.current = onActiveChange
+  useEffect(() => { report.current?.(active) }, [active])
   const [glide, setGlide] = useState(false)
   const [headerHeight, setHeaderHeight] = useState(0)
 

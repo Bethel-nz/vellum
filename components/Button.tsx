@@ -27,6 +27,7 @@ export function Button({
   style,
   disabled,
   selected,
+  expanded,
   buttonRef,
 }: {
   children: ReactNode
@@ -39,6 +40,8 @@ export function Button({
   disabled?: boolean
   /** Shows the pressed wash while a menu it owns is open. */
   selected?: boolean
+  /** A menu or panel owned by this button is open. */
+  expanded?: boolean
   buttonRef?: React.Ref<PublicInstance>
 }) {
   const m = useM()
@@ -49,6 +52,7 @@ export function Button({
       ref={buttonRef}
       testId={testId}
       aria-label={title === undefined ? undefined : keys(title)}
+      aria-expanded={expanded}
       disabled={disabled}
       onClick={onPress}
       onMouseDown={onPressStart}
