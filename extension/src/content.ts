@@ -277,13 +277,14 @@ function install() {
         capturing = true; status('Capturing…')
         try {
           if ((snapshots.get(selection.ref)?.length ?? 0) >= 12) throw new Error('Remove a capture before adding more than 12.')
+          scanning(selection.element)
           const { snapshot } = await worker<SnapshotResult>({ type: 'snapshot', ref: selection.ref })
           const size = selections.flatMap((item) => snapshots.get(item.ref) ?? []).reduce((total, item) => total + item.image.dataUrl.length, snapshot.image.dataUrl.length)
           if (size > 20_000_000) throw new Error('Remove a capture before adding another image.')
           snapshots.set(selection.ref, [...(snapshots.get(selection.ref) ?? []), snapshot])
           status('')
         } catch (error) { status((error as Error).message || 'Couldn’t capture. Try again.', true) }
-        finally { capturing = false; render() }
+        finally { scanning(null); capturing = false; render() }
       },
       onPageScreenshot: async () => {
         if (capturing) return
@@ -650,9 +651,79 @@ function install() {
     } catch { status('Couldn’t send. Click the check to retry.', true) }
     finally { capturing = false; sendingRef = undefined; render(); draw() }
   }
+  // While an element's picture is taken, a shimmer sweeps across it, so the capture reads as
+  // working and the toolbar never leaves the screen. The user chose it over AGENTS.md's no-gradient,
+  // no-keyframe rule: a keyframed transform runs on the compositor, so it stays smooth while the
+  // capture keeps the page's main thread busy. Nothing with reduced motion, where the status line
+  // says "Capturing…". The shimmer sits inside the element's box, so isolate keeps it out of the shot.
+  let scan: { end: () => void } | undefined
+  function scanning(element: Element | null) {
+    scan?.end()
+    scan = undefined
+    if (!element || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const box = getElementBounds(element)
+    const frame = document.createElement('div')
+    frame.className = 'vellum-shimmer'
+    Object.assign(frame.style, { left: `${box.x}px`, top: `${box.y}px`, width: `${box.width}px`, height: `${box.height}px` })
+    frame.append(document.createElement('div'))
+    surface.append(frame)
+    scan = { end: () => frame.remove() }
+  }
+
+  // For an element's own picture: what overlaps it on the page (a card in front, a sticky header,
+  // a backdrop behind) gets a clip-path with a hole where the element is, so it's left out of the
+  // shot and nothing outside the element's box changes on screen. An element with a clip-path of
+  // its own is hidden instead, for the moment of the shot. `null` puts everything back.
+  const isolated: Array<{ style: CSSStyleDeclaration; property: string; value: string; priority: string }> = []
+  function isolate(target: Element | null) {
+    for (const { style, property, value, priority } of isolated.splice(0)) {
+      if (value) style.setProperty(property, value, priority)
+      else style.removeProperty(property)
+    }
+    if (!target) return
+    // Every position is read before anything is written, so the page lays out once, not once per
+    // element that gets a hole.
+    const hole = target.getBoundingClientRect()
+    const cuts: Array<{ element: Element; box: DOMRect; clipped: boolean; scaleX: number; scaleY: number }> = []
+    const visit = (parent: Element) => {
+      for (const element of parent.children) {
+        // Vellum's own overlay is cut the same way: the toolbar and panel stay on screen, and the
+        // outline and shimmer over the element stay out of its picture.
+        if (element === target) continue
+        if (element.contains(target)) { visit(element); continue }
+        const box = element.getBoundingClientRect()
+        if (box.right > hole.left && box.left < hole.right && box.bottom > hole.top && box.top < hole.bottom) {
+          // Its own coordinates are its border box before a scale.
+          const scaleX = element instanceof HTMLElement && box.width ? element.offsetWidth / box.width : 1
+          const scaleY = element instanceof HTMLElement && box.height ? element.offsetHeight / box.height : 1
+          cuts.push({ element, box, clipped: getComputedStyle(element).clipPath !== 'none', scaleX, scaleY })
+        }
+        else visit(element)
+      }
+    }
+    visit(document.documentElement)
+    const far = 100000
+    for (const { element, box, clipped, scaleX, scaleY } of cuts) {
+      const style = (element as HTMLElement | SVGElement).style
+      if (!style) continue
+      const property = clipped ? 'visibility' : 'clip-path'
+      isolated.push({ style, property, value: style.getPropertyValue(property), priority: style.getPropertyPriority(property) })
+      if (clipped) { style.setProperty('visibility', 'hidden', 'important'); continue }
+      const [x0, y0, x1, y1] = [(hole.left - box.left) * scaleX, (hole.top - box.top) * scaleY, (hole.right - box.left) * scaleX, (hole.bottom - box.top) * scaleY]
+      style.setProperty('clip-path', `polygon(evenodd, ${-far}px ${-far}px, ${far}px ${-far}px, ${far}px ${far}px, ${-far}px ${far}px, ${-far}px ${-far}px, ${x0}px ${y0}px, ${x0}px ${y1}px, ${x1}px ${y1}px, ${x1}px ${y0}px, ${x0}px ${y0}px)`, 'important')
+    }
+  }
   chrome.runtime.onMessage.addListener((message: ContentMessage, _sender, reply) => {
     const handle = async () => {
       switch (message.type) {
+        case 'freeze': {
+          // The element holds still for its picture; restore-animations lets it go.
+          const selection = selections.find((item) => item.ref === message.ref)
+          if (!selection?.element.isConnected) throw new Error('Select the element again.')
+          for (const animation of selection.element.getAnimations({ subtree: true })) { saveAnimation(animation, frameAnimations); animation.pause() }
+          await new Promise(requestAnimationFrame)
+          return true
+        }
         case 'snapshot-state': {
           const selection = selections.find((item) => item.ref === message.ref)
           if (!selection?.element.isConnected) throw new Error('Select the element again.')
@@ -668,6 +739,11 @@ function install() {
         case 'ping': return true
         case 'toggle': setEnabled(!enabled); return true
         case 'visibility': host.style.setProperty('visibility', message.hidden ? 'hidden' : 'visible', 'important'); await new Promise(requestAnimationFrame); return true
+        case 'isolate': {
+          isolate(message.ref ? document.querySelector(`[data-vellum-ref="${CSS.escape(message.ref)}"]`) : null)
+          await new Promise(requestAnimationFrame)
+          return true
+        }
         case 'extract': {
           const selected = message.ref ? selections.filter((selection) => selection.ref === message.ref) : selections
           if (!selected.length) throw new Error('Select an element before sending.')

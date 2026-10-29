@@ -24,8 +24,10 @@ export type ContentMessage =
   | { type: 'ping' }
   | { type: 'toggle' }
   | { type: 'extract'; ref?: string }
+  | { type: 'freeze'; ref: string }
   | { type: 'snapshot-state'; ref: string }
   | { type: 'visibility'; hidden: boolean }
+  | { type: 'isolate'; ref: string | null }
   | { type: 'seek'; ref: string; progress: number }
   | { type: 'restore-animations' }
   | { type: 'trigger-read'; ref: string; trigger: 'hover' | 'focus' | 'active' }
