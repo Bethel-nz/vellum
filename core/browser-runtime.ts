@@ -132,8 +132,18 @@ function enqueue<T>(runtime: Runtime, operation: () => Promise<T>): Promise<T> {
   runtime.tail = result.then(() => {}, () => {})
   return result
 }
+/** Which argument of a command names the file it writes, and what kind of file that is. */
+function artifactSlot(args: string[]): { kind: 'screenshot' | 'pdf' | 'download' | 'video' | 'trace' | 'har'; index: number } | undefined {
+  const kind = args[0] === 'screenshot' ? 'screenshot' : args[0] === 'pdf' ? 'pdf' : args[0] === 'download' ? 'download' : args[0] === 'record' && ['start', 'restart', 'stop'].includes(args[1]!) ? 'video' : ['trace', 'profiler'].includes(args[0]!) && args[1] === 'stop' ? 'trace' : args[0] === 'network' && args[1] === 'har' && args[2] === 'stop' ? 'har' : undefined
+  if (!kind) return undefined
+  return { kind, index: kind === 'video' || kind === 'trace' || kind === 'download' ? 2 : kind === 'har' ? 3 : 1 }
+}
 export async function browserCommand(noteId: string, input: BrowserCommandInput, context: BrowserContext): Promise<BrowserCommandResult> {
   const args = browserArguments(input.args)
+  // A named artifact (screenshot, pdf, download, recording, trace, HAR) is a plain file name in
+  // the session's folder: a path could write over any of the person's files.
+  const slot = artifactSlot(args), named = slot && args[slot.index] && !args[slot.index]!.startsWith('-') ? args[slot.index]! : undefined
+  if (named !== undefined && !plainName(named)) throw new Error(`Name the file only, like shot.png: it's saved in this browser session's folder (got "${named}")`)
   if (connecting.has(noteId)) throw new Error('Browser connection is changing; wait for it to finish')
   let runtime = sessions.get(noteId)
   if (!runtime || runtime.phase === 'closed') runtime = create(noteId)
@@ -152,11 +162,11 @@ export async function browserCommand(noteId: string, input: BrowserCommandInput,
     let result: BrowserCommandResult = { key: current.key, actionId, exitCode: 1, stdout: '', stderr: '', artifacts: [] }
     let outputPath: string | undefined
     let executed = args
-    const kind = args[0] === 'screenshot' ? 'screenshot' : args[0] === 'pdf' ? 'pdf' : args[0] === 'download' ? 'download' : args[0] === 'record' && ['start', 'restart', 'stop'].includes(args[1]!) ? 'video' : ['trace', 'profiler'].includes(args[0]!) && args[1] === 'stop' ? 'trace' : args[0] === 'network' && args[1] === 'har' && args[2] === 'stop' ? 'har' : undefined
-    if (kind) {
-      const index = kind === 'video' || kind === 'trace' || kind === 'download' ? 2 : kind === 'har' ? 3 : 1
-      outputPath = args[index] && !args[index]!.startsWith('-') ? path.resolve(current.dir, args[index]!) : path.join(current.dir, `${actionId}.${kind === 'screenshot' ? 'png' : kind === 'pdf' ? 'pdf' : kind === 'video' ? 'webm' : kind === 'har' ? 'har' : kind === 'download' ? 'bin' : 'json'}`)
-      executed = [...args]; if (!args[index] || args[index]!.startsWith('-')) executed.splice(index, 0, outputPath); else executed[index] = outputPath
+    const kind = slot?.kind
+    if (slot && kind) {
+      const { index } = slot
+      outputPath = path.join(current.dir, named ?? `${actionId}.${kind === 'screenshot' ? 'png' : kind === 'pdf' ? 'pdf' : kind === 'video' ? 'webm' : kind === 'har' ? 'har' : kind === 'download' ? 'bin' : 'json'}`)
+      executed = [...args]; if (named === undefined) executed.splice(index, 0, outputPath); else executed[index] = outputPath
       if (args[0] === 'record' && args[1] === 'stop') { outputPath = current.recordingPath; executed = args }
     }
     try {
@@ -174,7 +184,7 @@ export async function browserCommand(noteId: string, input: BrowserCommandInput,
         if (kind && outputPath) {
           try {
             const file = realpathSync(outputPath), stat = statSync(file)
-            if (stat.isFile() && stat.size > 0) {
+            if (stat.isFile() && stat.size > 0 && path.dirname(file) === realpathSync(current.dir)) {
               result.artifacts.push({ id: actionId, path: file, kind, mime: kind === 'screenshot' ? 'image/png' : kind === 'pdf' ? 'application/pdf' : kind === 'video' ? file.endsWith('.mp4') ? 'video/mp4' : 'video/webm' : kind === 'download' ? 'application/octet-stream' : 'application/json' })
               if (kind === 'screenshot') current.screenshot = file
             }
