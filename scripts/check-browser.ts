@@ -31,6 +31,16 @@ try {
   }
   const result = await call('browser', { args: ['screenshot'] })
   expect(result.isError, JSON.stringify(result)).toBe(false)
+  // A named artifact lands in the session's folder; a path out of it is refused before it runs.
+  expect((await call('browser', { args: ['screenshot', 'named.png'] })).isError).toBe(false)
+  for (const name of ['../escape.png', path.join(home, 'escape.png'), 'sub/escape.png']) {
+    const refused = await call('browser', { args: ['screenshot', name] })
+    expect(refused.isError, name).toBe(true)
+    expect(JSON.stringify(refused.content)).toContain('Name the file only')
+  }
+  expect(await present(path.join(home, 'escape.png'))).toBe(false)
+  expect([...new Bun.Glob('**/named.png').scanSync(home)].length).toBe(1)
+  console.log('ok artifacts stay in the browser session folder')
   await app.getByTestId('browser-open').waitFor(); await until(() => input.some(message => message.type === 'ack'))
   expect(sockets.size).toBe(1)
   await app.getByTestId('browser-input').click()
