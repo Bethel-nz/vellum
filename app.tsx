@@ -75,6 +75,7 @@ import {
 import { BlockView, DiffCard, toolActivityGroups, type BlockActions } from './ui/blocks'
 import { Composer, type QueuedMessage } from './ui/Composer'
 import { ProjectPicker } from './ui/ProjectPicker'
+import { TrustNotice } from './components/TrustNotice'
 import { History } from './ui/History'
 import { expandRecipe, gitBranch, loadRecipes, recipeCall, type Recipe } from './core/recipes'
 import { useLoaded } from './ui/useLoaded'
@@ -83,7 +84,7 @@ import { followStreaming, revealEnd } from './ui/glide'
 import { Timeline, watchRows } from './ui/Timeline'
 import { changeSummary, collectChanges, commentTags, hunkTags, type Hunk } from './core/changes'
 import { listDir, prepareTree } from './core/filetree'
-import { agentChoices, agentFor, agentModes, modeFor, type AgentId } from './core/agents'
+import { agentChoices, agentFor, agentModes, folderConfig, modeFor, type AgentId } from './core/agents'
 import { AgentContext } from './components/AgentContext'
 import { uncommittedFiles } from './core/gitsnap'
 import type { ChangeSummary } from './components/ChangesSummary'
@@ -172,10 +173,13 @@ const Document = memo(function Document({
   listRef,
   onVisibleRange,
   captureTarget,
+  notice,
 }: {
   thread: Thread
   actions: BlockActions
   composer: React.ReactNode
+  /** In place above the composer: what's keeping the note from sending. */
+  notice?: React.ReactNode
   onStop: () => void
   waiting?: boolean
   onTailClick: () => void
@@ -253,6 +257,7 @@ const Document = memo(function Document({
       {limit && !hasLimitError && dismissedLimit !== limitKey ? <Paragraph key="usage-limit" kind="status">
         <UsageLimitBanner limit={limit} hideAfterReset onDismiss={limit.state === 'approaching' ? () => setDismissedLimit(limitKey) : undefined} />
       </Paragraph> : null}
+      {notice ? <Paragraph key="notice" kind="status">{notice}</Paragraph> : null}
       <Paragraph key="composer" kind="composer">
         {composer}
       </Paragraph>
@@ -490,6 +495,9 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
   const [drafts, setDrafts] = useState<Record<string, Draft>>(savedDrafts)
   // At-launch New note uses the same page creation path as ⌘N.
   const [overlay, setOverlay] = useState<null | 'new' | 'settings' | 'history' | 'changes' | 'annotations'>(() => (readSettings().atLaunch === 'new' ? 'new' : null))
+  // Settings opens on Accounts when it's about an account (the account menu, no account yet).
+  const [settingsPage, setSettingsPage] = useState<'Vellum' | 'Accounts'>('Vellum')
+  const openSettings = useCallback((page: 'Vellum' | 'Accounts' = 'Vellum') => { setSettingsPage(page); setOverlay('settings') }, [])
   /** Each note's file open beside it (ui/FilePreview.tsx); pressing the same chip again closes it. */
   const [previews, setPreviews] = useState<Record<string, Previewing>>({})
   /** Messages sent while Claude was thinking, by note; drained in order after the turn. */
@@ -970,6 +978,35 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
     [record, showToast],
   )
 
+  // Config that runs a folder's own code as the agent starts there (core/agents.ts
+  // `projectConfig`), by agent and folder: looked up once a launch, off the frame.
+  const [folderConfigs, setFolderConfigs] = useState<Record<string, string[]>>({})
+  const folderConfigsRef = useRef(folderConfigs)
+  const [trustedFolders, setTrustedFolders] = useState(() => readSettings().trustedFolders ?? [])
+  const trustedRef = useRef(trustedFolders)
+  const configKey = (thread: Thread) => `${agentFor(profilesRef.current.find((p) => p.id === thread.profileId) ?? {}).id}:${thread.workspace}`
+  const loadFolderConfig = useCallback(async (thread: Thread) => {
+    const key = configKey(thread)
+    if (folderConfigsRef.current[key]) return
+    const found = await folderConfig(thread.workspace, agentFor(profilesRef.current.find((p) => p.id === thread.profileId) ?? {}))
+    folderConfigsRef.current = { ...folderConfigsRef.current, [key]: found }
+    setFolderConfigs(folderConfigsRef.current)
+  }, [])
+  /**
+   * What keeps this note from sending until you trust its folder: [] when nothing does, undefined
+   * before the folder's been looked at. A folder an agent has already run in counts as trusted.
+   */
+  const untrustedConfig = (thread: Thread): string[] | undefined => {
+    const config = folderConfigsRef.current[configKey(thread)]
+    if (!config?.length) return config
+    const folder = thread.workspace
+    return trustedRef.current.includes(folder) || threadsRef.current.some((t) => t.workspace === folder && t.claudeSessionId) ? [] : config
+  }
+  const untrustedRef = useRef(untrustedConfig)
+  untrustedRef.current = untrustedConfig
+  // Read again whenever a folder's config lands or you trust one.
+  const trustFiles = useMemo(() => (active ? untrustedConfig(active) : undefined), [active, folderConfigs, trustedFolders])
+
   /**
    * The send path the composer and the queue drain land on: a recipe expands first — its
    * mode and model apply — then edits sync, the note gets its provisional title, and the
@@ -979,6 +1016,9 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
     // `$name …`: a recipe. Its prompt is what's sent to Claude and shown; its mode and model apply first.
     // Only a recipe waits on the disk; everything else goes out in the same tick.
     let body = text
+    // A folder whose config runs its own code waits for your trust (the notice above the composer).
+    if (untrustedRef.current(thread) === undefined) await loadFolderConfig(thread)
+    if (untrustedRef.current(thread)?.length) return
     const call = body.startsWith('$') ? recipeCall(body, await loadRecipes(thread.workspace)) : undefined
     if (call) {
       thread = threadsRef.current.find((t) => t.id === thread.id) ?? thread
@@ -1059,6 +1099,10 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
     }
     if (!text && !describeEdits(thread) && !(d.images ?? []).length) return
     if (termsRef.current.some((t) => t.kind === 'claude' && t.threadId === thread.id)) return
+    // Until you trust the folder, what you wrote stays put under the notice that says why.
+    const untrusted = untrustedRef.current(thread)
+    if (untrusted === undefined) { void loadFolderConfig(thread).then(() => sendRef.current(steer)); return }
+    if (untrusted.length) return
     if (thread.running) {
       const item: QueuedMessage = { text, tags: tagsIn(text, d.tags), ...(d.images?.length ? { images: d.images } : {}) }
       setDraft(thread.id, '', [], [])
@@ -1069,9 +1113,22 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
     }
     deliver(thread, text, tagsIn(text, d.tags), d.images ?? [])
     setDraft(thread.id, '', [], [])
-  }, [deliver, runShell, setDraft, steerIn])
+  }, [deliver, loadFolderConfig, runShell, setDraft, steerIn])
   const sendRef = useRef(send)
   sendRef.current = send
+
+  /** Lets the folder's config run from now on, and sends what you'd written. */
+  const trustFolder = useCallback((folder: string) => {
+    trustedRef.current = [...new Set([...trustedRef.current, folder])]
+    setTrustedFolders(trustedRef.current)
+    updateSettings({ trustedFolders: trustedRef.current })
+    sendRef.current()
+    focusComposer()
+  }, [focusComposer])
+  useEffect(() => {
+    if (active) void loadFolderConfig(active)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.workspace, active?.profileId, loadFolderConfig])
 
   // The queues drain one message per turn: running going false schedules the next, a beat
   // later, so the turn's git record has landed before the next prompt starts.
@@ -1233,10 +1290,10 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
     const list = profilesRef.current
     const profileId = list.find((profile) => profile.id === readSettings().newNoteProfile)?.id
       ?? (current?.workspace === folder ? current.profileId : profileForWorkspace(list, folder)?.id) ?? list[0]?.id
-    if (!profileId) { setOverlay('settings'); return }
+    if (!profileId) { openSettings('Accounts'); return }
     setView('notes')
     createThread(profileId, folder)
-  }, [createThread, project])
+  }, [createThread, openSettings, project])
 
   const selectProject = (folder: string) => {
     setProjectMenu(false)
@@ -1698,6 +1755,7 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
       interrupt()
     } else if (key === ',' || key === 'comma') {
       e.preventDefault()
+      setSettingsPage('Vellum')
       setOverlay((o) => (o === 'settings' ? null : 'settings'))
     } else if (key === 't' && mods.shift) {
       e.preventDefault()
@@ -1937,6 +1995,7 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
                 listRef={noteList}
                 onVisibleRange={visibleRows.set}
                 captureTarget={captureJump?.noteId === active.id ? captureJump : undefined}
+                notice={trustFiles?.length ? <TrustNotice files={trustFiles} agent={activeAgent.title} onTrust={() => trustFolder(active.workspace)} /> : undefined}
                 composer={
                   <Composer
                     key={active.id}
@@ -2037,7 +2096,7 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
                       moveNote(active, profile.id)
                     } })),
                     { kind: 'separator' },
-                    { label: 'Accounts and settings…', icon: 'settings', testId: 'account-settings', onSelect: () => setOverlay('settings') },
+                    { label: 'Accounts and settings…', icon: 'settings', testId: 'account-settings', onSelect: () => openSettings('Accounts') },
                   ]}
                   mode={modeFor(activeAgent, active.mode)}
                     modes={agentModeList}
@@ -2066,6 +2125,7 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
             <SettingsPage
               noteId={activeId}
               key="settings"
+              page={settingsPage}
               top={0}
               onClose={() => setOverlay(null)}
               onOnboarding={() => { setOverlay(null); setView('notes'); setOnboardingStep(0); setOnboardingProfile(profiles.find((p) => p.id === readSettings().newNoteProfile)?.id ?? profiles[0]?.id); setOnboardingError(''); setOnboarding(true) }}

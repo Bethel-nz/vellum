@@ -1,5 +1,6 @@
 // Self-check for the note: two tabs, editing your own text, editing a reply, the title menu,
-// rename, ⇧⌘W / ⌘1, and the trust warning for a folder with project config.
+// rename, ⇧⌘W / ⌘1, and the trust notice for a folder with project config: nothing sends from
+// it until you trust it, and then what you wrote goes.
 //   bun scripts/check-note.ts
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
@@ -11,7 +12,14 @@ const risky = path.join(home, 'risky-project')
 await Bun.write(path.join(risky, '.mcp.json'), '{"mcpServers":{}}\n')
 const meta = { id: '20261001-risky', title: 'Risky folder', profileId: 'main', workspace: risky, createdAt: '2026-10-01T09:00:00.000Z' }
 await Bun.write(path.join(home, 'threads', `${meta.id}.jsonl`), JSON.stringify({ type: 'vellum/meta', meta }) + '\n')
-const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } })
+// The fake agent: if the gate ever let a turn through, it must not reach a real one.
+const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home'), VELLUM_AGENT: path.resolve(import.meta.dir, 'fake-acp.ts') } })
+let failed = 0
+const expect = (label: string, ok: boolean, detail = '') => {
+  if (!ok) failed++
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}${detail ? ` (${detail})` : ''}`)
+}
+const sentFromRisky = async () => (await Bun.file(path.join(home, 'threads', `${meta.id}.jsonl`)).text()).includes('Wire the radius token')
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const shot = (n: string) => app.screenshot({ path: 'screenshots/note-' + n + '.png' })
 try {
@@ -25,8 +33,11 @@ try {
   await app.getByTestId('history-20261022-demo02').click()
   await wait(1200)
   await shot('2-two-tabs')
-  // back to the first tab, edit an earlier paragraph of mine
-  await app.getByTestId('tab-20261023-demo01').click()
+  // back to the first note (tabs are per project, and the second is in another folder), and
+  // edit an earlier paragraph of mine
+  await app.getByTestId('open-history').click()
+  await wait(1500)
+  await app.getByTestId('history-20261023-demo01').click()
   await wait(1200)
   const para = app.getByTestId('para-u-6')
   await para.click()
@@ -59,17 +70,40 @@ try {
   await c.press('cmd-shift-w')
   await wait(800)
   console.log('tabs after ⇧⌘W:', await app.getByTestId('tab-20261023-demo01').count(), await app.getByTestId('tab-20261022-demo02').count())
-  await c.press('cmd-1')
-  await wait(600)
-  // trust warning in the New note dialog
-  await c.press('cmd-n')
+  // The project's last tab just closed (tabs are per project), so there may be no composer for ⌘1.
+  if (await c.count()) {
+    await c.press('cmd-1')
+    await wait(600)
+  }
+  // The trust notice: the note in a folder that ships an MCP config holds what you send.
+  await app.getByTestId('open-history').click()
   await wait(1500)
-  // Rows show the last two path segments; the full path is in the tooltip.
-  await app.getByText(`…/${path.basename(home)}/risky-project`).click()
-  // The folder's config is checked off the frame (ui/dialogs.tsx): give it a moment to land.
+  await app.getByTestId(`history-${meta.id}`).click()
+  // The Library stays open after opening a note from it; a press on the page closes it.
+  if (await app.getByTestId('history').count()) await app.getByTestId('page').click()
+  await wait(400)
+  // The folder's config is checked off the frame: give it a moment to land.
   for (let i = 0; i < 30 && !(await app.getByTestId('trust-warning').count()); i++) await wait(100)
-  console.log('trust warning shown:', await app.getByTestId('trust-warning').count())
+  expect('trust notice shown for a folder with .mcp.json', (await app.getByTestId('trust-warning').count()) === 1)
+  expect('…naming the file', (await app.getByTestId('trust-warning-files').textContent()).includes('.mcp.json'))
   await shot('7-trust-warning')
+  await c.click()
+  await c.fill('Wire the radius token')
+  await c.press('enter')
+  await wait(1200)
+  expect('sending is held: nothing went out', !(await sentFromRisky()))
+  await app.getByTestId('trust-folder').click()
+  for (let i = 0; i < 50 && !(await sentFromRisky()); i++) await wait(100)
+  expect('Trust folder sends what you wrote, kept while held', await sentFromRisky())
+  expect('…and the notice is gone', (await app.getByTestId('trust-warning').count()) === 0)
+  const settings = await Bun.file(path.join(home, 'settings.json')).json()
+  expect('…and the folder is remembered as trusted', settings.trustedFolders?.includes(risky), JSON.stringify(settings.trustedFolders))
+  await shot('8-trusted')
+} catch (e) {
+  failed++
+  console.log(`FAIL ${String((e as Error)?.stack ?? e)}`)
 } finally {
   await app.close()
 }
+console.log(failed ? `${failed} failed` : 'all passed')
+process.exit(failed ? 1 : 0)
