@@ -51,8 +51,11 @@ export function SettingsPage({
   onAddProfile,
   onRestore,
   onOnboarding,
+  page = 'Vellum',
 }: {
   noteId?: string
+  /** The page it opens on: Accounts from the account menu, Vellum otherwise. */
+  page?: Page
   /** Where the page starts: under the tab strip while it shows. */
   top: number
   onClose: () => void
@@ -78,7 +81,7 @@ export function SettingsPage({
 }) {
   const m = useM()
   const root = useRef<PublicInstance>(null)
-  const [current, setCurrent] = useState<Page>('Vellum')
+  const [current, setCurrent] = useState<Page>(page)
   const [query, setQuery] = useState('')
   const searching = Boolean(query.trim())
   const accountNames = profiles.map((profile) => `${profile.name} ${profile.email ?? ''} ${profile.plan ?? ''}`).join(' ')

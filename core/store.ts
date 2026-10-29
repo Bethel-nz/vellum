@@ -60,6 +60,8 @@ export function writeJson(file: string, value: unknown) {
 export type Settings = {
   /** First-run setup was completed or explicitly skipped. */
   onboardingComplete?: boolean
+  /** Project folders whose hooks, MCP servers or plugins you've let run (core/agents.ts `projectConfig`). */
+  trustedFolders?: string[]
   /** dark (default) or light. Older files say groknight, smoke or frost (ui/theme.ts materialNamed). */
   material?: 'dark' | 'light' | 'groknight' | 'smoke' | 'frost'
   /** Tab strip: always shown, collapsed while writing, or hidden (⌘⇧T reveals). */

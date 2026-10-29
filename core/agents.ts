@@ -43,6 +43,12 @@ export type Agent = {
    * home or null for the default one; `user` is the home directory.
    */
   skillRoots(workspace: string, home: string | null, user: string): string[]
+  /**
+   * Files and folders in a project that make the agent run the project's own code as it starts
+   * there, without asking: hooks, MCP servers, plugins. A folder with any of them is trusted
+   * once before a note sends from it (app.tsx).
+   */
+  projectConfig: string[]
   /** Where the agent keeps an account that uses its default home, as you'd write it. */
   defaultHome: string
   /** Vellum's default model when a note hasn't picked one explicitly. */
@@ -92,6 +98,7 @@ export const agents: Record<AgentId, Agent> = {
     fallback: 'acceptEdits',
     claudeCode: true,
     skillRoots: (workspace, home, user) => [path.join(workspace, '.claude', 'skills'), path.join(home ?? path.join(user, '.claude'), 'skills')],
+    projectConfig: ['.mcp.json', '.claude/settings.json', '.claude/settings.local.json'],
     defaultHome: '~/.claude',
   },
   codex: {
@@ -119,6 +126,8 @@ export const agents: Record<AgentId, Agent> = {
     claudeCode: false,
     // The shared .agents folders, and Codex's own home.
     skillRoots: (workspace, home, user) => [path.join(workspace, '.agents', 'skills'), path.join(user, '.agents', 'skills'), path.join(home ?? path.join(user, '.codex'), 'skills')],
+    // Codex's own trust decides whether it loads this; Vellum asks anyway, as it can't tell.
+    projectConfig: ['.codex/config.toml'],
     defaultHome: '~/.codex',
   },
   opencode: {
@@ -142,6 +151,8 @@ export const agents: Record<AgentId, Agent> = {
       path.join(user, '.config', 'opencode', 'skills'),
       ...['.claude', '.agents'].map((dir) => path.join(user, dir, 'skills')),
     ],
+    // Its config can start MCP servers and plugins; .opencode holds plugins and tools as code.
+    projectConfig: ['opencode.json', 'opencode.jsonc', '.opencode'],
     defaultHome: '~/.local/share/opencode',
     defaultModel: { value: 'opencode/big-pickle', displayName: 'Big Pickle' },
     single: true,
@@ -151,6 +162,12 @@ export const agents: Record<AgentId, Agent> = {
 /** The agent an account runs. Accounts from before there was a choice are Claude's. */
 export function agentFor(profile: { agent?: AgentId }): Agent {
   return agents[profile.agent ?? 'claude'] ?? agents.claude
+}
+
+/** Which of the agent's `projectConfig` files this folder has. */
+export async function folderConfig(folder: string, agent: Agent): Promise<string[]> {
+  const found = await Promise.all(agent.projectConfig.map((name) => Bun.file(path.join(folder, name)).stat().then(() => true, () => false)))
+  return agent.projectConfig.filter((_, i) => found[i])
 }
 
 /** Where a new account of this agent keeps its sign-in and history, under Vellum's home. */
