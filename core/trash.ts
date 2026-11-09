@@ -3,8 +3,7 @@
 // back as it was. A note past 30 days is deleted for good the next time Vellum looks: at launch,
 // and when the Trash tab opens. Pasted images stay in images/; a restored note still finds them.
 
-// Moving a note in or out is renames, which Bun.file has no form of, so those stay node:fs and
-// synchronous: the caller acts on the answer at once. Reading what's in the trash is Bun.file.
+// Moving a note in or out is synchronous renames: the caller acts on the answer at once.
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { loadJson, paths, writeJson } from './store'

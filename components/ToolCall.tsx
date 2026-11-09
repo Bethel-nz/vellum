@@ -9,7 +9,7 @@ import { McpMark } from '../ui/McpMark'
 import type { ToolCall } from '../core/threads'
 import { copyText } from '../core/platform'
 import { printedFile } from '../core/printed'
-import { concentric, nativeTheme, radiusBase, radiusXl } from '../ui/theme'
+import { concentric, nativeTheme, noteCard, radiusBase, radiusXl } from '../ui/theme'
 import type { IconName } from '../ui/icons'
 import { AnimatePresence, motion } from './spring'
 import { Button } from './Button'
@@ -48,6 +48,20 @@ function elapsed(call: ToolCall) {
   return `${Math.floor(ms / 60_000)}m ${Math.floor(ms % 60_000 / 1000)}s`
 }
 
+/**
+ * Opens and closes on the same height spring. Once it lands the height lets go, so nested
+ * disclosures grow the list naturally; a held height spring would lag behind them and clip.
+ */
+function FlowReveal({ children, testId }: { children: ReactNode; testId?: string }) {
+  const reduced = useReducedMotion()
+  const present = useIsPresent()
+  const [height, setHeight] = useState(0)
+  const [landed, setLanded] = useState(reduced)
+  return <motion.div initial={reduced ? false : { height: 0, opacity: 0 }} animate={landed ? { opacity: 1 } : { height, opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={tween(spring.smooth)} onMotionComplete={() => { if (height) setLanded(true) }} style={{ overflow: 'hidden', flexShrink: 0, pointerEvents: 'none' }}>
+    <div testId={testId} onLayout={(event) => { const next = Math.ceil(event.height ?? 0); setHeight((previous) => previous === next ? previous : next) }} style={{ display: 'flex', flexDirection: 'column', flexShrink: 0, pointerEvents: present ? 'auto' : 'none' }}>{children}</div>
+  </motion.div>
+}
+
 /** Measured native height, animated by Vellum's spring, with no focus change. */
 function Reveal({ children, testId, flow = false }: { children: ReactNode; testId?: string; flow?: boolean }) {
   const reduced = useReducedMotion()
@@ -55,7 +69,7 @@ function Reveal({ children, testId, flow = false }: { children: ReactNode; testI
   const [height, setHeight] = useState(0)
   // The outer list must follow its nested disclosures naturally; a second height spring
   // would lag behind their growth and clip the result while they open.
-  if (flow) return <motion.div initial={reduced ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={tween(spring.smooth)} style={{ pointerEvents: 'none' }}><div testId={testId} style={{ display: 'flex', flexDirection: 'column', pointerEvents: present ? 'auto' : 'none' }}>{children}</div></motion.div>
+  if (flow) return <FlowReveal testId={testId}>{children}</FlowReveal>
   return <motion.div initial={reduced ? false : { height: 0, opacity: 0 }} animate={{ height, opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={tween(spring.smooth)} style={{ position: 'relative', overflow: 'hidden', flexShrink: 0, pointerEvents: 'none' }}>
     <div testId={testId} onLayout={(event) => { const next = Math.ceil(event.height ?? 0); setHeight((previous) => previous === next ? previous : next) }} style={{ position: 'absolute', top: 0, left: 0, right: 0, display: 'flex', flexDirection: 'column', pointerEvents: present ? 'auto' : 'none' }}>{children}</div>
   </motion.div>
@@ -64,7 +78,7 @@ function Reveal({ children, testId, flow = false }: { children: ReactNode; testI
 export function ToolCallGroup({ summary, items: rawItems, thinking, testId = 'tool-group', onInspect }: { summary: string; items: ToolCall[]; thinking?: string; testId?: string; onInspect?: () => void }) {
   const m = useM()
   const [open, setOpen] = useState(false)
-  const [closing, setClosing] = useState(false)
+  const [hot, setHot] = useState(false)
   const items = useMemo(() => displayCalls(rawItems), [rawItems])
   const failed = items.filter((call) => call.status === 'error').length
   const running = items.filter((call) => call.status === 'running').length
@@ -73,11 +87,19 @@ export function ToolCallGroup({ summary, items: rawItems, thinking, testId = 'to
   // A pure-thinking group has nothing behind a dropdown, so it renders as a static
   // status row: same marks and label, no chevron, no toggle.
   const expandable = items.length > 0
-  return <div testId={testId} style={{ display: 'flex', flexDirection: 'column', borderRadius: radiusXl, borderWidth: 1, borderColor: m.border, backgroundColor: m.panel, overflow: 'hidden', minWidth: 0 }}>
+  // Collapsed it is one quiet row in the note's rhythm; the framed surface is only for the details.
+  // 1px of padding stands where the frame's border draws, so the row stays put and nothing
+  // overflows the clip (an overflow there scrolls). The row keeps one shape
+  // open or closed, so no corner changes while the details grow or shrink.
+  return <div testId={testId} style={{ position: 'relative', display: 'flex', flexDirection: 'column', borderRadius: radiusXl, padding: 1, overflow: 'hidden', minWidth: 0 }}>
+    {/* The frame fades with the details it holds, on their spring, so closing reads as one fade, not a pop at the end. */}
+    <motion.div initial={false} animate={{ opacity: open ? 1 : 0 }} transition={tween(spring.smooth)} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, ...noteCard(m), pointerEvents: 'none' }} />
     {expandable ? (
-    <Base testId="tool-group-toggle" aria-label={`${open ? 'Hide' : 'Show'} tool activity`} aria-expanded={open} onClick={() => { if (!open) onInspect?.(); else setClosing(true); setOpen((value) => !value) }} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 9, borderTopLeftRadius: concentric(radiusXl, 1), borderTopRightRadius: concentric(radiusXl, 1), borderBottomLeftRadius: open || closing ? 0 : concentric(radiusXl, 1), borderBottomRightRadius: open || closing ? 0 : concentric(radiusXl, 1), minHeight: 38, paddingLeft: 12, paddingRight: 12, hover: { backgroundColor: m.hover }, focusVisible: { outlineWidth: 2, outlineColor: m.focusRing, outlineOffset: -2 } }}>
-      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', flexShrink: 0 }}>
-        {(marks.length ? marks : ['bulb' as const]).map((name, index) => <div key={name} style={{ width: 22, height: 22, marginLeft: index ? -5 : 0, borderRadius: 11, borderWidth: 1, borderColor: m.borderFocused, backgroundColor: m.panel, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name={name} size={12} color={m.textMuted} /></div>)}
+    <Base testId="tool-group-toggle" aria-label={`${open ? 'Hide' : 'Show'} tool activity`} aria-expanded={open} onClick={() => { if (!open) onInspect?.(); setOpen((value) => !value) }} onMouseEnter={() => setHot(true)} onMouseLeave={() => setHot(false)} style={{ position: 'relative', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: concentric(radiusXl, 1), minHeight: 28, paddingLeft: 9, paddingRight: 9, focusVisible: { outlineWidth: 2, outlineColor: m.focusRing, outlineOffset: -2 } }}>
+      {/* Open, the wash is a row like the ones below it: inset 4px, with their smaller corners. */}
+      <motion.div initial={false} animate={{ top: open ? 4 : 0, left: open ? 4 : 0, right: open ? 4 : 0, bottom: open ? 2 : 0, borderRadius: open ? concentric(radiusXl, 5) : concentric(radiusXl, 1) }} transition={tween(spring.smooth)} style={{ position: 'absolute', backgroundColor: hot ? m.hover : '#00000000', pointerEvents: 'none' }} />
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+        {(marks.length ? marks : ['bulb' as const]).map((name) => <Icon key={name} name={name} size={14} color={m.textMuted} />)}
       </div>
       <text style={{ flexGrow: 1, minWidth: 0, fontSize: 12.5, lineHeight: 18, color: m.textMuted }}>{label}</text>
       {running ? <Dot color={m.accent} size={5} pulse /> : null}
@@ -85,15 +107,15 @@ export function ToolCallGroup({ summary, items: rawItems, thinking, testId = 'to
       <Icon name={open ? 'chevronUp' : 'chevronDown'} size={13} color={m.textMuted} />
     </Base>
     ) : (
-    <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 38, paddingLeft: 12, paddingRight: 12 }}>
-      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', flexShrink: 0 }}>
-        {(marks.length ? marks : ['bulb' as const]).map((name, index) => <div key={name} style={{ width: 22, height: 22, marginLeft: index ? -5 : 0, borderRadius: 11, borderWidth: 1, borderColor: m.borderFocused, backgroundColor: m.panel, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name={name} size={12} color={m.textMuted} /></div>)}
+    <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 28, paddingLeft: 9, paddingRight: 9 }}>
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+        {(marks.length ? marks : ['bulb' as const]).map((name) => <Icon key={name} name={name} size={14} color={m.textMuted} />)}
       </div>
       <text style={{ flexGrow: 1, minWidth: 0, fontSize: 12.5, lineHeight: 18, color: m.textMuted }}>{label}</text>
     </div>
     )}
-    {expandable ? <AnimatePresence initial={false} onExitComplete={() => setClosing(false)}>{open ? <Reveal key="calls" testId={`${testId}-calls`} flow>
-      <div style={{ display: 'flex', flexDirection: 'column', borderTopWidth: 1, borderColor: m.border, paddingTop: 4, paddingBottom: 4 }}>
+    {expandable ? <AnimatePresence initial={false}>{open ? <Reveal key="calls" testId={`${testId}-calls`} flow>
+      <div style={{ display: 'flex', flexDirection: 'column', borderTopWidth: 1, borderColor: m.border, padding: 4 }}>
         {thinking ? <Thinking /> : null}
         {items.map((call) => <Call key={call.id} call={call} />)}
       </div>
@@ -105,7 +127,7 @@ export function ToolCallGroup({ summary, items: rawItems, thinking, testId = 'to
 // in blocks.tsx), so there is nothing behind a dropdown to justify one.
 function Thinking() {
   const m = useM()
-  return <div testId="tool-thinking" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 36, paddingLeft: 12, paddingRight: 12 }}>
+  return <div testId="tool-thinking" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 36, paddingLeft: 8, paddingRight: 8 }}>
     <Icon name="bulb" size={15} color={m.textMuted} /><text style={{ flexGrow: 1, fontSize: 12.5, color: m.textMuted }}>Thinking</text>
   </div>
 }
@@ -120,16 +142,16 @@ function Call({ call }: { call: ToolCall }) {
   const [showCode, setShowCode] = useState(false)
   const error = call.error || (call.status === 'error' ? call.output : undefined)
   return <div testId={`tool-row-${call.id}`} style={{ display: 'flex', flexDirection: 'column' }}>
-    <Base testId={`tool-${call.id}`} aria-label={title(call)} aria-expanded={open} onClick={() => setOpen((value) => !value)} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 40, paddingLeft: 12, paddingRight: 12, hover: { backgroundColor: m.hover }, focusVisible: { outlineWidth: 2, outlineColor: m.focusRing, outlineOffset: -2 } }}>
+    <Base testId={`tool-${call.id}`} aria-label={title(call)} aria-expanded={open} onClick={() => setOpen((value) => !value)} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 40, paddingLeft: 8, paddingRight: 8, borderRadius: concentric(radiusXl, 5), hover: { backgroundColor: m.hover }, focusVisible: { outlineWidth: 2, outlineColor: m.focusRing, outlineOffset: -2 } }}>
       {call.definition?.source ? <McpMark name={call.definition.source.name} url={call.definition.source.url} size={15} /> : <Icon name={mark(call)} size={15} color={m.textMuted} />}
       <text style={{ flexGrow: 1, minWidth: 0, fontSize: 12.5, lineHeight: 18, color: m.textUi, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{title(call)}</text>
       <text style={{ flexShrink: 0, fontSize: 11, lineHeight: 16, color: m.textMuted }}>{[resultSummary(call), duration].filter(Boolean).join(' · ')}</text>
       {call.status === 'running' ? <Dot color={m.accent} size={6} pulse /> : <Icon name={call.status === 'error' ? 'circleX' : 'check'} size={14} color={call.status === 'error' ? m.danger : m.success} />}
       <Icon name={open ? 'chevronUp' : 'chevronDown'} size={12} color={m.textMuted} />
     </Base>
-    {!open && error ? <text style={{ paddingLeft: 37, paddingRight: 38, paddingBottom: 9, fontSize: 12, lineHeight: 17, color: m.textMuted, lineClamp: 2 }}>{compact(error)}</text> : null}
+    {!open && error ? <text style={{ paddingLeft: 33, paddingRight: 34, paddingBottom: 9, fontSize: 12, lineHeight: 17, color: m.textMuted, lineClamp: 2 }}>{compact(error)}</text> : null}
     <AnimatePresence initial={false}>{open ? <Reveal key="details" testId={`tool-details-${call.id}`}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 37, paddingRight: 12, paddingTop: 4, paddingBottom: 16 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 33, paddingRight: 8, paddingTop: 4, paddingBottom: 16 }}>
         {record(input) && !Object.keys(input).length ? null : <ToolDetail title="Input" text={inputText} testId={`tool-input-scroll-${call.id}`}>
           <ToolValue testId={`tool-input-${call.id}`} value={input} schema={call.definition?.inputSchema} />
         </ToolDetail>}

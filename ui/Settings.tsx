@@ -2,14 +2,16 @@
 // Escape or Back to note returns to the note. Changes persist to settings.json (accounts to profiles.json).
 
 import { useRef, useState } from 'react'
-import { DismissableLayer, type PublicInstance } from '@gpuix/react'
+import { homedir } from 'node:os'
+import path from 'node:path'
+import { DismissableLayer, useGpuixRequired, type PublicInstance } from '@gpuix/react'
 import { motion } from '../components/spring'
 import { Button, closedByOutsidePress, Dot, Field, Icon, Label, Menu, Segmented, Switch, type MenuItem } from '../components'
 import { enter, leave, offset } from '../components/motion'
 import { sameLogin } from '../core/auth'
 import type { Profile } from '../core/profiles'
 import { agentChoices, agentFor, type AgentId } from '../core/agents'
-import { accentFor } from './theme'
+import { accentFor, scrollbarWidth } from './theme'
 import { useM } from './kit'
 import { readSettings, updateSettings, type Settings } from '../core/store'
 import { cycleModes, defaultMode, modeLabel, modes, type Think } from '../core/asks'
@@ -22,6 +24,7 @@ import { BrowserSettings } from './BrowserSettings'
 import { McpSettings } from './McpSettings'
 import { TrashSettings } from './Trash'
 import type { Thread } from '../core/threads'
+import { exportDir } from '../core/export'
 import { groups, matches, pageInfo, slug, type SettingsGroup, type SettingsPage as Page } from './settings/catalog'
 import { SettingsNavigation } from './settings/Navigation'
 import { SettingsResultLink, SettingsRow as SheetRow, SettingsSection as SheetSection, ThemeCards } from './settings/controls'
@@ -93,6 +96,7 @@ export function SettingsPage({
       case 'onboarding': return <SheetSection label="Getting started"><SheetRow label="Welcome to Vellum" detail="Choose an agent, make it yours, and start your first note."><Button onPress={onOnboarding} testId="show-onboarding"><Label>Show onboarding</Label><Icon name="chevronRight" size={12} /></Button></SheetRow></SheetSection>
       case 'thinking': return <SheetSection label="Model activity"><SheetRow label="Show model thinking" detail="Include reasoning in expandable activity. Tool results stay visible either way."><Switch checked={showThoughts} onChange={onShowThoughts} label="Show model thinking" testId="set-show-thoughts" /></SheetRow></SheetSection>
       case 'new-notes': return <NewNotes profiles={profiles} />
+      case 'export': return <ExportSettings />
       case 'instructions': return <Instructions />
       case 'notifications': return <Notifications />
       case 'theme': return <>{searching ? <Button onPress={() => open('Appearance')} title="Open Appearance settings" style={{ alignSelf: 'start', marginBottom: 8 }}><text style={{ fontSize: 12, color: m.blue }}>Appearance</text><Icon name="chevronRight" size={11} color={m.blue} /></Button> : null}<ThemeCards value={material} onChange={onMaterial} /></>
@@ -115,7 +119,7 @@ export function SettingsPage({
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'row' }}>
           <SettingsNavigation page={current} query={query} shown={(page) => !searching || hits.some((group) => group.page === page)} onQuery={setQuery} onOpen={open} onBack={onClose} />
           <div testId="settings-content" style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0, marginTop: 8, marginRight: 8, marginBottom: 8, borderRadius: 12, borderWidth: 1, borderColor: m.border, backgroundColor: m.pane, overflow: 'hidden' }}>
-            <motion.div key={searching ? 'search' : current} initial={{ opacity: 0, top: offset.menu }} animate={{ opacity: 1, top: 0 }} transition={enter('fast')} testId="settings-page-scroll" style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', flexGrow: 1, minHeight: 0, overflowY: 'scroll', pointerEvents: 'auto', scrollbarColor: m.scrollbar, scrollbarWidth: 10 }}>
+            <motion.div key={searching ? 'search' : current} initial={{ opacity: 0, top: offset.menu }} animate={{ opacity: 1, top: 0 }} transition={enter('fast')} testId="settings-page-scroll" style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', flexGrow: 1, minHeight: 0, overflowY: 'scroll', pointerEvents: 'auto', scrollbarColor: m.scrollbar, scrollbarWidth }}>
               {/* biome-ignore lint/a11y/useSemanticElements: GPUIX regions use native div hosts. */}
               <div role="region" aria-label={searching ? 'Search settings' : current} testId={searching ? 'settings-results' : `settings-${slug(current)}`} style={{ display: 'flex', flexDirection: 'column', width: '100%', maxWidth: 776, flexShrink: 0, paddingTop: 40, paddingBottom: 56, paddingLeft: 28, paddingRight: 28 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingBottom: 20 }}>
@@ -209,6 +213,29 @@ function Instructions() {
 }
 
 /** Desktop alerts only leave the app while its window is unfocused. */
+function ExportSettings() {
+  const renderer = useGpuixRequired()
+  const [folder, setFolder] = useSetting('exportFolder')
+  const [error, setError] = useState('')
+  const shown = path.dirname(exportDir(folder, 'project')).replace(homedir(), '~')
+  const choose = async () => {
+    try {
+      const picked = await renderer.promptForPaths?.({ directories: true, files: false, multiple: false, prompt: 'Export here' })
+      if (picked?.[0]) { setFolder(picked[0]); setError('') }
+    } catch (e) { setError(`Couldn’t open the folder picker: ${(e as Error).message}`) }
+  }
+  return (
+    <SheetSection label="Export" hint="Each project exports into a folder of its own here. Export a note from its title menu.">
+      <SheetRow label="Export folder" detail={error || `${shown}/<project>`}>
+        <div style={{ display: 'flex', flexDirection: 'row', gap: 6 }}>
+          {folder ? <Button onPress={() => setFolder(undefined)} testId="set-export-reset"><Label muted>Use Downloads</Label></Button> : null}
+          <Button onPress={() => void choose()} testId="set-export-folder"><Label>Choose folder…</Label></Button>
+        </div>
+      </SheetRow>
+    </SheetSection>
+  )
+}
+
 function Notifications() {
   const [want, setWant] = useSetting('notify')
   return (

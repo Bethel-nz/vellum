@@ -1,4 +1,4 @@
-// A passing confirmation, after arc's toast: bottom-left beside the status bar, where it
+// A passing confirmation: bottom-left beside the status bar, where it
 // never covers the note's tail; under 720px wide the bottom line crowds the approval card,
 // so it drops from the top edge instead. Rises once on the enter curve, stays 1.5s, then
 // unmounts whole: its elevation cannot fade with node opacity.

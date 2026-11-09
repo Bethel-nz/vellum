@@ -17,7 +17,6 @@
 // `{{input}}` is what you type after `$name`; without it, that text goes after the recipe.
 // {{folder}}, {{branch}} and {{date}} fill themselves in.
 
-// Bun.file has no lstat, readdir, mkdir or realpath: those, and the link check, stay on node:fs.
 import { lstatSync, mkdirSync, readdirSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import type { PermissionMode } from './asks'

@@ -22,9 +22,9 @@ export function ChangesSummary({ summary, availableWidth, onPress }: { summary: 
   const estimate = (label.length + String(summary.added).length + String(summary.removed).length + 2) * 7 + 36
   const [measured, setMeasured] = useState(0)
   const expanded = availableWidth >= Math.max(estimate, measured)
-  return <Button testId="open-changes" title={`${label} · +${summary.added} -${summary.removed} (⇧⌘D)`} onPress={onPress} style={{ height: 26, minHeight: 26, borderRadius: 13, paddingLeft: expanded ? 10 : 6, paddingRight: expanded ? 10 : 6, backgroundColor: m.chipBg, borderWidth: 1, borderColor: m.border }}>
+  return <Button testId="open-changes" title={`${label} · +${summary.added} -${summary.removed} (⇧⌘D)`} onPress={onPress} style={{ height: 26, minHeight: 26, paddingLeft: expanded ? 8 : 6, paddingRight: expanded ? 8 : 6 }}>
     {expanded ? <div testId="changes-summary-text" onLayout={(event) => { const width = Math.ceil(event.width ?? 0) + 22; setMeasured((previous) => previous === width ? previous : width) }} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-      <text style={{ fontSize: 11.5, lineHeight: 16, fontFamily: font.mono, color: m.textMuted, whiteSpace: 'nowrap', flexShrink: 0 }}>{label}</text>
+      <text style={{ fontSize: 12.5, lineHeight: 16, color: m.textMuted, whiteSpace: 'nowrap', flexShrink: 0 }}>{label}</text>
       <ChangeTotals added={summary.added} removed={summary.removed} />
     </div> : <div testId="changes-summary-icon"><Icon name="diff" size={14} /></div>}
   </Button>

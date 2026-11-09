@@ -5,9 +5,9 @@
 // leaving it restores the sentence. Nothing applies until you pick it. The mode
 // rows carry number shortcuts, and digits pick while the mode menu is open.
 //
-// GPUIX translations of the reference: GPUI text has no dotted underline, so the
-// words sit on a dashed 1px bottom border in `textFaint` (solid accent while
-// previewing, `textUi` on hover); menus enter with
+// Translations of the reference: the underlined words sit on a dashed 1px bottom
+// border in `textFaint` (solid accent while previewing, `textUi` on hover);
+// menus enter with
 // opacity + a 4px rise on `ease.enter` (no scale); the model/effort flyout and
 // the context card stay the shared `Menu` / `ModelPicker` surfaces.
 
@@ -140,7 +140,7 @@ export function StatusBar({
         </Phrase>
         <Menu open={menu === 'agent'} onClose={close} side="top" align="start" width={280} testId="agent-menu" closeKey="agent" items={accounts} />
       </div>
-      <Glue>on</Glue>
+      <Glue>·</Glue>
       <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
         <Phrase testId="account-pill" label={`Account: ${accountLabel}`} open={menu === 'account'} onPress={() => toggle('account')}>
           <div style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: accountColor ?? m.textMuted, flexShrink: 0 }} />
@@ -148,7 +148,7 @@ export function StatusBar({
         </Phrase>
         <Menu open={menu === 'account'} onClose={close} side="top" align="start" width={280} testId="account-menu" closeKey="account" items={accounts} />
       </div>
-      <Glue tight>,</Glue>
+      <Glue>·</Glue>
       <div onKeyDown={modeKeys} style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
         <Phrase testId="mode-pill" label={`Permissions: ${modeLabel}`} open={menu === 'mode'} previewing={previewingMode} onPress={() => toggle('mode')}>
           <Words tone={previewingMode ? m.accent : risky ? m.warning : undefined}>{modeLabel}</Words>
@@ -171,10 +171,10 @@ export function StatusBar({
           }}
         />
       </div>
-      <Glue tight>,</Glue>
+      <Glue>·</Glue>
       <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
         <Phrase testId="model-pill" label={`Model: ${modelTitle} · Effort: ${effort}`} open={menu === 'model'} onPress={() => toggle('model')}>
-          <Words>{`${modelTitle} at ${effort} effort`}</Words>
+          <Words>{effort === 'default' ? modelTitle : `${modelTitle}, ${effort} effort`}</Words>
         </Phrase>
         {menu === 'model' ? (
           <ModelPicker
@@ -264,7 +264,8 @@ function Glue({ tight, children }: { tight?: boolean; children: ReactNode }) {
 function Words({ tone, labelTone, figure, children }: { tone?: string; labelTone?: string; figure?: string; children: ReactNode }) {
   const m = useM()
   const line = useContext(Underline)
-  const color = tone ?? m.textUi
+  // Quiet at rest, so the footer doesn't compete with the note; the line shows when you reach for it.
+  const color = tone ?? (line === 'rest' ? m.textMuted : m.textUi)
   return (
     <div
       style={{
@@ -274,8 +275,7 @@ function Words({ tone, labelTone, figure, children }: { tone?: string; labelTone
         gap: 4,
         paddingTop: 1,
         borderBottomWidth: 1,
-        borderStyle: line === 'preview' ? 'solid' : 'dashed',
-        borderColor: line === 'preview' ? m.accent : line === 'hover' ? color : m.textFaint,
+        borderColor: line === 'preview' ? m.accent : line === 'hover' ? color : '#00000000',
       }}
     >
       {figure ? <text style={{ fontSize: 12.5, lineHeight: 16, fontFamily: font.mono, color, whiteSpace: 'nowrap' }}>{figure}</text> : null}

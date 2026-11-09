@@ -25,6 +25,6 @@ async function forward(line: string) {
   }
 }
 
-// Bun reads stdin a line at a time; a slow answer doesn't hold up the next message.
+// A slow answer doesn't hold up the next line.
 export {}
 for await (const line of console) if (line.trim()) void forward(line)

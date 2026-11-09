@@ -23,7 +23,8 @@ import { CaptureDials } from './Dials'
 import type { PageScreenshot } from '../messages'
 import type { ElementStyles, StyleField } from './element-controls'
 
-export type CaptureOptions = { triggers: boolean; frames: boolean; listeners: boolean }
+/** `related`: recording an interaction also records what it opens or closes elsewhere on the page. */
+export type CaptureOptions = { triggers: boolean; frames: boolean; listeners: boolean; related: boolean }
 export type SelectedElement = { ref: string; number: number; anchor: { x: number; y: number }; selector: string; label: string; note: string; ready: boolean; fitOutline: boolean; motion: number; sampled: number; styles: ElementStyles; box: { x: number; y: number; width: number; height: number }; changes: number; comments: Array<{ id: string; text: string }>; snapshots: Array<{ id: string; file: string; image: string; selector: string }> }
 export type CapturePanelProps = {
   open: boolean; selections: SelectedElement[]; activeRef: string | null; toolsOpen: boolean; markersHidden: boolean
@@ -235,7 +236,7 @@ export function CapturePanel(props: CapturePanelProps) {
       if (!offset.moved && Math.hypot(event.clientX - offset.startX, event.clientY - offset.startY) < 4) return
       offset.moved = true
       event.preventDefault()
-      // Move the whole surface without a React commit triggering child layout springs.
+      // Move the whole surface directly, without triggering child layout springs.
       dragPosition.current = { ref: active.ref, x: event.clientX - offset.x, y: event.clientY - offset.y }
       placeComposer.current()
     }} onPointerUp={() => { dragOffset.current = null }} onPointerCancel={() => { dragOffset.current = null }} onLostPointerCapture={() => { dragOffset.current = null }}><span title={active.selector}>{active.label}</span>{([['parent', IconArrowUp], ['child', IconArrowDown], ['previous', IconArrowLeft], ['next', IconArrowRight]] as const).map(([direction, Icon]) => <button type="button" className="vellum-tool-button" key={direction} aria-label={`Select ${direction} element`} title={`Select ${direction} element`} disabled={props.capturing} onClick={() => props.onNavigate(direction)}><Icon size={15} /></button>)}</nav>

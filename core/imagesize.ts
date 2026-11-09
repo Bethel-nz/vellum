@@ -1,6 +1,6 @@
 // An image file's size in pixels, read from its header: PNG, JPEG, GIF and WebP. The image viewer
-// (ui/ImageViewer.tsx) shows a small picture at its own size instead of blowing it up to fill the
-// window, and GPUIX's <img> doesn't report what it loaded.
+// (ui/ImageViewer.tsx) shows a small picture at its own size instead of blowing it up to fill
+// the window.
 
 import { closeSync, openSync, readSync } from 'node:fs'
 

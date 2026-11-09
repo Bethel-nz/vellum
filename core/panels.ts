@@ -1,8 +1,7 @@
 // Pure state + geometry for inline (anchored) and floating (companion) panels.
 // No GPUIX imports: testable with `bun test`. UI lives in ui/QuickPanels.tsx.
 //
-// Reference: ChatGPT macOS 26.1021.31345 (build 21828, Electron, Chromium 156).
-// Observed via shipped asar (see evidence/chatgpt-panels-ledger.md):
+// Reference measurements (see evidence/chatgpt-panels-ledger.md):
 //   - spotlight window 760x640, hotkeyWindowHome 320x140, hotkeyWindowThread 400x400
 //   - floating surfaces: fixed, z-30, max-h calc(100dvh - toolbar - 2rem), max-w 50vw,
 //     resizable handles, hover-only minimize button, single-line compact mode

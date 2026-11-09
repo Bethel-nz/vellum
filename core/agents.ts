@@ -7,7 +7,7 @@
 //
 // - Claude: the bundled @agentclientprotocol/claude-agent-acp, running your installed `claude`.
 // - Codex: the bundled @agentclientprotocol/codex-acp, pointed at your installed `codex`
-//   (CODEX_PATH). The adapter ships its own Codex too, but that can't go into the compiled app.
+//   (CODEX_PATH).
 // - OpenCode: your installed `opencode acp`. OpenCode speaks ACP itself.
 
 import { homedir } from 'node:os'
@@ -112,11 +112,8 @@ export const agents: Record<AgentId, Agent> = {
       if (codex) env.CODEX_PATH = codex
     },
     missing: () => (tool('codex') ? undefined : 'Codex isn’t installed. Install it with `npm install -g @openai/codex`, then sign in with `codex login`.'),
-    // Codex's modes are sandboxes; planning is a separate option (`collaboration_mode`), so every
-    // mode says which side of it it's on.
     modes: {
-      // No Ask: Codex has no "ask before each edit". Its read-only sandbox was the nearest, and in
-      // it Codex as often stopped as asked. A note set to Ask runs in Edits.
+      // No Ask: a note set to Ask runs in Edits.
       acceptEdits: { set: { mode: 'workspace-write', collaboration_mode: 'default' }, hint: 'Edit this folder; ask before anything outside it or the network' },
       plan: { set: { mode: 'read-only', collaboration_mode: 'plan' } },
       auto: { set: { mode: 'agent', collaboration_mode: 'default' }, label: 'Auto review', hint: 'Codex asks only for actions it judges unsafe' },
@@ -126,7 +123,7 @@ export const agents: Record<AgentId, Agent> = {
     claudeCode: false,
     // The shared .agents folders, and Codex's own home.
     skillRoots: (workspace, home, user) => [path.join(workspace, '.agents', 'skills'), path.join(user, '.agents', 'skills'), path.join(home ?? path.join(user, '.codex'), 'skills')],
-    // Codex's own trust decides whether it loads this; Vellum asks anyway, as it can't tell.
+    // Vellum asks anyway, as it can't tell whether Codex trusts the folder.
     projectConfig: ['.codex/config.toml'],
     defaultHome: '~/.codex',
   },
@@ -134,11 +131,10 @@ export const agents: Record<AgentId, Agent> = {
     id: 'opencode',
     title: 'OpenCode',
     argv: () => [tool('opencode') ?? 'opencode', 'acp'],
-    // One OpenCode account for now: its own default home. Its data lives under XDG folders that
-    // other tools read too, so a second account needs more than an env var (VELLUM-V3-PLAN.md).
+    // One OpenCode account for now: its own default home (VELLUM-V3-PLAN.md).
     home() {},
     missing: () => (tool('opencode') ? undefined : 'OpenCode isn’t installed. Install it from opencode.ai, then sign in with `opencode auth login`.'),
-    // OpenCode's two agents. What Build asks about is OpenCode's own permission config.
+    // OpenCode's two agents.
     modes: {
       auto: { set: { mode: 'build' }, label: 'Build', hint: 'OpenCode works; its own permission settings decide what it asks' },
       plan: { set: { mode: 'plan' } },
@@ -164,10 +160,38 @@ export function agentFor(profile: { agent?: AgentId }): Agent {
   return agents[profile.agent ?? 'claude'] ?? agents.claude
 }
 
-/** Which of the agent's `projectConfig` files this folder has. */
-export async function folderConfig(folder: string, agent: Agent): Promise<string[]> {
-  const found = await Promise.all(agent.projectConfig.map((name) => Bun.file(path.join(folder, name)).stat().then(() => true, () => false)))
-  return agent.projectConfig.filter((_, i) => found[i])
+/** The most files a config folder (OpenCode's `.opencode`) is fingerprinted by; past it, its listing. */
+const MOST_CONFIG_FILES = 200
+
+/**
+ * The agent's `projectConfig` that applies to a folder, as the agents look for it: in the folder
+ * and each one above it up to its git root (just the folder when it isn't in a repository). Paths
+ * are relative to the folder (`../opencode.json`). The fingerprint covers what's in every file, a
+ * config folder's included, so trust given to one set of files doesn't carry over to changed ones.
+ */
+export async function folderConfig(folder: string, agent: Agent): Promise<{ files: string[]; fingerprint: string }> {
+  const levels = [folder]
+  for (let dir = folder; ; ) {
+    if (await Bun.file(path.join(dir, '.git')).stat().then(() => true, () => false)) break
+    const up = path.dirname(dir)
+    if (up === dir || levels.length >= 32) { levels.length = 1; break }
+    levels.push((dir = up))
+  }
+  const found = (await Promise.all(levels.flatMap((dir) => agent.projectConfig.map(async (name) => {
+    const at = path.join(dir, name)
+    const stat = await Bun.file(at).stat().catch(() => undefined)
+    if (!stat) return undefined
+    const hash = new Bun.CryptoHasher('sha256')
+    if (stat.isDirectory()) {
+      const inside = (await Array.fromAsync(new Bun.Glob('**/*').scan({ cwd: at, dot: true, onlyFiles: true }))).sort()
+      for (const file of inside.slice(0, MOST_CONFIG_FILES)) hash.update(`${file}\0`).update(await Bun.file(path.join(at, file)).bytes().catch(() => new Uint8Array()))
+      if (inside.length > MOST_CONFIG_FILES) hash.update(inside.slice(MOST_CONFIG_FILES).join('\0'))
+    } else hash.update(await Bun.file(at).bytes().catch(() => new Uint8Array()))
+    return { file: path.relative(folder, at), hash: hash.digest('hex') }
+  })))).filter((entry) => entry !== undefined)
+  const fingerprint = new Bun.CryptoHasher('sha256')
+  for (const { file, hash } of found) fingerprint.update(`${file}\0${hash}\0`)
+  return { files: found.map((entry) => entry.file), fingerprint: fingerprint.digest('hex') }
 }
 
 /** Where a new account of this agent keeps its sign-in and history, under Vellum's home. */

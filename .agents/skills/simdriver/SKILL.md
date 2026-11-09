@@ -5,7 +5,7 @@ description: Drive a live iOS simulator on the user's Mac — see the screen, ta
 
 # simdriver
 
-Control apps on the user's iOS simulator by reading or operating the screen. simdriver is the one tool for the simulator: the screen, input, deep links, apps, permissions, notifications, location, appearance, status bar, clipboard, and app data all go through the driver, so every action targets the same device and a flow stays in one `steps()` run. Reach for `xcrun simctl` only for what simdriver does not do (see "Not covered" below). From a shell without Node, the `simdriver` command line does the same things (the simdriver-cli skill).
+Control apps on the user's iOS simulator by reading or operating the screen. simdriver is the one tool for the simulator: the screen, input, deep links, apps, permissions, notifications, location, appearance, status bar, clipboard, and app data all go through the driver, so every action targets the same device and a flow stays in one `steps()` run. Reach for `xcrun simctl` only for what simdriver does not do (see "Not covered" below). From a shell without Node, the `simdriver` command line does the same things.
 
 ### Use simdriver instead of `xcrun simctl`
 
@@ -14,7 +14,7 @@ Control apps on the user's iOS simulator by reading or operating the screen. sim
 | `simctl openurl booted <url>` (deep links, universal links, `https://`) | `driver.openUrl(url)`, or `{ action: "openUrl", url }` inside `steps()` followed by a `waitFor` |
 | `simctl launch` / `terminate` | `launch(bundleId)` / `terminate(bundleId)` |
 | `simctl listapps` | `driver.apps()` or `listApps(udid)` |
-| `simctl io booted screenshot` | `agent.snapshot({ image: true })` (elements listed too) |
+| `simctl io booted screenshot` | `agent.screenshot(path?)` (plain PNG), or `agent.snapshot({ image: true })` (annotated, elements listed too) |
 | `simctl privacy …` | `grantPermission` / `revokePermission` / `resetPermission` |
 | `simctl push` | `pushNotification(bundleId, payloadPath)` |
 | `simctl location … set` | `setLocation(lat, lon)` |
@@ -41,7 +41,7 @@ type App = { bundleId: string; name: string; appType: string };
 type Modifiers = { alt?: boolean; shift?: boolean; ctrl?: boolean; meta?: boolean };
 type StartOpts = { udid?: string; fps?: number; scale?: number; helperDir?: string };
 type DriverEvent =
-  | { type: "frame"; width: number; height: number; seq?: number; data: Uint8Array } // BGRA
+  | { type: "frame"; width: number; height: number; seq?: number; data: Buffer } // BGRA
   | { type: "state"; state: string }
   | { type: "note"; text: string };
 
@@ -100,7 +100,7 @@ declare class Driver {
 
 type Snapshot = {
   text: string; // the elements, numbered: "e1 button \"General\" …"
-  image: Uint8Array | null; // annotated PNG when image is set
+  image: Buffer | null; // annotated PNG when image is set
   settled: boolean;
   mode: string; // elements or grid
   elements: unknown[];
@@ -110,7 +110,7 @@ type StepsReport = {
   ok: boolean;
   completed: number;
   failed: { index: number; code: string; error: string } | null;
-  screenshots?: { target: string; png: Uint8Array }[];
+  screenshots?: { target: string; png: Buffer }[];
   snapshot: { text: string } | null; // the screen as it is where the run stopped
   record?: Recording; // present when the first step was `record`
 };
@@ -119,15 +119,17 @@ type Recording = {
   ended: "idle" | "time" | "stepFailed" | "error"; // idle = actions done and the screen stayed still
   extended: boolean; // actions ran past timeMs and the recording with them
   settledMs: number | null; // last change, ms from the start; null = still changing at the end
-  sheets: Uint8Array[]; // contact sheets, read first
+  sheets: Buffer[]; // contact sheets, read first
   sheetFiles: string[]; // empty from Node (only the CLI writes files)
-  frames: { index: number; tMs: number; change: number; png: Uint8Array; file: string | null }[]; // full size, only what changed
+  frames: { index: number; tMs: number; change: number; png: Buffer; file: string | null }[]; // full size, only what changed
   health: { received: number; sampled: number; skippedByPipeline: number; skippedByRecorder: number; maxGapMs: number; gapsOver34ms: number };
   requestedMs: number; durationMs: number; actionStartMs: number | null; actionEndMs: number | null; error: string | null;
 };
 
 declare class Agent {
   snapshot(options?: { settleMs?: number; image?: boolean; grid?: boolean; cols?: number }): Promise<Snapshot>;
+  /** The screen as it is now as a plain PNG (no boxes, no grid, no settle wait); with `path`, also written there. Needs 0.2.1+. */
+  screenshot(path?: string): Promise<Buffer>;
   tap(target: string, options?: { expect?: string }): Promise<{ target: string; name: string; at: [number, number] }>;
   steps(steps: Step[]): Promise<StepsReport>;
   /** Record the screen around `steps` (none: just watch) = steps([{ ...options, action: "record" }, ...steps]). */
@@ -143,7 +145,8 @@ declare class Grid {
 }
 
 // Steps, passed to agent.steps(). A `target` is a ref from the last snapshot (e4),
-// a label or identifier on screen ("Log in"), or a grid cell (C4). Unknown fields fail the step.
+// a label or identifier on screen ("Log in"), a grid cell (C4, tapped at its centre), or a
+// point in screen points ("@201,816"). Unknown fields fail the step.
 type Step =
   | { action: "tap"; target: string }
   | { action: "doubleTap"; target: string }
@@ -165,6 +168,7 @@ type Step =
   | { action: "keyboardDismiss" }
   | { action: "waitFor"; text: string; timeoutMs?: number } // case-insensitive containment
   | { action: "alert"; op: "get" | "wait" | "accept" | "dismiss"; ms?: number }
+  | { action: "screenshot"; path?: string } // whole screen, plain PNG, in report.screenshots (target "screen"); path also writes it (file, or dir ending "/"), report gives `file`
   | { action: "screenshotElement"; target: string }
   | { action: "openUrl"; url: string }
   | { action: "launch"; bundleId: string }
@@ -198,10 +202,11 @@ After performing one or more actions, take a `snapshot()` before deciding what t
 - Batch a deterministic run into one `steps()` call; it executes in order, stops at the first failure, and returns the screen as it is where it stopped. Read the report's `failed` step and the trailing snapshot before retrying.
 - Refs are re-validated immediately before each touch. On a `stale`, `covered`, or `not-found` refusal, take a new snapshot and use its refs; nothing was touched.
 - When a screen exposes no accessibility elements (games, maps, camera), pass `grid: true` and address cells by name (`B3`); `pinch`, `rotate`, `pan`, and `transform` default to the target's centre, or the screen's.
-- Prefer `fill` over tap-and-type for text fields: it verifies the committed value and reports a mismatch or an unobserved commit. Pass `secret: true` for passwords so the value is redacted from reports.
+- Prefer `fill` over tap-and-type for text fields: it verifies the committed value and reports a mismatch or an unobserved commit. Codes up to 8 characters go one key at a time, so a one-box-per-digit OTP works with one `fill` on its first box; if nothing lands the step fails (`commit-not-observed`) instead of passing. Pass `secret: true` for passwords so the value is redacted from reports.
 - Use `waitFor` instead of a fixed delay, and `alert` to get, wait for, accept, or dismiss a system alert; dismiss only presses known safe labels, so prefer accept with the button the user named.
 - When the result shows up over time (a transition, a toast, a spinner, a stutter), `record` the step and read `report.record.sheets[0]` first, then pull `frames[i]` by index. `agent.record({ timeMs: 5000 }, [{ action: "tap", target: "Save" }])`; `record` is valid only as the first step and covers the whole run. Defaults: `timeMs` 5000 (max 30000), `idleMs` 400, `fps` 30 (25-30), `maxFrames` 24 (2-32). It ends once the screen is still for `idleMs` after the actions finish; `timeMs` caps it, but actions still running then extend it (`extended`); `full` records the whole time. It samples 25-30 frames a second, so a change shorter than ~33 ms can be missed: hold the state longer (a long press) or record again. Check `ended` (`error` = stream lost), `settledMs` (null = never settled) and `health` (`gapsOver34ms`, `maxGapMs` = stutter). On the sheet each tile is labelled `#<index> +<t>ms` and its border says when it was taken: grey before the actions, blue during, green after (a legend at the top repeats this). A stalled stream (the frame helper restarting) looks like a still screen, so it can read as `idle`/settled. Needs the `simdriver` package 0.2.0 or newer.
-- Scrolls avoid the detected keyboard; `keyboardDismiss` removes it and verifies it is gone. In Safari, send `cmd+l` before the snapshot to expose and focus the address field.
+- Scrolls avoid the detected keyboard; `keyboardDismiss` removes it and verifies it is gone (its Done/close key, else Return, else a tap on empty space clear of every control and field). A number pad has no key that closes it: if the screen does not close it on a tap outside, the step fails (`not-ready`) saying what it tried; use the screen's own button then.
+- Grid cells are about 67 pt square on a phone and are tapped at their centre (the dot on the grid image). For anything smaller, or straddling two cells (a floating tab bar), tap the exact point: `@x,y` in screen points, read from an element's frame or the image (image pixels ÷ the image's width × the screen's point width). In Safari, send `cmd+l` before the snapshot to expose and focus the address field.
 
 ```javascript
 const agent = driver.agent();
@@ -217,8 +222,8 @@ const snap = await agent.snapshot();
 ## Notes
 
 - Driver states: `starting → live`; `input-displaced` means someone else took the touch input — frames keep streaming and your next touch reclaims it; `restarting` means the simulator rebooted and frames resume. `stop()` ends the driver for good.
-- Agent refusals arrive as `code: message` with one of these codes: `stale`, `covered`, `not-found`, `not-ready`, `invalid`, `device`, `not-text-input`, `commit-not-observed`, `clear-not-observed`, `keyboard-occludes`. Branch on the code, not the prose.
-- Non-ASCII text is delivered through the simulator pasteboard, which some Xcode versions fail to paste into native fields (`fill` then reports `verified: false` while `simctl pbpaste` shows the text). ASCII typing goes over HID and works; on that failure path, verify from the snapshot rather than assuming.
+- Agent refusals arrive as `code: message` with one of these codes: `stale`, `covered`, `not-found`, `ambiguous`, `not-ready`, `invalid`, `device`, `not-text-input`, `commit-not-observed`, `clear-not-observed`, `keyboard-occludes`. `ambiguous` means the target label matched more than one element: take a snapshot and use the ref it lists. Branch on the code, not the prose.
+- Non-ASCII text is delivered through the simulator pasteboard. On Xcode 27.1 that paste does not land in Settings Search or Safari's address field: `fill` reports `verified: false` even though `simctl pbpaste` shows the text. App-originated copy/paste and ASCII typing over HID work there. On that failure path, verify from the snapshot rather than assuming.
 - `pushNotification` reads its payload from a file: write the APNs JSON (`{"aps":{"alert":{"title":"…","body":"…"}}}`) to a temp file, pass the path, remove it after.
 - `clearAppData` terminates the app and erases its data container — documents, preferences, caches. It is destructive and never runs implicitly; use it for clean-slate setup when logging out in the app is not enough. `resetKeychain` empties the whole simulator's keychain.
 - Biometric (Face ID / Touch ID) controls are not implemented. Device orientation is not exposed. Gestures of three or more fingers are not supported.

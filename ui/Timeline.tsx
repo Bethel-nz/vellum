@@ -33,7 +33,7 @@ const REST = 0.4
 const HEAD_ROWS = 1
 
 /**
- * Which of the note's rows are on screen. Kept outside React state, so scrolling the note
+ * Which of the note's rows are on screen. Kept outside state, so scrolling the note
  * re-renders only the timeline, not the app.
  */
 export function watchRows() {

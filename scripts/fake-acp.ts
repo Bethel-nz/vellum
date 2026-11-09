@@ -8,7 +8,7 @@
 // note that came with it, and gets a plain answer. `/compact` answers with a compaction. Every message it
 // receives is appended to $FAKE_ACP_LOG as {in: msg}. It steers like the adapter: `_session/steering`
 // during a turn is taken in ("injected") and answered before the turn ends; while idle it's
-// "promptRequired" and nothing happens.
+// "promptRequired" and nothing happens. $FAKE_ACP_START_MS holds a session's start that long.
 //
 // With `--cli auth login|logout|status` it plays the account side (scripts/check-login.ts puts a
 // `claude` shim on PATH that runs this file with --cli): a marker file in the account's config dir
@@ -50,8 +50,7 @@ if (process.argv.includes('--cli')) {
 }
 
 /**
- * One line onto the check's log. Several fake agents can share it, and Bun's writes replace a file,
- * so the shell's `>>` appends: in order, whole lines, whichever agent writes.
+ * One line onto the check's log, appended in order and whole whichever fake agent writes it.
  */
 function log(o: unknown) {
   if (process.env.FAKE_ACP_LOG) Bun.spawnSync(['/bin/sh', '-c', 'cat >> "$1"', 'sh', process.env.FAKE_ACP_LOG], { stdin: new TextEncoder().encode(JSON.stringify(o) + '\n') })
@@ -62,6 +61,7 @@ const update = (sessionId: string, u: unknown) => out({ method: 'session/update'
 // FAKE_ACP_AS=codex or opencode: that agent's options and capabilities, as spikes/acp-agents.ts
 // recorded them, instead of Claude's.
 const as = process.env.FAKE_ACP_AS ?? 'claude'
+const startMs = Number(process.env.FAKE_ACP_START_MS) || 0
 const select = (id: string, category: string, currentValue: string, values: string[]) => ({ id, name: id, category, type: 'select', currentValue, options: values.map((value) => ({ value, name: value })) })
 const looks: Record<string, any[]> = {
   codex: [
@@ -215,9 +215,11 @@ async function handle(msg: any) {
           : [],
       })
     case 'session/new':
+      await Bun.sleep(startMs)
       out({ method: '_auth/status_update', params: { authStatus: { kind: 'account', label: 'Claude Pro', account: { plan: 'pro', email: 'fake@example.com' } } } })
       return reply({ sessionId: 'fake-session', configOptions: config })
     case 'session/resume':
+      await Bun.sleep(startMs)
       return reply({ configOptions: config })
     case 'session/set_config_option': {
       const o = config.find((x) => x.id === msg.params.configId)

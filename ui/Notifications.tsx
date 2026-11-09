@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { DismissableLayer, useWindowSize, type PublicInstance } from '@gpuix/react'
 import { FloatingLayer } from '@gpuix/react/floating'
-import { Button, Icon, Label, Scroll, useM } from '../components'
+import { Button, CloseButton, Icon, Label, Scroll, useM } from '../components'
 import { Lifted } from '../components/Lifted'
 import { PopoverBackdrop } from '../components/PopoverBackdrop'
 import { motion } from '../components/spring'
@@ -39,7 +39,7 @@ export function NotificationInboxButton() {
         <div ref={panel} testId="notifications-panel" role="dialog" aria-label="Notifications" style={{ position: 'relative', display: 'flex', flexDirection: 'column', pointerEvents: 'auto' }}>
           <Lifted initial={reduced ? false : { opacity: 0, top: -offset.menu }} animate={{ opacity: 1, top: 0 }} transition={enter('fast')} shadow={elevation(m, 'popover')} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderRadius: radiusXl, borderWidth: 1, borderColor: m.border, backgroundColor: m.popup, pointerEvents: 'none' }} />
           <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: radiusXl, pointerEvents: 'auto' }}>
-            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, paddingBottom: 10 }}><text style={{ fontSize: 14, lineHeight: 20, fontWeight: 600, color: m.text, flexGrow: 1 }}>Notifications</text><Button buttonRef={close} testId="notifications-close" title="Close notifications" onPress={() => setOpen(false)} style={{ width: 22, paddingLeft: 0, paddingRight: 0 }}><Icon name="x" size={13} /></Button></div>
+            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, paddingBottom: 10 }}><text style={{ fontSize: 14, lineHeight: 20, fontWeight: 600, color: m.text, flexGrow: 1 }}>Notifications</text><CloseButton buttonRef={close} testId="notifications-close" title="Close notifications (esc)" onPress={() => setOpen(false)} /></div>
             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 12, paddingRight: 12, paddingBottom: 10, borderBottomWidth: 1, borderColor: m.border }}>
               <Button testId="notifications-all" selected={view === 'all'} onPress={() => setView('all')}><Label muted={view !== 'all'}>All</Label></Button>
               <Button testId="notifications-waiting" selected={view === 'waiting'} onPress={() => setView('waiting')}><Label muted={view !== 'waiting'}>{waiting.length ? `Needs you · ${waiting.length}` : 'Needs you'}</Label></Button>

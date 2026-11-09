@@ -1,5 +1,5 @@
-// Monochrome icons as raw SVG source (Lucide geometry, 24px grid). GPUIX tints
-// them with style.color, so the stroke here is plain black.
+// Monochrome icons as raw SVG source (Lucide geometry, 24px grid), tinted with
+// style.color, so the stroke here is plain black.
 
 const svg = (body: string) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`
@@ -16,7 +16,7 @@ export const icons = {
   /** The phone's lock (side) button. */
   lock: svg('<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'),
   shieldX: svg('<path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z"/><path d="m9 9 6 6m0-6-6 6"/>'),
-  /** The phone's app switcher: cards side by side (Lucide gallery-horizontal). */
+  /** The phone's app switcher: cards side by side. */
   switcher: svg('<path d="M2 3v18"/><rect width="12" height="18" x="6" y="3" rx="2"/><path d="M22 3v18"/>'),
   /** The notes view: two leaning pages. */
   notes: own(
@@ -82,6 +82,7 @@ export const icons = {
   bulb: svg('<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/>'),
   fold: svg('<path d="M12 22v-6"/><path d="M12 8V2"/><path d="M4 12H2"/><path d="M10 12H8"/><path d="M16 12h-2"/><path d="M22 12h-2"/><path d="m15 19-3-3-3 3"/><path d="m15 5-3 3-3-3"/>'),
   comment: svg('<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>'),
+  download: svg('<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>'),
   copy: svg('<rect x="8" y="8" width="13" height="13" rx="2"/><path d="M4 16V5a2 2 0 0 1 2-2h11"/>'),
   filePlus: svg('<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M9 15h6"/><path d="M12 18v-6"/>'),
   /** A folder in the file tree, shut and open. */

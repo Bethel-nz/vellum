@@ -1,7 +1,6 @@
 // File-type icons from the SF Mono Nerd Font (seti and devicons glyphs), tinted from the
-// material's ANSI and syntax colours so they follow the theme. GPUIX draws private-use glyphs
-// only when the <text> names the Nerd Font itself (spikes/nerd-icons.tsx); anything unknown
-// falls back to a plain file glyph.
+// material's ANSI and syntax colours so they follow the theme. Anything unknown falls back
+// to a plain file glyph.
 
 import { font, type Material } from '../ui/theme'
 import { Icon } from './Icon'

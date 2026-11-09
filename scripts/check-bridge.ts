@@ -93,7 +93,7 @@ try {
   const { mobileSupported } = await import('../core/mobile')
   expect(JSON.parse(stdio).result.tools.map((tool: { name: string }) => tool.name)).toEqual([
     'vellum_pending', 'vellum_get_capture', 'vellum_watch', 'vellum_resolve', 'vellum_dismiss', 'vellum_reply',
-    ...(mobileSupported ? ['mobile_snapshot', 'mobile_tap', 'mobile_steps', 'mobile_apps', 'mobile_configure', 'mobile_notify', 'mobile_reset', 'mobile_connection', 'mobile_input', 'mobile_inspect'] : []),
+    ...(mobileSupported ? ['mobile_snapshot', 'mobile_screenshot', 'mobile_tap', 'mobile_steps', 'mobile_apps', 'mobile_configure', 'mobile_notify', 'mobile_reset', 'mobile_connection', 'mobile_input', 'mobile_inspect'] : []),
   ])
   ok('stdio MCP adapter round trip')
   const events = await request('/events')

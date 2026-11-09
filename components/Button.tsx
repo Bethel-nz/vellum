@@ -1,4 +1,4 @@
-// Buttons, after arc's button and Glass's toolbar (`.lg-toolbar`): 22px tall, 8px side padding,
+// Buttons: 22px tall, 8px side padding,
 // alpha washes instead of opaque chips. Feedback is on press (`active`), commit on click.
 //
 //   quiet   — text-ish shell control (header, menus, inline actions)
@@ -13,6 +13,7 @@ import type { PublicInstance, StyleDesc } from '@gpuix/react'
 import { keys } from '../core/platform'
 import { concentric, radiusBase } from '../ui/theme'
 import { useM } from './theme'
+import { Icon } from './Icon'
 
 export const controlHeight = 22
 export const controlRadius = concentric(radiusBase, 3)
@@ -81,6 +82,18 @@ export function Button({
     >
       {children}
     </Base>
+  )
+}
+
+/** A square icon-only button: the one size every sheet, pane and panel header uses. */
+export const iconButton = { width: 28, height: 28, minHeight: 28, paddingLeft: 0, paddingRight: 0 } as const
+
+/** ✕ in a sheet, pane or panel header: one size and corner everywhere. */
+export function CloseButton({ onPress, testId, title = 'Close (esc)', buttonRef }: { onPress: () => void; testId?: string; title?: string; buttonRef?: React.Ref<PublicInstance> }) {
+  return (
+    <Button buttonRef={buttonRef} onPress={onPress} testId={testId} title={title} style={iconButton}>
+      <Icon name="x" size={14} />
+    </Button>
   )
 }
 

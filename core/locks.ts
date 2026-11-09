@@ -3,14 +3,11 @@
 // session is resumed, nothing else may hold it:
 //
 //   1. Claude's own registry: every live claude process writes <config>/sessions/<pid>.json with
-//      its sessionId and procStart (seen on 2.1.296–2.1.309: CLI, SDK, Claude Desktop). A record
-//      counts only while its pid is alive and started when the record says, so a reused pid is
-//      not mistaken for the old process.
+//      its sessionId and procStart. A record counts only while its pid is alive and started when
+//      the record says, so a reused pid is not mistaken for the old process.
 //   2. Vellum's lock, ~/.vellum/locks/<sessionId>, created exclusively and naming the Vellum pid,
 //      so two Vellum windows can't both drive one session.
 
-// The registry is a folder and the lock is created exclusively ('wx'): node:fs's work. Reading and
-// replacing the files is Bun.file's.
 import { mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
@@ -30,7 +27,7 @@ function alive(pid: number) {
   }
 }
 
-/** When `pid` started, as `ps -o lstart=` prints it (the format Claude stores as procStart). */
+/** When `pid` started, as Claude stores its procStart. */
 function startedAt(pid: number): string | undefined {
   if (process.platform === 'win32') return
   const out = Bun.spawnSync(['ps', '-o', 'lstart=', '-p', String(pid)]).stdout.toString().trim()

@@ -1,11 +1,7 @@
-// Thin binding over the libghostty-vt wasm module that libghostty-vt-node ships.
-//
-// libghostty-vt-node only wraps feed/format, but the same wasm exports the whole
-// C API. We reuse its loader (VtModule: memory, ABI manifest, opaque slots) and
-// bind the parts a renderer needs: render state (per-cell grid), the key encoder,
+// Terminal emulation over libghostty-vt: render state (per-cell grid), the key encoder,
 // and the write_pty effect for replies (DA, DSR, CPR...).
 //
-// Everything here runs on the main JS thread only; libghostty-vt is not thread-safe.
+// Everything here runs on the main JS thread only.
 
 import { VtModule } from '../node_modules/libghostty-vt-node/dist/module.js'
 
@@ -21,10 +17,8 @@ const dec = new TextDecoder()
 
 // ---------------------------------------------------------------- write_pty effect
 
-// C callbacks in wasm are indices into the module's function table, and a table
-// only holds wasm functions. So we compile a 4-instruction wasm shim that imports
-// one JS function and re-exports it with the C signature
-// (terminal, userdata, data_ptr, len) -> void, and put that in the table.
+// A 4-instruction wasm shim that imports one JS function and re-exports it with the C
+// signature (terminal, userdata, data_ptr, len) -> void, and put that in the table.
 const writePtyHandlers = new Map<number, (bytes: Uint8Array) => void>()
 let writePtyIndex: number | undefined
 
@@ -196,7 +190,6 @@ export class VtTerminal {
     this.#scrollTo('BOTTOM')
   }
 
-  // The struct is passed by value, which wasm32 lowers to a pointer.
   #scrollTo(tag: 'DELTA' | 'BOTTOM', delta = 0) {
     const m = this.#m
     const type = m.type('GhosttyTerminalScrollViewport')

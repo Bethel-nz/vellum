@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useGpuixRequired, type PublicInstance } from '@gpuix/react'
 import { record, valueText } from '../core/tool-display'
-import { font, nativeTheme } from '../ui/theme'
+import { font, nativeTheme, scrollbarWidth } from '../ui/theme'
 import { ToolValue, ToolResultRow } from './ToolValue'
 import { useM } from './theme'
 
@@ -14,8 +14,7 @@ const textRows = (text: string, language?: string, path?: string): Row[] => {
   return rows
 }
 
-// GPUIX's virtual-list stops reporting visible ranges after a jump beyond its mounted
-// children. Follow the ordinary scroll host's offset with measured spacer windows instead.
+// Follow the ordinary scroll host's offset with measured spacer windows.
 /** A bounded virtual list for records, plain text and raw output. */
 export function ToolOutput({ value, raw, schema, title, extra, attachments = EMPTY_ATTACHMENTS, path, testId }: { value: unknown; raw?: boolean; schema?: unknown; title?: string; extra?: string; attachments?: string[]; path?: string; testId: string }) {
   const m = useM()
@@ -58,7 +57,7 @@ export function ToolOutput({ value, raw, schema, title, extra, attachments = EMP
     let low = 0, high = rows.length
     while (low < high) { const mid = Math.floor((low + high) / 2); if (offsets[mid + 1]! <= offset) low = mid + 1; else high = mid }
     setWanted(Math.max(0, low - 4))
-  }} style={{ width: '100%', height: Math.min(260, Math.max(36, offsets.at(-1) ?? 36)), minHeight: 0, flexShrink: 0, overflowY: 'scroll', pointerEvents: 'auto', scrollbarColor: m.scrollbar, scrollbarWidth: 6 }}>
+  }} style={{ width: '100%', height: Math.min(260, Math.max(36, offsets.at(-1) ?? 36)), minHeight: 0, flexShrink: 0, overflowY: 'scroll', pointerEvents: 'auto', scrollbarColor: m.scrollbar, scrollbarWidth }}>
     <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
     <div style={{ height: offsets[start] ?? 0, flexShrink: 0 }} />
     {rows.slice(start, end).map((row, offset) => <div key={start + offset} onLayout={event => { if (event.height && Math.abs((sizes.get(start + offset) ?? 0) - event.height) > 0.5) { sizes.set(start + offset, event.height); setRevision(value => value + 1) } }} testId={`${testId}-row-${start + offset}`} role="listitem" style={{ display: 'flex', flexDirection: 'column', flexShrink: 0, paddingLeft: 12, paddingRight: 14, paddingTop: 6, paddingBottom: 6 }}>

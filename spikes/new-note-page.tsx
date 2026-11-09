@@ -129,7 +129,7 @@ function Spike() {
         <div style={{ position: 'relative', maxWidth: 210 }}>
           <Button testId="spike-project" title={page.workspace} selected={projectOpen} onPress={() => { setProjectOpen((value) => !value && !closedByOutsidePress('spike-project')); setPillMenu(undefined); setProjectQuery('') }} style={{ height: 26, gap: 7, minWidth: 0, maxWidth: '100%' }}><Icon name="folder" size={14} /><text style={{ ...type.label, color: m.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis', minWidth: 0 }}>{path.basename(page.workspace)}</text><Icon name="chevronDown" size={11} /></Button>
           <Menu open={projectOpen} onClose={() => setProjectOpen(false)} width={Math.min(340, window.width - 40)} side="bottom" closeKey="spike-project" testId="spike-projects"
-            header={(submit) => <div style={{ padding: 8 }}><Field fieldRef={projectSearch} testId="spike-project-search" value={projectQuery} onChange={setProjectQuery} placeholder="Search projects…" onSubmit={submit} onKeyDown={(event) => { if (!['escape', 'up', 'down', 'enter'].includes(event.key)) event.stopPropagation() }} /></div>}
+            header={(submit) => <div style={{ padding: 8 }}><Field fieldRef={projectSearch} testId="spike-project-search" value={projectQuery} onChange={setProjectQuery} placeholder="Search projects…" onSubmit={submit} onKeyDown={(event) => { if (!['escape', 'up', 'down', 'enter'].includes(event.key ?? '')) event.stopPropagation() }} /></div>}
             items={[
               { kind: 'label', label: 'This window' },
               { label: path.basename(page.workspace), hint: shortPath(path.dirname(page.workspace)), checked: true, icon: 'folder', testId: 'spike-current-project', onSelect: () => focus() },

@@ -1,20 +1,8 @@
-// How a streaming reply surfaces: as settled chunks of ink, not a typewriter. The text still
-// arrives delta by delta (and is recorded that way, so replay is unchanged); what changes is how
-// much of it is shown, and in which pieces.
-//
-// `settlePoints` are the offsets where shown text may stop, from the text alone: after a blank
-// line, a heading, a closed fence or every 6 lines of an open one, and after a sentence once two
-// lines have built up. The UI (useInk in ui/blocks.tsx) shows up to the latest point, and past it
-// after 500ms (sooner for a reply's first words) up to `safeEnd`. `chunks` cut the shown text at
-// block boundaries; each chunk is drawn as its own element that fades in once.
+// How much of a streaming reply shows (`revealTo`), and the blocks it's drawn in (`chunks`).
 
 const FENCE = /^ {0,3}(`{3,}|~{3,})/
 const HEADING = /^ {0,3}#{1,6}\s/
 const LIST = /^\s*([-*+]|\d+[.)])\s/
-/** Lines of an open fence shown at a time. */
-const FENCE_LINES = 6
-/** "Two lines" of prose, for a sentence end to settle on without a newline. */
-const TWO_LINES = 140
 
 type Line = { start: number; end: number; text: string; fence: boolean; closes: boolean; opens: boolean }
 
@@ -59,48 +47,41 @@ export function blockStarts(md: string): number[] {
   return [...cuts].filter((c) => c < md.length).sort((a, b) => a - b)
 }
 
-/** Offsets where the shown part of a streaming reply may stop. */
-export function settlePoints(md: string): number[] {
+/** Where shown text reads as finished: after a sentence, a block, or a whole line of code. */
+export function naturalEnds(md: string): number[] {
   const ls = lines(md)
-  const blocks = blockStarts(md).filter((p) => p > 0)
-  const points = new Set(blocks)
-  // Fenced spans, [start, end): no sentence ends inside them; an open one settles every 6 lines.
+  const points = new Set(blockStarts(md).filter((p) => p > 0))
+  // Fenced spans, [start, end): their lines are ends, their full stops are not.
   const fenced: [number, number][] = []
-  let run = 0
   for (const l of ls) {
     if (!l.fence) continue
-    if (l.opens) {
-      fenced.push([l.start, md.length])
-      run = 0
-    } else run++
+    if (l.opens) fenced.push([l.start, md.length])
     if (l.closes) fenced.at(-1)![1] = l.end
-    if (l.closes || run >= FENCE_LINES) {
-      points.add(l.end)
-      run = 0
-    }
+    if (!l.opens) points.add(l.end)
   }
   const tail = md.slice(ls.at(-1)?.end ?? 0)
   if (FENCE.test(tail)) fenced.push([ls.at(-1)?.end ?? 0, md.length])
-  // Prose: a sentence end settles once two lines have built up since the last point.
-  const re = /[.?!]["')\]]?\s/g
-  let last = 0
-  let b = 0
+  const re = /[.?!:;]["')\]]?\s/g
   for (let m = re.exec(md); m; m = re.exec(md)) {
     const at = m.index + m[0].length
-    while (b < blocks.length && blocks[b]! <= m.index) last = Math.max(last, blocks[b++]!)
-    if (fenced.some(([s, e]) => at > s && at <= e)) continue
-    const since = md.slice(last, at)
-    if (since.includes('\n') || since.length >= TWO_LINES) {
-      points.add(at)
-      last = at
-    }
+    if (!fenced.some(([s, e]) => at > s && at <= e)) points.add(at)
   }
   return [...points].sort((a, b) => a - b)
 }
 
+/** How long a half-written sentence waits for its end. */
+export const HOLD_MS = 200
+
+/** To the latest natural end; past the hold, to the last whole word. The first words show at once. */
+export function revealTo(md: string, cursor: number, waited: number): number {
+  const end = naturalEnds(md).filter((p) => p > cursor).at(-1)
+  const words = Math.max(cursor, safeEnd(md))
+  if (cursor === 0) return Math.max(end ?? 0, words)
+  return end ?? (waited >= HOLD_MS ? words : cursor)
+}
+
 /**
- * How far a forced reveal (the 500ms cap) may go: the whole text, but inside an open fence only
- * whole lines, and in prose not into a half-written word.
+ * The end of the last whole word, or of the last whole line inside an open fence.
  */
 export function safeEnd(md: string): number {
   const ls = lines(md)

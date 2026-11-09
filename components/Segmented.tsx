@@ -1,5 +1,5 @@
-// A segmented control, after arc's: equal segments, one selection pill that glides between them
-// on the morph curve (arc uses a shared-layout spring; GPUIX animates `left` instead).
+// A segmented control: equal segments, one selection pill that glides between them on the
+// morph curve.
 
 import { motion } from './spring'
 import { useState } from 'react'

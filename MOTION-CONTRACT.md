@@ -21,8 +21,8 @@ the GPUIX renderer determines which motion can be implemented.
    for the settings override.
 4. New components import tokens from components/motion.ts. The older table in ui/theme.ts is
    legacy; a motion migration is not a retheme.
-5. Native markdown has no per-glyph spans. Streaming mounts immutable StreamChunk rows;
-   an already measured virtual-list row never grows with later deltas.
+5. Native markdown has no per-glyph spans. A reply is one row per block, the same streaming and
+   finished; only the block being written grows, at natural ends (core/stream.ts), never faded.
 6. GPUI paints a box shadow at full strength whatever the node's opacity. The spring motion
    scales a moving surface's shadow alpha with its opacity, so shadowed surfaces may fade in
    and out; under the renderer's tweens (reduced motion) elevated surfaces still close

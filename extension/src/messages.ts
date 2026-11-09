@@ -18,6 +18,7 @@ export type WorkerMessage =
   | { type: 'toggle' }
   | { type: 'capture'; ref?: string; mode?: 'queue'; triggers: boolean; frames: boolean; listeners: boolean }
   | { type: 'snapshot'; ref: string }
+  | { type: 'related-shots'; refs: string[] }
   | { type: 'page-screenshot' }
   | { type: 'capture-status'; id: string }
 export type ContentMessage =

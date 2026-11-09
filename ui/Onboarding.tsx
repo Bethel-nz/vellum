@@ -1,3 +1,4 @@
+import { scrollbarWidth } from './theme'
 import { useEffect, useRef, useState } from 'react'
 import { DismissableLayer, useGpuixRequired, type PublicInstance } from '@gpuix/react'
 import { Button as Choice } from '@gpuix/react/button'
@@ -70,7 +71,7 @@ export function Onboarding({
   return <DismissableLayer initialFocus={() => root.current?.id ?? null} onEscapeKeyDown={() => { if (step > 0) onStep(step - 1) }}>
     {/* biome-ignore lint/a11y/noNoninteractiveTabindex: Native dialog focus target, restored after terminal login. */}
     <div ref={root} testId="onboarding" role="dialog" aria-modal aria-label="Welcome to Vellum" tabIndex={0} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'column', backgroundColor: m.pane, keyboardFocusDim: false }}>
-      <div ref={content} style={{ flexGrow: 1, minHeight: 0, overflowY: 'scroll', display: 'flex', flexDirection: 'column', alignItems: 'center', scrollbarColor: m.scrollbar, scrollbarWidth: 8 }}>
+      <div ref={content} style={{ flexGrow: 1, minHeight: 0, overflowY: 'scroll', display: 'flex', flexDirection: 'column', alignItems: 'center', scrollbarColor: m.scrollbar, scrollbarWidth }}>
         <div style={{ width: '100%', maxWidth: 660, flexGrow: 1, flexShrink: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingTop: 44, paddingBottom: 28, paddingLeft: 28, paddingRight: 28 }}>
           <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, marginBottom: 24 }}>
             <div style={{ width: 30, height: 30, borderRadius: 8, borderWidth: 1, borderColor: m.border, backgroundColor: m.codeBg, alignItems: 'center', justifyContent: 'center', display: 'flex' }}><text style={{ fontSize: 22, lineHeight: 27, fontWeight: 600, color: m.accent }}>V</text></div>
@@ -142,7 +143,7 @@ export function Onboarding({
             {step === 3 ? <>
               <div style={{ ...card, display: 'flex', flexDirection: 'column', padding: 18, gap: 14 }}>
                 <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 7 }}><Icon name="note" size={13} /><text style={{ fontSize: 12, color: m.textMuted }}>Your first note</text><div style={{ flexGrow: 1 }} />{selectedAgent ? <text style={{ fontSize: 12, color: m.textMuted }}>{selectedAgent.title}</text> : null}</div>
-                <textarea testId="onboarding-prompt" aria-label="First note prompt" value={prompt} onChange={(e) => setPrompt(e.value)} minRows={3} maxRows={6} placeholder="What would you like to work on?" style={{ width: '100%', fontSize: 14, lineHeight: 22, color: m.text, backgroundColor: '#00000000', borderWidth: 0, padding: 0 }} />
+                <textarea testId="onboarding-prompt" aria-label="First note prompt" value={prompt} onChange={(e) => setPrompt(e.value ?? '')} minRows={3} maxRows={6} placeholder="What would you like to work on?" style={{ width: '100%', fontSize: 14, lineHeight: 22, color: m.text, backgroundColor: '#00000000', borderWidth: 0, padding: 0 }} />
                 <text style={{ fontSize: 11.5, lineHeight: 17, color: m.textMuted }}>This becomes a draft. Send it when you’re ready.</text>
               </div>
               {/* biome-ignore lint/a11y/useSemanticElements: GPUIX has native div groups, not HTML fieldsets. */}

@@ -17,9 +17,15 @@ await Bun.write(log, '')
 const app = await launch({
   command: 'bun',
   args: ['app.tsx'],
-  env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home'), VELLUM_AGENT: path.resolve(import.meta.dir, 'fake-acp.ts'), FAKE_ACP_LOG: log },
+  env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home'), VELLUM_AGENT: path.resolve(import.meta.dir, 'fake-acp.ts'), FAKE_ACP_LOG: log, VELLUM_ASK_KEY_DELAY_MS: '650' },
 })
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+// Polls instead of a fixed wait, so a slow machine waits longer rather than failing.
+const until = async (ready: () => Promise<boolean>, ms = 4000) => {
+  const deadline = Date.now() + ms
+  while (!(await ready()) && Date.now() < deadline) await wait(50)
+  return ready()
+}
 const shot = (n: string) => app.screenshot({ path: 'screenshots/approval-' + n + '.png' })
 /** Every JSON-RPC message the agent received. */
 const sent = async () => (await Bun.file(log).text()).trim().split('\n').filter(Boolean).map((l) => JSON.parse(l).in)
@@ -80,7 +86,7 @@ try {
   await wait(1200)
   const deny = (await answers())[1]
   expect('↵ denies', deny?.optionId === 'reject', JSON.stringify(deny))
-  expect('…and the note goes in as the next message', (await prompts()).at(-1) === 'use vitest instead', (await prompts()).at(-1))
+  expect('…and the note goes in as the next message', await until(async () => (await prompts()).at(-1) === 'use vitest instead'), (await prompts()).at(-1))
   expect('the note keeps a Denied line', (await app.getByText(`Denied · Run in ${folder}`).count()) === 1)
   await shot('4-denied')
 
@@ -101,7 +107,7 @@ try {
   await c.click()
   await c.press('shift-tab')
   await wait(500)
-  expect('⇧⇥ sets plan mode live', (await configs()).some((r) => r.configId === 'mode' && r.value === 'plan'))
+  expect('⇧⇥ sets plan mode live', await until(async () => (await configs()).some((r) => r.configId === 'mode' && r.value === 'plan')))
   await app.getByTestId('mode-pill').click()
   await wait(400)
   expect('the mode icon opens its menu upward', (await app.getByTestId('mode-menu').count()) === 1 && (await app.getByTestId('mode-menu').bounds()).y < (await app.getByTestId('mode-pill').bounds()).y)

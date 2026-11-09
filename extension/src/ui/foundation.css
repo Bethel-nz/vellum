@@ -1,4 +1,4 @@
-/* Arc's component contract, using Vellum's native material and density. */
+/* The component contract, using Vellum's native material and density. */
 :root, :host, .vellum-ui {
   color-scheme: dark;
   --background: #0a0a0a;

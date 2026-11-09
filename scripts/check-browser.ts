@@ -22,12 +22,12 @@ try {
   await composer.waitFor({ timeoutMs: 60000 }); await until(() => present(path.join(home, 'bridge.json')))
   const pairing = await Bun.file(path.join(home, 'bridge.json')).json()
   const request = (route: string, init: RequestInit = {}) => fetch(`${pairing.endpoint}${route}`, { ...init, headers: { Authorization: `Bearer ${pairing.token}`, ...init.headers } })
-  const notes = await (await request('/notes')).json(), note = notes.find((item: any) => item.active)
+  const notes = await (await request('/notes')).json() as { id: string; active?: boolean }[], note = notes.find((item) => item.active)!
   let id = 0
   const call = async (name: string, args: object) => {
     const response = await request(`/mcp/${note.id}`, { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method: 'tools/call', params: { name, arguments: args } }) })
     expect(response.status).toBe(200)
-    return (await response.json()).result
+    return ((await response.json()) as { result: any }).result
   }
   const result = await call('browser', { args: ['screenshot'] })
   expect(result.isError, JSON.stringify(result)).toBe(false)
@@ -37,6 +37,12 @@ try {
     const refused = await call('browser', { args: ['screenshot', name] })
     expect(refused.isError, name).toBe(true)
     expect(JSON.stringify(refused.content)).toContain('Name the file only')
+  }
+  // The path is read where the CLI reads it (after a selector), extra arguments are refused, and
+  // flags that pick a folder are Vellum's.
+  for (const args of [['screenshot', 'e1', '../../escape.png'], ['screenshot', '--full', 'e1', path.join(home, 'escape.png')], ['pdf', 'page.pdf', '../escape.png'], ['screenshot', '--screenshot-dir', home], ['download', 'e1', 'a.bin', '../escape.png']]) {
+    const refused = await call('browser', { args })
+    expect(refused.isError, args.join(' ')).toBe(true)
   }
   expect(await present(path.join(home, 'escape.png'))).toBe(false)
   expect([...new Bun.Glob('**/named.png').scanSync(home)].length).toBe(1)

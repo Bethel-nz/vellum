@@ -1,5 +1,6 @@
-import { expect, test } from 'bun:test'
-import { chunkHunk, commentTags, hunkRows, hunkTags, noteFor, noteLabel, splitHunks } from './changes'
+import { describe, expect, test } from 'bun:test'
+import { createTwoFilesPatch } from 'diff'
+import { chunkHunk, commentTags, hunkRows, hunkTags, noteFor, noteLabel, splitHunks, wholeFileDiff } from './changes'
 import { promptFor, tagText } from './tags'
 
 const patch = '@@ -1,3 +1,4 @@\n export function concentric(parentRadius: number, inset: number) {\n-  return parentRadius - inset\n+  // Nested rounding shares one centre.\n+  return Math.max(0, parentRadius - inset)\n }\n'
@@ -51,4 +52,22 @@ test('a long hunk splits into chunks that number their lines as the whole does',
   // Each chunk's rows are the whole's rows from `from` on: same kinds, same numbers.
   expect(chunks.flatMap((c) => hunkRows(c.patch))).toEqual(whole)
   expect(chunkHunk(patch, 50)).toEqual([{ patch, from: 0, rows: 9 }])
+})
+
+describe('wholeFileDiff', () => {
+  const edit = (id: string, a: string, b: string) => splitHunks(id, 'f.ts', createTwoFilesPatch('f.ts', 'f.ts', a, b, '', '', { context: 3 }))
+  const v0 = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join('\n') + '\n'
+  const v1 = v0.replace('line 3\n', 'line three\n')
+  const v2 = v1.replace('line 25\n', 'line 25\nline 25b\n')
+
+  test('undoes the edits, newest first, into one diff of the whole file', () => {
+    const whole = wholeFileDiff('f.ts', v2, [...edit('a', v0, v1), ...edit('b', v1, v2)])!
+    expect(whole).toContain('-line 3\n+line three\n')
+    expect(whole).toContain('+line 25b\n')
+    expect(whole).toContain(' line 14\n')
+  })
+
+  test('a file changed past its hunks gets none', () => {
+    expect(wholeFileDiff('f.ts', 'something else entirely\n', edit('a', v0, v1))).toBeUndefined()
+  })
 })

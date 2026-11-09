@@ -1,8 +1,6 @@
 // Scrolling the note smoothly: to its end when you write, send or come back to the composer while
-// it's scrolled out of view, and to a paragraph when you pick it on the timeline. GPUIX has no
-// animated scroll, only `scrollToItem` (a jump) and `getListScrollTop` (the anchor gpui scrolls
-// by: item, offset in it, viewport height), so this steps the anchor every frame
-// (spikes/list-glide.tsx).
+// it's scrolled out of view, and to a paragraph when you pick it on the timeline. The list's
+// scroll anchor (item, offset in it, viewport height) is stepped every frame.
 //
 // Both resolve synchronously, so the end can be read and the anchor put back in the same tick,
 // before anything paints. The glide is laid out from the end: each frame reads where the end is
@@ -17,7 +15,7 @@ import { duration, ease, reducedMotion } from '../components/motion'
 type Renderer = ReturnType<typeof useGpuixRequired>
 type Anchor = [number, number, number]
 
-/** Past the last item: gpui clamps it to the end. */
+/** Past the last item: clamped to the end. */
 const END = 1e9
 /** A glide starts at most this many viewports from the end. */
 const FAR = 1.25
@@ -32,7 +30,7 @@ function anchorOf(r: Renderer, list: number): Anchor | null {
   return (r.getListScrollTop?.(list) as Anchor | null | undefined) ?? null
 }
 
-/** Where the list is when it sits `above` px over its end (gpui resolves a negative offset). */
+/** Where the list is when it sits `above` px over its end (a negative offset). */
 function endAnchor(r: Renderer, list: number, above = 0): Anchor | null {
   r.scrollToItem?.(list, END, 0)
   const end = anchorOf(r, list)

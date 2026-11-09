@@ -1,5 +1,4 @@
-// Fluid Functionalism's stacked questions, adapted to GPUIX's tween/click contract.
-// The elevated surface enters behind plain controls and disappears atomically.
+// Stacked questions. The elevated surface enters behind plain controls and disappears atomically.
 import { useState } from 'react'
 import { useWindowSize, type KeyEvent } from '@gpuix/react'
 import { motion } from './spring'

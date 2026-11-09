@@ -17,6 +17,7 @@ export const groups = [
   { id: 'onboarding', page: 'Vellum', words: 'Welcome onboarding setup getting started first note tour' },
   { id: 'thinking', page: 'Vellum', words: 'Model thinking reasoning thoughts simple view tool results' },
   { id: 'new-notes', page: 'Vellum', words: 'New notes defaults mode ask edits plan auto effort low high max account at launch last note startup' },
+  { id: 'export', page: 'Vellum', words: 'Export folder vel markdown download save share open resume' },
   { id: 'instructions', page: 'Vellum', words: 'Instructions agent custom prompt project conventions' },
   { id: 'notifications', page: 'Vellum', words: 'Notifications native macOS desktop alerts notify never requests approvals questions replies background permission enable' },
   { id: 'theme', page: 'Appearance', words: 'Theme dark light colors' },

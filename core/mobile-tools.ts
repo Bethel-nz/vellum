@@ -5,7 +5,7 @@ import { bootMobile, connectMobile, disconnectMobile, liveMobile, mobileConnecti
 
 // The iOS simulator in Vellum's mobile view, through simdriver's agent layer. Refs (e4) come
 // from the last snapshot and are re-checked right before each touch, so a stale one is refused.
-const target = { type: 'string', description: 'An element ref from the last snapshot (e4), a label on screen ("Log in"), or a grid cell (C4).' }
+const target = { type: 'string', description: 'An element ref from the last snapshot (e4), a label on screen ("Log in"), a grid cell (C4, tapped at its centre), or an exact point @x,y in screen points (@201,816) for anything smaller or between cells.' }
 const bundleId = { type: 'string', description: 'An app bundle identifier, e.g. com.apple.MobileSMS. mobile_apps lists what is installed.' }
 const services = 'all, calendar, contacts, contacts-limited, location, location-always, media-library, microphone, motion, photos, photos-add, reminders, siri'
 const contentSizes = 'extra-small, small, medium, large, extra-large, extra-extra-large, extra-extra-extra-large, accessibility-medium, accessibility-large, accessibility-extra-large, accessibility-extra-extra-large, accessibility-extra-extra-extra-large'
@@ -43,6 +43,7 @@ const stepSchema = { oneOf: [
   actionSchema('setLocation', { lat: { type: 'number', minimum: -90, maximum: 90 }, lon: { type: 'number', minimum: -180, maximum: 180 } }, ['lat', 'lon']),
   actionSchema('appearance', { appearance: { type: 'string', enum: ['light', 'dark'] } }, ['appearance']),
   actionSchema('clipboardWrite', { text: string }, ['text']),
+  actionSchema('screenshot', { path: string }),
 ] }
 const configurationSchema = { oneOf: [
   actionSchema('permission', { op: { type: 'string', enum: ['grant', 'revoke', 'reset'] }, service: { type: 'string', enum: services.split(', ') }, bundleId }, ['op', 'service', 'bundleId']),
@@ -63,8 +64,9 @@ const inputSchema = {
 }
 export const mobileTools = !mobileSupported ? [] : [
   { name: 'mobile_snapshot', description: 'See the iOS simulator open in Vellum: its interactive elements numbered e1, e2… and an annotated screenshot. Waits for the screen to settle. Take one before acting and after the screen changes; when nothing is accessible (maps, games) it shows a lettered grid instead.', inputSchema: { type: 'object', properties: { image: { type: 'boolean', description: 'Include the annotated screenshot (default true).' }, grid: { type: 'boolean', description: 'Draw the grid over the screen instead of element boxes.' }, settleMs: { type: 'integer', minimum: 0, description: 'Screen settling window in milliseconds.' }, cols: { type: 'integer', minimum: 1, description: 'Grid column count.' } } } },
+  { name: 'mobile_screenshot', description: 'The simulator screen as it is now, as a plain image: no element boxes or grid, no waiting for it to settle. Optional path also saves the PNG there (a file, or a folder ending in /, which gets a generated name). Use mobile_snapshot instead when you need the elements to act on.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Where to save the PNG, if anywhere.' } } } },
   { name: 'mobile_tap', description: 'Tap one element. Refused, without touching, if the element moved, is covered, is gone, or (with expect) no longer reads as expected: take a new snapshot then.', inputSchema: { type: 'object', properties: { target, expect: { type: 'string', description: 'The label you expect the target to have.' } }, required: ['target'] } },
-  { name: 'mobile_steps', description: 'Run several actions in order; stops at the first failure and returns the screen as it is then. Actions: tap, doubleTap, longPress{ms}, fill{target,value,secret}, type{value}, key{name: enter, backspace, cmd+a…}, press{button: home, lock, side, siri, volume-up, volume-down}, scroll{direction, target?}, swipe{from,to}, fling{direction}, drag{from,to}, pinch{scale}, rotate{degrees}, pan{dx,dy,target?}, transform{dx,dy,scale,degrees,target?}, back{mode: system|inApp}, appSwitcher, keyboardDismiss, waitFor{text,timeoutMs}, alert{op: get|wait|accept|dismiss}, openUrl{url}, launch{bundleId}, terminate{bundleId}, setLocation{lat,lon}, appearance{appearance: light|dark}, clipboardRead, clipboardWrite{text}, screenshotElement{target}.', inputSchema: { type: 'object', properties: { steps: { type: 'array', minItems: 1, maxItems: 50, items: stepSchema } }, required: ['steps'] } },
+  { name: 'mobile_steps', description: 'Run several actions in order; stops at the first failure and returns the screen as it is then. Actions: tap, doubleTap, longPress{ms}, fill{target,value,secret}, type{value}, key{name: enter, backspace, cmd+a…}, press{button: home, lock, side, siri, volume-up, volume-down}, scroll{direction, target?}, swipe{from,to}, fling{direction}, drag{from,to}, pinch{scale}, rotate{degrees}, pan{dx,dy,target?}, transform{dx,dy,scale,degrees,target?}, back{mode: system|inApp}, appSwitcher, keyboardDismiss, waitFor{text,timeoutMs}, alert{op: get|wait|accept|dismiss}, openUrl{url}, launch{bundleId}, terminate{bundleId}, setLocation{lat,lon}, appearance{appearance: light|dark}, clipboardRead, clipboardWrite{text}, screenshot{path?} (the whole screen, plain; path also saves it: a file, or a folder ending in /), screenshotElement{target}.', inputSchema: { type: 'object', properties: { steps: { type: 'array', minItems: 1, maxItems: 50, items: stepSchema } }, required: ['steps'] } },
   { name: 'mobile_apps', description: 'List the apps installed on the phone, system apps included, with their names and bundle ids. An optional udid lists apps without a live connection. A bundle id picks the app for launch, terminate, permissions, notifications and data resets in the other mobile_ tools.', inputSchema: { type: 'object', properties: { udid: { type: 'string' } } } },
   { name: 'mobile_configure', description: `Change the phone's settings, several at once, in order; every action is checked before anything runs, and it stops at the first that fails, saying how far it got. Actions: permission{op: grant|revoke|reset, service, bundleId} — services: ${services}; the app may be terminated to apply it; contentSize{size} — one of ${contentSizes}; statusBar{op: override|clear} — override pins 9:41 with a full battery for clean screenshots, clear restores the live status bar.`, inputSchema: { type: 'object', properties: { actions: { type: 'array', minItems: 1, maxItems: 20, items: configurationSchema } }, required: ['actions'] } },
   { name: 'mobile_notify', description: 'Deliver a local notification to an app on the phone, as a push would. The payload is APNs JSON, e.g. {"aps":{"alert":{"title":"Export done","body":"Tap to reopen"},"sound":"default"}}; a foreground app that handles notifications shows it its own way.', inputSchema: { type: 'object', properties: { bundleId, payload: { type: 'object', description: 'The APNs payload to deliver.' } }, required: ['bundleId', 'payload'] } },
@@ -244,8 +246,13 @@ async function dispatchMobileTool(name: string, args: any) {
       const { image, ...snapshot } = await agent.snapshot({ image: args.image !== false, grid: args.grid === true, settleMs, cols })
       return { structuredContent: snapshot, content: [{ type: 'text', text: `${device.name}\n${JSON.stringify(snapshot, null, 2)}` }, ...(image ? [png(image)] : [])] }
     }
+    if (name === 'mobile_screenshot') {
+      if (args.path !== undefined && (typeof args.path !== 'string' || !args.path)) throw new Error('path must be a non-empty string')
+      const shot = await agent.screenshot(args.path)
+      return { content: [{ type: 'text', text: args.path ? `${device.name} · saved to ${path.resolve(args.path)}` : device.name }, png(shot)] }
+    }
     if (name === 'mobile_tap') {
-      if (typeof args.target !== 'string' || !args.target) throw new Error('Give a target: e4, a label, or a grid cell')
+      if (typeof args.target !== 'string' || !args.target) throw new Error('Give a target: e4, a label, a grid cell, or @x,y')
       if (args.expect !== undefined && typeof args.expect !== 'string') throw new Error('expect must be a string')
       const tapped = await agent.tap(args.target, typeof args.expect === 'string' ? { expect: args.expect } : {})
       return { content: [{ type: 'text', text: JSON.stringify(tapped) }] }
@@ -291,7 +298,7 @@ async function dispatchMobileTool(name: string, args: any) {
     }
     if (!Array.isArray(args.steps) || !args.steps.length || args.steps.length > 50) throw new Error('Give 1–50 steps')
     const { screenshots = [], snapshot, ...report } = await agent.steps(args.steps)
-    const text = `${JSON.stringify({ ...report, screenshots: screenshots.map((shot) => shot.target) })}${snapshot ? `\n\nScreen now:\n${snapshot.text}` : ''}`
+    const text = `${JSON.stringify({ ...report, screenshots: screenshots.map((shot) => shot.file ?? shot.target) })}${snapshot ? `\n\nScreen now:\n${snapshot.text}` : ''}`
     return { content: [{ type: 'text', text }, ...screenshots.map((shot) => png(shot.png))], ...(report.ok ? {} : { isError: true }) }
   })
 }

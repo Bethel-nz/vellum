@@ -1,21 +1,18 @@
-// Modal surfaces, after arc's dialog and Glass's "Conversation details".
+// Modal surfaces.
 //
 //   Sheet     — centred, 14px radius, opaque popup fill; the scrim fades in over `fast` and the
 //               panel rises 8px on the enter curve (`standard`).
 //   SidePanel — a 560px panel against the right edge (the diff review); slides in 24px from the
 //               side it lives on, on the converted smooth tween.
 //
-// Close: GPUIX's Dialog unmounts on close — and it must. An opacity-tween exit can't fade the
-// elevation shadow with the panel, so animated exits leave a dark ghost (same reason menus close
-// instantly). Instead the panel freezes and unmounts whole, while a one-beat hold keeps the
-// Dialog alive for the scrim to lift over `exit`. Reduced motion skips the hold.
+// Close: the panel freezes and unmounts whole (menus close instantly for the same reason),
+// while a one-beat hold lets the scrim lift over `exit`. Reduced motion skips the hold.
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Dialog, DialogBackdrop, DialogPopup, DialogPortal, type PublicInstance } from '@gpuix/react'
 import { motion } from './spring'
 import { elevation, radiusXl } from '../ui/theme'
-import { Button } from './Button'
-import { Icon } from './Icon'
+import { CloseButton } from './Button'
 import { duration, ease, leave, offset, spring, tween, useReducedMotion } from './motion'
 import { useM } from './theme'
 
@@ -112,9 +109,7 @@ export function SheetHeader({ title, onClose, children }: { title: string; onClo
     <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, height: 48, paddingLeft: 18, paddingRight: 10, flexShrink: 0 }}>
       <text style={{ flexGrow: 1, minWidth: 0, fontSize: 14, lineHeight: 18, fontWeight: 600, color: m.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{title}</text>
       {children}
-      <Button onPress={onClose} testId="sheet-close" title="Close (esc)" style={{ width: 24, paddingLeft: 0, paddingRight: 0 }}>
-        <Icon name="x" size={13} />
-      </Button>
+      <CloseButton onPress={onClose} testId="sheet-close" />
     </div>
   )
 }

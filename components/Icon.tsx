@@ -2,7 +2,6 @@ import opencode from '../assets/brands/opencode.png' with { type: 'file' }
 import { icons, type IconName } from '../ui/icons'
 import { useM } from './theme'
 
-// Native SVGs are alpha masks; a raster asset retains OpenCode's two-tone mark.
 // Brand marks are NON-TINTABLE: claude/mcp tint via currentColor, codex ships its own ink,
 // opencode renders the PNG below. Never pass color to force accent onto them.
 const opencodeSource = `data:image/png;base64,${Buffer.from(await Bun.file(opencode).arrayBuffer()).toString('base64')}`

@@ -13,7 +13,6 @@
 // In a git repo, each of your messages snapshots the working tree as it goes out, and every turn
 // end records what changed since (core/gitsnap.ts): a `vellum/git-changes` record.
 
-// realpath has no Bun.file counterpart: node:fs.
 import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import { createTwoFilesPatch } from 'diff'
@@ -179,7 +178,7 @@ export class AgentRunner {
     const ids = p.ask.optionIds ?? {}
     const optionId = decision.allow ? ((decision.always && ids.always) || ids.allow) : ids.reject
     p.resolve(optionId ? { outcome: { outcome: 'selected', optionId } } : { outcome: { outcome: 'cancelled' } })
-    // ACP's reject carries no reason; the note goes in as your next message (the adapter queues it).
+    // Reject carries no reason; the note goes in as your next message.
     if (!decision.allow && decision.message?.trim()) this.send(decision.message.trim(), [], true)
   }
 
@@ -369,13 +368,10 @@ export class AgentRunner {
 
     const init: any = await conn.request('initialize', {
       protocolVersion: 1,
-      // Each capability is an object: `form: true` fails ACP's schema and is silently dropped, and
-      // without form support the adapter starts claude with --disallowedTools=AskUserQuestion.
       clientCapabilities: { auth: { terminal: true }, session: { compaction: {} }, elicitation: { form: {} }, _meta: { terminal_output_delta: true } },
       clientInfo: { name: 'vellum', title: 'Vellum', version: '0.1.0' },
     })
     const canResume = Boolean(init?.agentCapabilities?.sessionCapabilities?.resume)
-    // Steering is an extension: advertised in the response's top-level `_meta`, beside the capabilities.
     this.#steering = init?._meta?.steering?.supported === true
     // What Vellum draws for the agent's tools, after its own prompt, for agents that take one.
     const agent = agentFor(profile)
@@ -603,7 +599,7 @@ export class AgentRunner {
       title,
       detail,
       input,
-      reason: typeof input.description === 'string' ? input.description : undefined,
+      reason: 'description' in input && typeof input.description === 'string' ? input.description : undefined,
       patch: ['Edit', 'Write', 'MultiEdit'].includes(tool)
         ? (filePatch(this.#target.workspace, tool, input) ?? (diff ? diffPatch(this.#target.workspace, diff) : undefined) ?? patchFromInput(tool, input))
         : undefined,

@@ -13,7 +13,6 @@
 // snapshot never runs a command the repo's config names: no fsmonitor, no hooks, and every
 // filter driver's clean/smudge/process is blanked (files are hashed as they are on disk).
 
-// Folders and realpath are node:fs's work; a stale lock file goes through Bun.file.
 import { mkdirSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import { paths } from './store'
@@ -87,6 +86,15 @@ export async function uncommittedFiles(workspace: string): Promise<GitFile[] | u
   const head = (await git(current.root, ['rev-parse', '--verify', 'HEAD^{tree}'], current.env)).out?.trim()
   const tree = head || (await git(current.root, [...current.config, 'mktree'], current.env)).out?.trim()
   return tree ? changedFiles({ ...current, tree }, current, workspace) : undefined
+}
+
+/** The file as last committed: '' if git hasn't committed it, undefined if ignored or outside a repo. */
+export async function committedText(workspace: string, rel: string): Promise<string | undefined> {
+  const at = `./${rel}`
+  const blob = (await git(workspace, ['--no-optional-locks', 'cat-file', 'blob', `HEAD:${at}`])).out
+  if (blob !== undefined) return blob
+  const listed = (await git(workspace, ['--no-optional-locks', 'ls-files', '--cached', '--others', '--exclude-standard', '--', at])).out
+  return listed?.trim() ? '' : undefined
 }
 
 /** A multi-file `git diff` cut into files, each with its own patch and counts. */

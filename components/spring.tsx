@@ -1,20 +1,15 @@
-// Springs the way SwiftUI and UIKit run them, for every `motion.div` in Vellum.
+// Springs for every `motion.div` in Vellum: each value is pulled toward its target by a damped
+// spring and keeps its speed when the target changes.
 //
-// GPUIX motion is tweens: a fixed curve over a fixed duration. Interrupt one and the new tween
-// starts from rest, so a menu reversed mid-flight stops dead for a frame; and a curve can never
-// overshoot (the renderer clamps it). Native UI runs springs instead: each value is pulled
-// toward its target by a damped spring and keeps its speed when the target changes (WWDC18
-// "Designing Fluid Interfaces", WWDC23 "Animate with springs").
+// `motion.div` takes the same initial/animate/exit/transition props, stepping the eight motion
+// properties in JS on one shared ~120 Hz clock and handing the renderer plain styles. A
+// transition with a `spring` uses it; any other converts to a smooth spring of about the same
+// pace; duration-0 (reduced motion) lands at once on the same div; `linear` and `material`
+// loops (pulses, spinners) stay with the renderer's own motion, which does those exactly.
 //
-// So `motion.div` here is a drop-in for GPUIX's, with the same initial/animate/exit/transition
-// props, stepping the eight motion properties in JS on one shared ~120 Hz clock and handing the
-// renderer plain styles. A transition with a `spring` uses it; any other converts to a smooth
-// spring of about the same pace; `linear` and `material` loops (pulses, spinners) and
-// duration-0 (reduced motion) stay with the renderer's own motion, which does those exactly.
-//
-// Exits work with GPUIX's AnimatePresence (`usePresence`). A surface with a box shadow scales
-// the shadow's alpha with its opacity, so a fading popover no longer leaves its shadow painted
-// at full strength (MOTION-CONTRACT.md §6): elevated surfaces can fade out too.
+// Exits: a surface with a box shadow scales the shadow's alpha with its opacity, so a fading
+// popover no longer leaves its shadow painted at full strength (MOTION-CONTRACT.md §6) and
+// elevated surfaces can fade out too.
 
 import { createContext, createElement, forwardRef, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import {
@@ -28,13 +23,13 @@ import {
   type StyleDesc,
 } from '@gpuix/react'
 
-/** A spring by perceptual duration and bounce, as SwiftUI's `Spring(duration:bounce:)`. */
+/** A spring by perceptual duration and bounce. */
 export type Spring = { duration: number; bounce: number }
 export type SpringTransition = MotionTransition & { spring?: Spring }
 
-/** SwiftUI's presets at desktop pace, plus the gesture hand-off spring. */
+/** Presets at desktop pace, plus the gesture hand-off spring. */
 export const springs = {
-  /** No overshoot: panels, sheets, layout. SwiftUI's default. */
+  /** No overshoot: panels, sheets, layout. */
   smooth: { duration: 0.42, bounce: 0 },
   /** A brisk tail: menus, popovers, toggles. */
   snappy: { duration: 0.3, bounce: 0.12 },
@@ -47,7 +42,7 @@ export const springs = {
 const keys = ['width', 'height', 'opacity', 'top', 'right', 'bottom', 'left', 'borderRadius'] as const
 type Key = (typeof keys)[number]
 
-/** Mass 1; stiffness (2π / duration)²; damping from bounce (WWDC23's conversion). */
+/** Mass 1; stiffness (2π / duration)²; damping from bounce. */
 function coefficients({ duration, bounce }: Spring) {
   const d = Math.max(0.05, duration)
   const k = (2 * Math.PI / d) ** 2
@@ -59,7 +54,10 @@ function coefficients({ duration, bounce }: Spring) {
 type Channel = { x: number; v: number; to: number; k: number; c: number; unit: boolean }
 type Animation = { channels: Map<Key, Channel>; delayUntil: number; started: number; settleAfter: number; onFrame: () => void; onRest: () => void }
 
-// One clock for every spring in the window: step all, then let React batch the re-renders.
+// One clock for every spring in the window: step all, then re-render once. Frames go through
+// React on purpose: GPUIX lays out and paints the window on every batch, which costs far more
+// than the re-render, and writing styles straight to the renderer measured worse frame times
+// (spikes/spring-bench.tsx). GPUIX has no requestAnimationFrame; this timer is the frame clock.
 const running = new Set<Animation>()
 let timer: ReturnType<typeof setTimeout> | undefined
 let last = 0
@@ -87,16 +85,18 @@ function tick() {
       if (Math.abs(ch.x - ch.to) > near || Math.abs(ch.v) > slow) moving = true
       else { ch.x = ch.to; ch.v = 0 }
     }
-    a.onFrame()
     // At rest, or past the perceptual duration with what's left too small to see.
-    if (!moving || now - a.started > a.settleAfter) {
+    const done = !moving || now - a.started > a.settleAfter
+    if (done) {
       for (const ch of a.channels.values()) { ch.x = ch.to; ch.v = 0 }
       running.delete(a)
-      a.onFrame()
-      a.onRest()
     }
+    a.onFrame()
+    if (done) a.onRest()
   }
-  if (running.size) timer = setTimeout(tick, FRAME_MS)
+  // The next tick counts from this one's start, so a slow tick doesn't stretch the frame.
+  // A start() during this tick may already have scheduled it.
+  if (running.size && !timer) timer = setTimeout(tick, Math.max(0, FRAME_MS - (performance.now() - now)))
 }
 
 function start(a: Animation) {
@@ -107,16 +107,17 @@ function start(a: Animation) {
   }
 }
 
-/** The spring a transition asks for, or undefined when the renderer should run it as a tween. */
+/** The spring a transition asks for, or undefined for an instant change or a loop. */
 function springFor(t: SpringTransition | undefined): Spring | undefined {
   if (t?.spring) return t.spring
   const duration = t?.duration ?? 0.24
   if (duration === 0) return undefined
-  if (t?.ease === 'linear' || isMaterial(t?.ease)) return undefined
+  if (loops(t)) return undefined
   // A tween of d seconds reads as a spring of about 1.4 d: the spring's start is gentler.
   return { duration: Math.min(0.55, Math.max(0.18, duration * 1.4)), bounce: 0 }
 }
 const isMaterial = (ease: MotionTransition['ease']) => Array.isArray(ease) && ease[0] === 0.4 && ease[1] === 0 && ease[2] === 0.2 && ease[3] === 1
+const loops = (t: SpringTransition | undefined) => (t?.duration ?? 0.24) > 0 && (t?.ease === 'linear' || isMaterial(t?.ease))
 
 /** `#rrggbbaa` (or `#rrggbb`) with its alpha scaled by `k`. */
 function fadeColor(color: string, k: number) {
@@ -139,7 +140,7 @@ export function AnimatePresence({ children, initial = true, onExitComplete }: { 
   return createElement(SkipInitial.Provider, { value: !initial && first.current }, createElement(PresenceRoot, { initial, onExitComplete }, children))
 }
 
-const SpringDiv = forwardRef<PublicInstance, MotionDivProps>(function SpringDiv({ initial, animate, exit, transition, onMotionComplete, style, ...rest }, ref) {
+const SpringDiv = forwardRef<PublicInstance, MotionDivProps & { testId?: string; role?: string; 'aria-label'?: string; tabIndex?: number }>(function SpringDiv({ initial, animate, exit, transition, onMotionComplete, style, ...rest }, ref) {
   const [isPresent, safeToRemove] = usePresence()
   const skip = useContext(SkipInitial)
   const exiting = !isPresent && exit !== undefined
@@ -153,11 +154,27 @@ const SpringDiv = forwardRef<PublicInstance, MotionDivProps>(function SpringDiv(
   const [, redraw] = useState(0)
   const done = useRef({ onMotionComplete, isPresent, safeToRemove })
   done.current = { onMotionComplete, isPresent, safeToRemove }
+  // An exit may shrink a size `animate` no longer holds (a disclosure collapsing to 0): it starts
+  // from the element's last measured size, so it collapses instead of jumping.
+  const sized = (['width', 'height'] as const).filter((name) => exit?.[name] !== undefined)
+  const measured = useRef<Partial<Record<'width' | 'height', number>>>({})
+  const userLayout = (rest as { onLayout?: (event: { width?: number; height?: number }) => void }).onLayout
+  const onLayout = sized.length ? (event: { width?: number; height?: number }) => {
+    if (isPresent) for (const name of sized) if (event[name] !== undefined) measured.current[name] = event[name]
+    userLayout?.(event)
+  } : userLayout
 
   // Retarget on every change of target: channels keep their position and speed.
   const key = keys.map((k) => target[k]).join(',')
   useLayoutEffect(() => {
-    // No exit style, or no spring: leave at once, as GPUIX's motion does (an atomic close).
+    // A key that left `animate` goes back to the base style (an exit keeps what it leaves out).
+    if (!exiting) for (const name of keys) if (target[name] === undefined) { delete values.current[name]; anim.current?.channels.delete(name) }
+    // No spring: land on the target, so a later spring starts from what is on screen.
+    if (!spring) {
+      if (anim.current) { running.delete(anim.current); anim.current.channels.clear() }
+      for (const name of keys) if (target[name] !== undefined) values.current[name] = target[name]
+    }
+    // No exit style, or no spring: leave at once (an atomic close).
     if (!spring || (!isPresent && !exit)) {
       if (!isPresent) safeToRemove?.()
       return
@@ -183,7 +200,7 @@ const SpringDiv = forwardRef<PublicInstance, MotionDivProps>(function SpringDiv(
       const to = target[name]
       if (to === undefined) continue
       const ch = a.channels.get(name)
-      const at = ch?.x ?? values.current[name] ?? to
+      const at = ch?.x ?? values.current[name] ?? (exiting && (name === 'width' || name === 'height') ? measured.current[name] : undefined) ?? to
       if (ch) { ch.to = to; ch.k = k; ch.c = c }
       else a.channels.set(name, { x: at, v: 0, to, k, c, unit: name === 'opacity' })
       if (at !== to) changed = true
@@ -204,15 +221,27 @@ const SpringDiv = forwardRef<PublicInstance, MotionDivProps>(function SpringDiv(
 
   useEffect(() => () => { if (anim.current) running.delete(anim.current) }, [])
 
-  // Without a spring, the renderer's own motion runs it (loops, reduced motion).
-  if (!spring) return createElement(native.div, { ref, initial, animate, exit, transition, onMotionComplete, style, ...rest })
-  const now = values.current
-  const opacity = now.opacity
-  const merged: StyleDesc = { ...style, ...now }
-  if (opacity !== undefined && opacity < 1 && style?.boxShadow) merged.boxShadow = fadeShadow(style.boxShadow, opacity)
-  return createElement('div', { ref, ...rest, style: merged })
+  // Loops run on the renderer's own motion. Instant changes stay on the same plain div, so
+  // switching between instant and spring never remounts the children.
+  if (loops(transition as SpringTransition)) return createElement(native.div, { ref, initial, animate, exit, transition, onMotionComplete, style, ...rest })
+  const now = spring ? values.current : { ...values.current, ...target }
+  return createElement('div', { ref, ...rest, ...(onLayout ? { onLayout } : {}), style: painted(style, exiting ? now : only(now, target)) })
 })
 
-/** Drop-in for GPUIX's `motion`: the same props, run as springs. */
+/** The values for keys `target` still animates. */
+function only(now: Partial<Record<Key, number>>, target: MotionStyle) {
+  const kept: Partial<Record<Key, number>> = {}
+  for (const name of keys) if (target[name] !== undefined && now[name] !== undefined) kept[name] = now[name]
+  return kept
+}
+
+/** The element's style with the spring's values over it, its shadow faded with its opacity. */
+function painted(style: StyleDesc | undefined, now: Partial<Record<Key, number>>): StyleDesc {
+  const merged: StyleDesc = { ...style, ...now }
+  if (now.opacity !== undefined && now.opacity < 1 && style?.boxShadow) merged.boxShadow = fadeShadow(style.boxShadow, now.opacity)
+  return merged
+}
+
+/** The `motion` component: the same props, run as springs. */
 export const motion = { div: SpringDiv }
 export type { MotionDivProps, MotionStyle }

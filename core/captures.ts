@@ -31,9 +31,22 @@ export function validateCapture(value: unknown): Capture {
         validateCapture({ ...c, assets: undefined, pageShot: undefined, elements: [snapshot.node] })
       }
     }
-    for (const animation of el.animations) {
-      if (!object(animation) || !['extracted', 'sampled'].includes(animation.origin) || !['css-animation', 'css-transition', 'waapi', 'js'].includes(animation.kind) || (animation.frames !== undefined && (!Array.isArray(animation.frames) || animation.frames.length > 20))) throw new Error('Invalid animation')
+    const animations = (list: unknown[]) => {
+      for (const animation of list as Capture['elements'][number]['animations']) {
+        if (!object(animation) || !['extracted', 'sampled'].includes(animation.origin) || !['css-animation', 'css-transition', 'waapi', 'js'].includes(animation.kind) || (animation.frames !== undefined && (!Array.isArray(animation.frames) || animation.frames.length > 20))) throw new Error('Invalid animation')
+      }
     }
+    animations(el.animations)
+    if (el.related !== undefined) {
+      if (!Array.isArray(el.related) || el.related.length > 8) throw new Error('Invalid related elements')
+      for (const related of el.related) {
+        if (!object(related) || !['opened', 'closed'].includes(related.change) || !text(related.selector, 8192) || [related.role, related.label].some((v) => v !== undefined && !text(v, 500)) || (related.text !== undefined && !text(related.text, 2000))) throw new Error('Invalid related element')
+        if (!object(related.box) || ![related.box.x, related.box.y, related.box.w, related.box.h].every((n) => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= 10000000)) throw new Error('Invalid related element bounds')
+        if (!Array.isArray(related.animations) || related.animations.length > 40 || (related.shot !== undefined && !plainName(related.shot))) throw new Error('Invalid related element motion or image')
+        animations(related.animations)
+      }
+    }
+    if (el.changes !== undefined && (!Array.isArray(el.changes) || el.changes.length > 40 || el.changes.some((change) => !object(change) || !text(change.selector, 8192) || !text(change.attribute, 200) || [change.from, change.to].some((v) => v !== null && !text(v, 2000))))) throw new Error('Invalid state changes')
   }
   if (c.assets !== undefined && (!Array.isArray(c.assets) || c.assets.length > 500 || c.assets.some((asset) => !object(asset) || !text(asset.url, 8192)))) throw new Error('Invalid assets')
   if (captureFiles(c).some((file) => !plainName(file) || file === 'capture.json' || file === 'status.json')) throw new Error('Invalid image file name')

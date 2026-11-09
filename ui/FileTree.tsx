@@ -20,7 +20,7 @@ import { ancestors, createEntry, gitStatus, listDir, matchFiles, renameEntry, ty
 import { copyText, revealFile } from '../core/platform'
 import { invalidateFiles, workspaceFiles } from '../core/tags'
 import { FileIcon, useM } from './kit'
-import { font } from './theme'
+import { font, scrollbarWidth } from './theme'
 import { useWindowed } from './windowed'
 
 const ROW = 24
@@ -310,7 +310,7 @@ export function FileTree({ workspace, name, current, marks, expanded, version, w
           ) : null}
         </div>
       ) : null}
-      <virtual-list {...win.props} testId="file-tree-rows" alignment="top" estimatedItemHeight={ROW} overdraw={300} style={{ flexGrow: 1, minHeight: 0, width: '100%', scrollbarColor: m.scrollbar, scrollbarWidth: 6 }}>
+      <virtual-list {...win.props} testId="file-tree-rows" alignment="top" estimatedItemHeight={ROW} overdraw={300} style={{ flexGrow: 1, minHeight: 0, width: '100%', scrollbarColor: m.scrollbar, scrollbarWidth }}>
         {items.slice(win.start, win.end).map((it) => (
           <div key={it.key} style={{ paddingLeft: 6, paddingRight: 6 }}>
             {it}

@@ -52,7 +52,7 @@ export function CaptureDials(props: CapturePanelProps & { selection: SelectedEle
         recording: { seconds: [props.recordDuration, 1, 60, 1] },
         restart: { type: 'action', label: 'Replay animation' }, record: { type: 'action', label: 'Record next interaction' },
       },
-      capture: { _collapsed: true, hoverAndFocus: props.options.triggers, animationFrames: props.options.frames, eventHandlers: props.options.listeners },
+      capture: { _collapsed: true, hoverAndFocus: props.options.triggers, animationFrames: props.options.frames, eventHandlers: props.options.listeners, relatedElements: props.options.related },
     }, { onAction: (action) => {
       if (action === 'animation.record') current.current.onRecord()
       if (action === 'animation.restart') current.current.onReplay()
@@ -69,7 +69,7 @@ export function CaptureDials(props: CapturePanelProps & { selection: SelectedEle
             frames: { progress: Math.max(.01, next.playback.scrubDuration / 1000) * next.playback.position / 100 },
             recording: { seconds: next.recordDuration },
           },
-          capture: { hoverAndFocus: next.options.triggers, animationFrames: next.options.frames, eventHandlers: next.options.listeners },
+          capture: { hoverAndFocus: next.options.triggers, animationFrames: next.options.frames, eventHandlers: next.options.listeners, relatedElements: next.options.related },
         })
       } finally { applying = false }
     }
@@ -86,7 +86,7 @@ export function CaptureDials(props: CapturePanelProps & { selection: SelectedEle
           current.current.onStyle(key as StyleField, css)
         }
       }
-      if (values.capture.hoverAndFocus !== before.capture.hoverAndFocus || values.capture.animationFrames !== before.capture.animationFrames || values.capture.eventHandlers !== before.capture.eventHandlers) current.current.onOptions({ triggers: values.capture.hoverAndFocus, frames: values.capture.animationFrames, listeners: values.capture.eventHandlers })
+      if (values.capture.hoverAndFocus !== before.capture.hoverAndFocus || values.capture.animationFrames !== before.capture.animationFrames || values.capture.eventHandlers !== before.capture.eventHandlers || values.capture.relatedElements !== before.capture.relatedElements) current.current.onOptions({ triggers: values.capture.hoverAndFocus, frames: values.capture.animationFrames, listeners: values.capture.eventHandlers, related: values.capture.relatedElements })
       if (values.animation.playback.playing !== before.animation.playback.playing) current.current.onPlayback(values.animation.playback.playing)
       if (values.animation.playback.speed !== before.animation.playback.speed) current.current.onSpeed(values.animation.playback.speed)
       if (values.animation.frames.progress !== before.animation.frames.progress) current.current.onSeek(values.animation.frames.progress / Math.max(.01, current.current.playback.scrubDuration / 1000))
@@ -106,6 +106,6 @@ export function CaptureDials(props: CapturePanelProps & { selection: SelectedEle
     observer.observe(surface, { attributes: true, attributeFilter: ['data-theme'] })
     return () => { synchronize.current = null; observer.disconnect(); stop(); editor.destroy(); kit.destroy() }
   }, [props.selection.ref])
-  useLayoutEffect(() => { synchronize.current?.(props) }, [props.selection.fitOutline, props.playback.playing, props.playback.speed, props.playback.position, props.playback.duration, props.playback.scrubDuration, props.playback.delay, props.playback.easing, props.playback.iterations, props.recordDuration, props.options.triggers, props.options.frames, props.options.listeners])
+  useLayoutEffect(() => { synchronize.current?.(props) }, [props.selection.fitOutline, props.playback.playing, props.playback.speed, props.playback.position, props.playback.duration, props.playback.scrubDuration, props.playback.delay, props.playback.easing, props.playback.iterations, props.recordDuration, props.options.triggers, props.options.frames, props.options.listeners, props.options.related])
   return <div className="vellum-dial-editor" inert={props.capturing || props.recording} ref={host} />
 }

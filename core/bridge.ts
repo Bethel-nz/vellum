@@ -249,7 +249,7 @@ export function createBridge(callbacks: Callbacks) {
         }
       }
       if (url.pathname === '/browser' && request.method === 'POST') {
-        const browser: BrowserSession = await request.json()
+        const browser = await request.json() as BrowserSession
         if (!plainName(browser.noteId) || browser.session !== `vellum-${browser.noteId}` || !Number.isInteger(browser.streamPort) || browser.streamPort < 1 || browser.streamPort > 65535) throw new Error('Invalid browser session')
         if (scoped && scoped !== browser.noteId) return json({ error: 'Note access refused' }, 403)
         if (!callbacks.notes().some((note) => note.id === browser.noteId)) return json({ error: 'Note is closed' }, 404)

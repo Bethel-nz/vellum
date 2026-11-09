@@ -18,9 +18,9 @@ export function DockPanel({ open, width, overlay = false, gap = 8, testId, selec
     {open ? <motion.div
       key="pane"
       testId={testId}
-      // Arc's drawer: the pane comes in from its own edge on a smooth spring that keeps its
-      // speed if you toggle it mid-flight. Docked, the content is pinned right, so opening
-      // the space slides it in.
+      // The pane comes in from its own edge on a smooth spring that keeps its speed if you
+      // toggle it mid-flight. Docked, the content is pinned right, so opening the space
+      // slides it in.
       initial={reduced ? false : overlay ? { opacity: 0, right: -Math.min(48, width / 6) } : { width: 0, opacity: 0 }}
       animate={overlay ? { opacity: 1, right: 0 } : { width: width + gap, opacity: 1 }}
       exit={overlay ? undefined : { width: 0, opacity: 0 }}

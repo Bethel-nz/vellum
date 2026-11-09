@@ -2,8 +2,7 @@
 // in it (ui/Composer.tsx). Pressing a file chip opens the file beside the note, at its lines (ui/FilePreview.tsx).
 // A hunk is a ± pill; hovering it opens the hunk itself and your comments on its lines.
 //
-// GPUIX has no inline spans (nested <text> breaks onto its own line, see
-// spikes/inline-chips.tsx), so a read paragraph is a wrapping row of words and chip boxes.
+// A read paragraph is a wrapping row of words and chip boxes (no inline spans).
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from '../components/spring'
@@ -13,6 +12,7 @@ import { tagText, tokens, type Token } from '../core/tags'
 import type { Tag } from '../core/threads'
 import { useM } from './kit'
 import { concentric, diffHeaderClip, diffTheme, font, radiusBase, type } from './theme'
+import { forDiff } from '../core/threads'
 
 /** Leaving a hunk pill closes its diff after this, so the pointer can reach the diff. */
 const LEAVE_MS = 160
@@ -26,8 +26,8 @@ export type TokenContext = {
 const keyOf = (t: Tag) => `${t.type}:${tagText(t)}`
 
 /**
- * When a chip last opened its file. A click bubbles from the chip to its paragraph, and GPUIX has
- * no stopPropagation for mouse events, so the paragraph skips a click a chip just took.
+ * When a chip last opened its file. A click bubbles from the chip to its paragraph,
+ * so the paragraph skips a click a chip just took.
  */
 let chipPressedAt = 0
 const chipTookClick = () => Date.now() - chipPressedAt < 100
@@ -85,7 +85,7 @@ function HunkPanel({ tag, onEnter, onLeave }: { tag: Extract<Tag, { type: 'hunk'
       style={{ marginTop: 6, display: 'flex', flexDirection: 'column', borderRadius: concentric(radiusBase, 2), backgroundColor: m.codeBg, borderWidth: 1, borderColor: m.border, overflow: 'hidden' }}
     >
       <div testId="hunk-slice" style={{ overflow: 'hidden', paddingTop: 4 }}>
-        <diff patch={`--- a/${tag.path}\n+++ b/${tag.path}\n${tag.patch}`} wordDiff maxLines={12} theme={diffTheme(m)} style={{ marginTop: -diffHeaderClip }} />
+        <diff patch={forDiff(`--- a/${tag.path}\n+++ b/${tag.path}\n${tag.patch}`)} wordDiff maxLines={12} theme={diffTheme(m)} style={{ marginTop: -diffHeaderClip }} />
       </div>
       {tag.notes?.length ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 10, paddingRight: 10, paddingTop: 8, paddingBottom: 8, borderTopWidth: 1, borderColor: m.border }}>

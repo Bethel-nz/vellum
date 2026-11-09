@@ -24,7 +24,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useGpuixRequired, type EventPayload, type PublicInstance } from '@gpuix/react'
 import { codeLanguage, type Preview } from '../core/preview'
 import { useM } from './kit'
-import { font, nativeTheme, replyText, replyTheme, type } from './theme'
+import { font, nativeTheme, replyText, replyTheme, type, scrollbarWidth } from './theme'
 import { useWindowed } from './windowed'
 
 type Shown = Extract<Preview, { ok: true }>
@@ -71,10 +71,10 @@ export function CodeLines({ preview, line, wash, picked, dragging, onPress, onDr
   }, [preview.text, preview.shown])
   const scroller = useRef<PublicInstance>(null)
   const sideways = useRef<PublicInstance>(null)
-  // A swipe keeps to the axis it started on, as a Mac view does. GPUI moves both axes by each
-  // event's parts, so a sideways swipe's few points of vertical drift walked the file up and down.
-  // The two scrollers report their moves; those of one frame are weighed together, the larger
-  // picks the swipe's axis for as long as it keeps moving, and the other is put back.
+  // A swipe keeps to the axis it started on, as a Mac view does: a sideways swipe's few points
+  // of vertical drift would walk the file up and down. The two scrollers report their moves;
+  // those of one frame are weighed together, the larger picks the swipe's axis for as long as
+  // it keeps moving, and the other is put back.
   const at = useRef({ x: 0, y: 0 })
   const lock = useRef<{ axis: 'x' | 'y'; until: number }>({ axis: 'y', until: 0 })
   const pending = useRef<{ x?: number; y?: number }>({})
@@ -175,7 +175,7 @@ export function CodeLines({ preview, line, wash, picked, dragging, onPress, onDr
       ref={scroller}
       testId="file-preview-scroll"
       onScrollChange={(e) => moved('y', -(e.scrollY ?? 0))}
-      style={{ flexGrow: 1, minHeight: 0, width: '100%', overflow: 'scroll', scrollbarColor: m.scrollbar, scrollbarWidth: 6 }}
+      style={{ flexGrow: 1, minHeight: 0, width: '100%', overflow: 'scroll', scrollbarColor: m.scrollbar, scrollbarWidth }}
     >
       <div style={{ position: 'relative', flexShrink: 0, width: '100%', display: 'flex', flexDirection: 'row' }}>
         <div style={{ width: numbers, flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
@@ -250,7 +250,7 @@ export function MarkdownPages({ preview }: { preview: Shown }) {
   const pages = useMemo(() => markdownPages(preview.text), [preview.text])
   const win = useWindowed(pages.length, 6, [preview.abs, preview.text])
   return (
-    <virtual-list {...win.props} testId="file-preview-scroll" alignment="top" estimatedItemHeight={900} overdraw={800} style={{ flexGrow: 1, minHeight: 0, width: '100%', scrollbarColor: m.scrollbar, scrollbarWidth: 6 }}>
+    <virtual-list {...win.props} testId="file-preview-scroll" alignment="top" estimatedItemHeight={900} overdraw={800} style={{ flexGrow: 1, minHeight: 0, width: '100%', scrollbarColor: m.scrollbar, scrollbarWidth }}>
       {pages.slice(win.start, win.end).map((page, k) => {
         const i = win.start + k
         return (

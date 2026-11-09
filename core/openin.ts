@@ -5,7 +5,6 @@
 // indexing off still finds them. Icons come from each bundle's .icns, converted once with sips and
 // kept under ~/.vellum/cache/app-icons. macOS only for now; elsewhere there is only the file manager.
 
-// App bundles and the icon folder are folders, and the log appends: node:fs's work. Files are Bun.file's.
 import { appendFileSync, existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'

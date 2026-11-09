@@ -20,7 +20,7 @@ describe("agent capture digest", () => {
 		expect(JSON.stringify(first).length).toBeLessThan(
 			JSON.stringify(sample, null, 2).length * 0.3,
 		);
-		expect(agentCapture(sample, true)).toEqual(sample);
+		expect<unknown>(agentCapture(sample, true)).toEqual(sample);
 		expect(JSON.stringify(sample)).toBe(original);
 	});
 

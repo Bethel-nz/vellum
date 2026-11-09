@@ -1,5 +1,5 @@
-// Arc's joined surface, translated to GPUIX: one measured hover wash, hairline dividers,
-// native buttons and sibling popup anchors. No transforms or spring physics.
+// A joined surface: one measured hover wash, hairline dividers, native buttons and sibling
+// popup anchors. No transforms or spring physics.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useGpuixRequired, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { motion } from './spring'

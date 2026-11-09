@@ -14,6 +14,7 @@ it does not declare a CLI executable in `package.json`.
 | Task | Tool and arguments | Result |
 | --- | --- | --- |
 | Read the current screen | `mobile_snapshot({image?: boolean, grid?: boolean, settleMs?: number, cols?: number})` | Device name, numbered elements, settled/mode/elements metadata, and an annotated PNG when requested. Image defaults to true. |
+| See the screen as a plain image | `mobile_screenshot({path?: string})` | Device name and a PNG with no element boxes or grid, taken without waiting for the screen to settle. `path` also saves it (a file, or a folder ending in `/`). |
 | Tap one element | `mobile_tap({target, expect?: string})` | Target, matched name and tap coordinates. Take a new snapshot afterward. |
 | Perform a workflow | `mobile_steps({steps: [...]})` | Completed count, failure details, latest screen, and any requested element screenshots. Stops at the first failure. |
 | Discover app bundle ids | `mobile_apps({udid?: string})` | Installed app names, bundle ids and app types, including system apps. |
@@ -153,7 +154,7 @@ tool can cover several related SDK operations.
 | `setContentSize`, `statusBarOverride`, `statusBarClear` | `mobile_configure` contentSize/statusBar actions |
 | `pushNotification(bundleId, payloadPath)` | `mobile_notify({bundleId, payload})`; Vellum writes and removes the temporary APNs file |
 | `clearAppData`, `resetKeychain` | `mobile_reset` |
-| `agent().snapshot`, `.tap`, `.steps` | `mobile_snapshot`, `mobile_tap`, `mobile_steps`; all snapshot options and returned metadata are preserved |
+| `agent().snapshot`, `.tap`, `.steps`, `.screenshot` | `mobile_snapshot`, `mobile_tap`, `mobile_steps`, `mobile_screenshot`; all snapshot options and returned metadata are preserved |
 | `listDevices`, `boot`, `shutdown` | `mobile_connection` actions `devices`, `boot`, `shutdown`; boot/shutdown require `udid` |
 | Driver frame/state/note callbacks | The mobile view renders BGRA frames; `mobile_inspect({what: "events"})` returns the latest frame dimensions/sequence and recent state/diagnostic events. Use `mobile_snapshot` for a model-readable image. |
 

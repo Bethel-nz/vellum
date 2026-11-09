@@ -1,15 +1,13 @@
 // A vertical scroll box that only shows its thumb when there is more to see, with room for it.
-//
-// GPUIX counts a scroll box's own padding as overflow, so a padded box paints a full-length thumb
-// over three short rows, and the thumb sits on the rows' edge (spikes/scrollbar.tsx). So the box
-// carries no padding: an inner column that never shrinks holds it, and keeps a gutter on the
-// right wide enough for the 6px thumb plus air.
+// The box carries no padding: an inner column that never shrinks holds it, and keeps a gutter
+// on the right wide enough for the thumb plus air.
 
 import type { ReactNode, Ref } from 'react'
 import type { PublicInstance, StyleDesc } from '@gpuix/react'
 import { useM } from './theme'
+import { scrollbarWidth } from '../ui/theme'
 
-const THUMB = 6
+const THUMB = scrollbarWidth
 const AIR = 4
 
 export function Scroll({

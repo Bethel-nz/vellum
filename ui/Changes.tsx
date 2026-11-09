@@ -9,16 +9,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EventPayload } from '@gpuix/react'
 import { motion } from '../components/spring'
-import { Button, Dot, Field, FileIcon, Icon, Label, Menu, SidePanel } from '../components'
+import { Button, CloseButton, iconButton, Dot, Field, FileIcon, Icon, Label, Menu, SidePanel } from '../components'
 import { ChangeTotals } from '../components/ChangesSummary'
 import { duration, ease, tween } from '../components/motion'
 import { changeCount, chunkHunk, collectChanges, hunkRows, noteFor, noteLabel, noteRows, rowOf, splitHunks, type FileChange, type Hunk, type HunkRow } from '../core/changes'
 import { uncommittedFiles, type GitFile } from '../core/gitsnap'
 import type { HunkNote, Thread } from '../core/threads'
 import { Meta, useM } from './kit'
-import { concentric, diffHeaderClip, diffInk, diffTheme, font, radiusXl } from './theme'
+import { concentric, diffHeaderClip, diffInk, diffTheme, font, radiusXl, scrollbarWidth } from './theme'
 import { useAgent } from '../components/AgentContext'
 import { useWindowed } from './windowed'
+import { forDiff } from '../core/threads'
 
 /** One row of the sheet's list. A hunk is a card drawn across rows: its header, its diff in
  *  chunks (a long hunk builds only the part in view), and its comments when it has any. */
@@ -164,8 +165,8 @@ export function Changes({ open, onClose, thread, onAdd }: { open: boolean; onClo
         </div>
         <div style={{ flexGrow: 1 }} />
         <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 2, padding: 2, borderRadius: 15, backgroundColor: m.chipBg }}>
-          {scope === 'uncommitted' ? <Button onPress={() => setRevision((value) => value + 1)} testId="changes-refresh" title="Refresh working-tree changes" disabled={loading} style={{ width: 26, height: 26, minHeight: 26, paddingLeft: 0, paddingRight: 0, borderRadius: 13 }}><Icon name="refresh" size={13} /></Button> : null}
-          <Button onPress={onClose} testId="changes-close" title="Close (esc)" style={{ width: 26, height: 26, minHeight: 26, paddingLeft: 0, paddingRight: 0, borderRadius: 13 }}><Icon name="x" size={13} /></Button>
+          {scope === 'uncommitted' ? <Button onPress={() => setRevision((value) => value + 1)} testId="changes-refresh" title="Refresh working-tree changes" disabled={loading} style={iconButton}><Icon name="refresh" size={14} /></Button> : null}
+          <CloseButton onPress={onClose} testId="changes-close" />
         </div>
       </div>
       {groups.length === 0 ? (
@@ -173,7 +174,7 @@ export function Changes({ open, onClose, thread, onAdd }: { open: boolean; onClo
           <text style={{ fontSize: 13, lineHeight: 18, color: m.textMuted }}>{loading ? 'Reading working-tree changes…' : loadError ? 'Couldn’t read Git changes in this folder.' : scope === 'uncommitted' ? 'No uncommitted changes.' : `${agent.title} hasn't changed any files in this note.`}</text>
         </div>
       ) : (
-        <virtual-list {...win.props} testId="changes-rows" alignment="top" estimatedItemHeight={120} overdraw={600} style={{ flexGrow: 1, minHeight: 0, width: '100%', scrollbarColor: m.scrollbar, scrollbarWidth: 6 }}>
+        <virtual-list {...win.props} testId="changes-rows" alignment="top" estimatedItemHeight={120} overdraw={600} style={{ flexGrow: 1, minHeight: 0, width: '100%', scrollbarColor: m.scrollbar, scrollbarWidth }}>
           {rows.slice(win.start, win.end).map((row, k) => {
             const last = win.start + k === rows.length - 1
             // The list's own inset (8 a side, 8 under the last row), on each row.
@@ -343,7 +344,7 @@ function HunkChunk({ hunk, chunk, end, picked, comments }: { hunk: Hunk; chunk: 
         onMouseDown={(e) => void (comments.shift.current = Boolean(e.modifiers?.shift))}
         style={{ position: 'relative', overflow: 'hidden', ...(chunk.from === 0 ? { borderTopWidth: 1, borderColor: m.border } : {}) }}
       >
-        <diff patch={`--- a/${hunk.path}\n+++ b/${hunk.path}\n${chunk.patch}`} wordDiff theme={diffTheme(m)} onLineClick={onLine} style={{ marginTop: -diffHeaderClip }} />
+        <diff patch={forDiff(`--- a/${hunk.path}\n+++ b/${hunk.path}\n${chunk.patch}`)} wordDiff theme={diffTheme(m)} onLineClick={onLine} style={{ marginTop: -diffHeaderClip }} />
         {/* GPUIX can't tint a diff row, so commented and selected rows get a wash laid over them. */}
         {rowH
           ? washes.map(({ w, live }, i) => (

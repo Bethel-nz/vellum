@@ -1,4 +1,4 @@
-// Vellum's components: GPUIX versions of arc-library's, styled from the dark material.
+// Vellum's components, styled from the dark material.
 export * from './ApprovalCard'
 export * from './Badge'
 export * from './Button'
@@ -33,4 +33,3 @@ export * from './ToolCall'
 export * from './JsonViewer'
 export * from './NotificationCenter'
 export * from './UsageLimitBanner'
-export * from './StreamChunk'

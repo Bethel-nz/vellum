@@ -80,6 +80,5 @@ export function browserPoint(point: { x: number; y: number }, bounds: { x: numbe
   const width = frame.width * scale, height = frame.height * scale
   const x = point.x - bounds.x - (bounds.width - width) / 2, y = point.y - bounds.y - (bounds.height - height) / 2
   if (x < 0 || y < 0 || x >= width || y >= height) return
-  // v0.39.1 cdp_loop.rs stamps viewport CSS dimensions, independent of the encoded frame cap.
   return { x: x / width * (frame.viewportWidth ?? frame.width), y: y / height * (frame.viewportHeight ?? frame.height) }
 }

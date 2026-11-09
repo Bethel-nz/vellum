@@ -34,10 +34,10 @@ async function endpoints() {
     const endpoint = `http://127.0.0.1:${port}`
     try {
       const result = await fetch(`${endpoint}/json/version`, { signal: AbortSignal.timeout(1000), redirect: 'error' })
-      const version = await result.json()
+      const version = await result.json() as { webSocketDebuggerUrl: string }
       const ws = new URL(version.webSocketDebuggerUrl)
       if (!['127.0.0.1', 'localhost'].includes(ws.hostname) || !ws.pathname.startsWith('/devtools/browser/')) return
-      const targets: any[] = await (await fetch(`${endpoint}/json/list`, { signal: AbortSignal.timeout(1000), redirect: 'error' })).json()
+      const targets = await (await fetch(`${endpoint}/json/list`, { signal: AbortSignal.timeout(1000), redirect: 'error' })).json() as { id: string; type: string }[]
       return { endpoint, identity: `${port}${ws.pathname}`, targets }
     } catch { return }
   }))).filter(result => result !== undefined)

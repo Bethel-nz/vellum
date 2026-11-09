@@ -1,5 +1,5 @@
 // The end of the note, where new writing goes: a plain textarea, the last paragraph of the document.
-// Page composers use Enter to send and Shift+Enter for a new line; ⌘↵ also sends. "!" runs a shell command, "@" tags skills, folders and
+// ⌘↵ sends, ↵ starts a new line. "!" runs a shell command, "@" tags skills, folders and
 // files, "#" tags files only (type ":42" after one to point at a line), and "$" at the start
 // picks a recipe (core/recipes.ts), whose prompt is sent in place of `$name …`.
 //
@@ -130,6 +130,10 @@ function TagPopup({
   )
 }
 
+let leftAt = 0
+/** True just after a press outside took focus from the composer, so that press (on the note's tail) doesn't hand it straight back. */
+export const composerJustLeft = () => Date.now() - leftAt < 250
+
 export function Composer({
   value,
   tags,
@@ -157,7 +161,7 @@ export function Composer({
   onForceQueued,
   onUnqueue,
   variant = 'note',
-  submitOnEnter = false,
+  sendRow = false,
 }: {
   value: string
   tags: Tag[]
@@ -202,22 +206,28 @@ export function Composer({
   onUnqueue?: (index: number) => void
   /** New note shares tagging, with Enter to open the draft and a larger writing surface. */
   variant?: 'note' | 'new-note'
-  /** Page composer: Enter sends; Shift+Enter inserts a line. ⌘Enter still sends. */
-  submitOnEnter?: boolean
+  /** Page composer: the key hint and a send button under the draft. */
+  sendRow?: boolean
 }) {
   const m = useM()
   const agent = useAgent()
   const renderer = useGpuixRequired()
   const window = useWindowSize()
   const newNote = variant === 'new-note'
-  const enterSends = newNote || submitOnEnter
   const minRows = newNote ? window.height < 680 ? 2 : 4 : 1
-  // It autofocuses, and an autofocused textarea never reports focus, so it starts focused.
-  const [focused, setFocused] = useState(true)
+  // Only the new-note sheet autofocuses, and an autofocused textarea never reports focus.
+  const [focused, setFocused] = useState(newNote)
   // focusElement doesn't report onFocus, so this says so itself.
   const focusInput = () => {
     setFocused(true)
     if (composerRef.current) renderer.focusElement?.(composerRef.current.id)
+  }
+  const leave = () => {
+    setFocused(false)
+    const id = composerRef.current?.id
+    if (id == null || renderer.getFocusedElementId?.() !== id) return
+    leftAt = Date.now()
+    renderer.blur?.()
   }
   const [items, setItems] = useState<Suggestion[]>([])
   const [active, setActive] = useState(0)
@@ -264,8 +274,6 @@ export function Composer({
 
   const onKeyDown = (e: KeyEvent) => {
     const mods = e.modifiers
-    // The sheet also owns ⌘Enter; this input handles it first, including completion picks.
-    if (enterSends && e.key === 'enter') e.stopPropagation()
     if (primary(mods) && e.key === 'v') onPaste?.()
     if (onMode && mode && modes && e.key === 'tab' && mods?.shift && !mods.ctrl && !open) {
       e.preventDefault()
@@ -283,7 +291,7 @@ export function Composer({
       }
     }
     if (open) {
-      if (enterSends && (e.key === 'down' || e.key === 'up')) {
+      if (e.key === 'down' || e.key === 'up') {
         e.preventDefault()
         setActive((a) => (a + (e.key === 'down' ? 1 : count - 1)) % count)
         return
@@ -315,9 +323,8 @@ export function Composer({
   const called = value.startsWith('$') ? recipeCall(value, recipes) : undefined
   const folder = workspace ? workspace.split(/[\\/]/).filter(Boolean).pop() : undefined
   return (
-    // A click elsewhere doesn't take a GPUI field's focus, so it's what "writing elsewhere" means
-    // here, as for a paragraph being edited (ui/blocks.tsx). Typing brings the textarea back.
-    <div onMouseDownOutside={() => setFocused(false)} style={{ display: 'flex', flexDirection: 'column', gap: 6, position: 'relative', ...(newNote ? { minHeight: minRows * 33 } : {}) }}>
+    // A press outside blurs the field, unless that press already focused something else.
+    <div onMouseDownOutside={leave} style={{ display: 'flex', flexDirection: 'column', gap: 6, position: 'relative', ...(newNote ? { minHeight: minRows * 33 } : {}) }}>
       {open ? (
         <DismissableLayer onEscapeKeyDown={() => setDismissed(recipesOpen ? value : query)}>
           <TagPopup items={rows} active={active} onPick={(i) => (recipesOpen ? pickRecipe(recipeItems[i]!) : pick(items[i]!))} onHover={setActive} onClose={() => setDismissed(recipesOpen ? value : query)} />
@@ -332,7 +339,7 @@ export function Composer({
         placeholder={placeholder}
         minRows={minRows}
         maxRows={newNote ? window.height < 680 ? 3 : 6 : 10000}
-        autoFocus
+        autoFocus={newNote}
         theme={{ caret: m.appearance === 'dark' ? m.text : m.accent, textFaint: m.textFaint }}
         style={{
           width: '100%',
@@ -355,7 +362,7 @@ export function Composer({
           if (dismissed !== undefined && activeQuery(next) !== dismissed && next !== dismissed) setDismissed(undefined)
         }}
         // Plain ↵ arrives here, not in onKeyDown: it picks a tag, or allows a waiting ask.
-        onSubmit={open ? pickActive : asking && onAskKey && !value.trim() ? () => onAskKey('allow') : enterSends ? () => onSend() : undefined}
+        onSubmit={open ? pickActive : asking && onAskKey && !value.trim() ? () => onAskKey('allow') : undefined}
         onKeyDown={onKeyDown}
         onFocus={() => {
           setFocused(true)
@@ -367,10 +374,10 @@ export function Composer({
         }}
       />
       {chips ? <TokenText testId="draft-read" chipPrefix="draft-chip" text={value} tags={tags} ctx={tokenCtx} color={m.text} onPress={focusInput} /> : null}
-      {submitOnEnter && !running && !asking && !open ? <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <Meta color={m.textMuted}>{keys('↵ send · ⇧↵ new line · @ skills & files')}</Meta>
+      {sendRow && !running && !asking && !open ? <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Meta color={m.textMuted}>{keys('⌘↵ send · @ skills & files')}</Meta>
         <div style={{ flexGrow: 1 }} />
-        <Quiet testId="send-message" title="Send message (Enter)" onPress={() => onSend()}>
+        <Quiet testId="send-message" title="Send message (⌘↵)" onPress={() => onSend()}>
           <Icon name="send" size={14} color={m.textMuted} />
         </Quiet>
       </div> : null}
@@ -387,7 +394,7 @@ export function Composer({
           </Quiet>
         </div>
       ) : null}
-      {asking && !value.trim() ? <Meta color={m.blue}>{keys(`${agent.title} is waiting on you · ↵ allow · ⌘↵ always · esc deny`)}</Meta> : null}
+      {asking && !value.trim() ? <Meta color={m.textMuted}>{keys('↵ allow · ⌘↵ always · esc deny')}</Meta> : null}
       {images.length ? <ImageRow images={images} onRemove={onRemoveImage} /> : null}
     </div>
   )

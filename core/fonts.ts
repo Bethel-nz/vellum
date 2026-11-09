@@ -1,11 +1,9 @@
-// Which Nerd Font, if any, this machine has. File-type icons need one (GPUIX draws private-use
-// glyphs only from a <text> that names the font itself), and the terminal grid prefers the SF Mono
-// build so its cells line up with the Ghostty theme. Nothing is bundled: a machine without one
-// gets plain file icons and the terminal in Geist Mono.
+// Which Nerd Font, if any, this machine has. File-type icons need one, and the terminal grid
+// prefers the SF Mono build so its cells line up with the Ghostty theme. Nothing is bundled:
+// a machine without one gets plain file icons and the terminal in Geist Mono.
 //
 // Font files are found by name ("*Nerd*"), then their family is read from the `name` table.
 
-// Folders are node:fs's (Bun's docs send directory work there); reading a font is Bun.file's.
 import { readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'

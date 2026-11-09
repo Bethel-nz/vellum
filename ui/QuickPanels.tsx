@@ -1,12 +1,11 @@
-// Quick inline + floating panels for Vellum, after ChatGPT's companion mechanics.
+// Quick inline + floating panels for Vellum.
 //
-// Primitives (all verified against GPUIX 0.11.0):
+// Primitives:
 //   - Inline  = FloatingLayer (anchored popover) + DismissableLayer. Closes on
 //     Escape / outside press / window blur. Single instance: opening a second
-//     inline panel retargets the first (ChatGPT's other_popover_opened).
+//     inline panel retargets the first.
 //   - Floating = window-fill overlay emulating a native companion window.
-//     GPUIX exposes ONE native window (WindowOptions), so a second NSWindow is
-//     not available. The floating panel therefore lives in the window layer:
+//     The floating panel lives in the window layer:
 //     centered, draggable, Escape to collapse/close, and — unlike inline — it
 //     never closes on outside presses and survives window blur.
 //

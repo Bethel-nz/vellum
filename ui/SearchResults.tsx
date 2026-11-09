@@ -8,7 +8,7 @@ import type { Thread } from '../core/threads'
 import { keys, primary } from '../core/platform'
 import { searchNote } from '../core/search'
 import { ago } from './dialogs'
-import { accentFor, radiusXl, shortPath } from './theme'
+import { accentFor, radiusXl, shortPath, scrollbarWidth } from './theme'
 import { useM } from './kit'
 import { useWindowed } from './windowed'
 
@@ -112,7 +112,7 @@ export function SearchResults({ threads, profiles, activeId, openIds, inputRef, 
           alignment="top"
           estimatedItemHeight={110}
           overdraw={400}
-          style={{ flexGrow: 1, minHeight: 0, width: '100%', scrollbarColor: m.scrollbar, scrollbarWidth: 6 }}
+          style={{ flexGrow: 1, minHeight: 0, width: '100%', scrollbarColor: m.scrollbar, scrollbarWidth }}
         >
           {searched.results.slice(rows.start, rows.end).map(({ thread, excerpt }, i) => {
             const index = rows.start + i
@@ -121,7 +121,7 @@ export function SearchResults({ threads, profiles, activeId, openIds, inputRef, 
         </virtual-list>
       </div>
     </div>
-    <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', height: 36, paddingLeft: 16, paddingRight: 12, borderTopWidth: 1, borderColor: m.border }}><text style={{ fontSize: 11, lineHeight: 16, color: m.textFaint, flexGrow: 1 }}>{keys('↩ open · ⇧⌘⌫ move to Trash · ⌃N ⌃P move · esc close')}</text><Button testId="history-close" title="Close (esc)" onPress={onClose} style={{ width: 24, paddingLeft: 0, paddingRight: 0 }}><Icon name="x" size={12} /></Button></div>
+    <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', height: 36, paddingLeft: 16, paddingRight: 12, borderTopWidth: 1, borderColor: m.border }}><text style={{ fontSize: 11, lineHeight: 16, color: m.textFaint, flexGrow: 1 }}>{keys('↩ open · ⇧⌘⌫ move to Trash · ⌃N ⌃P move · esc close')}</text></div>
   </>
 }
 
