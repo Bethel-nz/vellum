@@ -187,7 +187,7 @@ export async function folderConfig(folder: string, agent: Agent): Promise<{ file
       for (const file of inside.slice(0, MOST_CONFIG_FILES)) hash.update(`${file}\0`).update(await Bun.file(path.join(at, file)).bytes().catch(() => new Uint8Array()))
       if (inside.length > MOST_CONFIG_FILES) hash.update(inside.slice(MOST_CONFIG_FILES).join('\0'))
     } else hash.update(await Bun.file(at).bytes().catch(() => new Uint8Array()))
-    return { file: path.relative(folder, at), hash: hash.digest('hex') }
+    return { file: path.relative(folder, at).split(path.sep).join('/'), hash: hash.digest('hex') }
   })))).filter((entry) => entry !== undefined)
   const fingerprint = new Bun.CryptoHasher('sha256')
   for (const { file, hash } of found) fingerprint.update(`${file}\0${hash}\0`)

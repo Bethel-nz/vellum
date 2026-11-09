@@ -9,10 +9,15 @@
 //
 // macOS on Apple silicon only, for now.
 
-import addon from '@gpuix/native-darwin-arm64/gpuix-native.darwin-arm64.node' with { type: 'file' }
-import { loginShellPath } from './core/platform'
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+import { compiled, loginShellPath } from './core/platform'
 
-process.env.NAPI_RS_NATIVE_LIBRARY_PATH ??= addon
+if (compiled) {
+  const addon = path.join(path.dirname(process.execPath), 'helpers', 'gpuix-native.node')
+  if (!existsSync(addon)) throw new Error(`Missing GPUIX native addon: ${addon}`)
+  process.env.NAPI_RS_NATIVE_LIBRARY_PATH ??= addon
+}
 const [part, arg] = process.argv.slice(2)
 if (part === '--agent' && arg === 'codex') await import('@agentclientprotocol/codex-acp/dist/index.js')
 else if (part === '--agent') await import('@agentclientprotocol/claude-agent-acp/dist/index.js')

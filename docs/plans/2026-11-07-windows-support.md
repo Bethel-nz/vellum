@@ -2,6 +2,29 @@
 
 Goal: Vellum runs, tests green, and ships as an installable app on Windows x64. Work in phases; each ends with its check passing on a real Windows machine (or VM), not by reading code. Follow AGENTS.md throughout (tokens, comments ≤2 lines, verify by execution).
 
+## Platform boundaries and evidence
+
+- **Commands:** Vellum's `!` runner and interactive terminal use `%ComSpec%` (`cmd.exe`) with Bun's ConPTY. Windows CMD commands work; POSIX shell syntax and POSIX-only utilities are not emulated. See [Bun's terminal documentation](https://bun.com/docs/runtime/child-process#platform-differences) and [Microsoft's `cmd` reference](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmd).
+- **Mobile simulator:** hidden unless macOS on Apple Silicon (`core/mobile.ts`); its implementation invokes `xcrun simctl`, and the packaged Windows build omits `simdriver`.
+- **Open in:** Windows shows Explorer only. Windows app discovery and `sips` icon conversion remain macOS-only (`core/openin.ts`).
+- **Desktop notifications:** unavailable outside macOS; the in-app inbox remains available and Settings now says desktop alerts are unavailable.
+- **Terminal persistence:** Windows inline terminals use ConPTY; the holder remains disabled because it requires Unix-domain sockets. The Windows terminal self-check verifies input/output and that app-owned sessions end on quit. Bun documents ConPTY differences in raw mode, `\r` input, output sequences, resize signaling, and mouse tracking ([terminal platform differences](https://bun.com/docs/runtime/child-process#platform-differences)); test these on Windows before claiming full terminal parity. Named-pipe persistence is separate optional work.
+- **Native UI / packaging:** GPUIX publishes Windows x64 and ARM64 packages ([GPUIX changelog](https://gpuix.dev/changelog)); this project targets x64 first. Cargo Packager documents `.exe` suffix handling, resources beside the app, and current-user NSIS mode ([configuration](https://docs.crabnebula.dev/packager/configuration/)).
+- **File associations:** Vellum registers its ProgID, Open With entry, and Default Apps capabilities, but leaves the default choice to the user. Windows requires default-app changes through system UI ([Microsoft default apps platform](https://learn.microsoft.com/en-us/windows/apps/develop/windows-integration/default-apps-platform)); Open With uses `OpenWithProgids` ([Microsoft Open With guidance](https://learn.microsoft.com/en-us/windows/win32/shell/how-to-include-an-application-on-the-open-with-dialog-box)).
+- **Named pipes, if persistence is implemented:** Microsoft documents local and remote pipe access and the need to restrict access with an ACL ([named pipes](https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipes), [pipe security](https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-access-rights)).
+
+## Verification status
+
+| Phase | Implementation status | Required evidence still pending |
+| --- | --- | --- |
+| 1. Dev run and platform-only features | Windows shell, Explorer, simulator gate, Explorer-only Open in, and notification message are implemented. `scripts/check-windows.ts` now checks the command and unsupported-mode boundaries on Windows. | Run the app on Windows; verify a note sends/streams, file pane and Settings open, and startup is clean. |
+| 2. Paths and `.vel` portability | Slash-normalized paths and cross-host import mapping are implemented. | Run export/import round trips on Windows and between Windows and macOS. |
+| 3. Core tests | Windows-specific fake commands and Windows CI workflow are in place. CI runs the Windows platform check. | CI has not run on this branch; verify Windows test count and failures. |
+| 4. Inline terminals | Windows workflow includes a ConPTY UI self-check; Unix-socket holder checks explicitly skip Windows. | Run CI; separately verify resize, input/output edge cases, and mouse behavior on supported Windows versions. Persistent sessions are not implemented. |
+| 5. Packaging and associations | Windows executable/NSIS/helper configuration and per-user registration code are in place. The compiled-app smoke check now inspects per-user registry entries and checks text-file handoff to the existing window. | Run CI; install NSIS output; verify the installed app and a user-selected `.vel` default association on Windows. |
+
+Current local checks: `bun test ./core` on macOS passed 137 tests with 1 platform-specific skip; Biome and `git diff --check` pass. `scripts/check-windows.ts` skips on macOS, so it has not verified Windows behavior. No Windows runner has executed yet.
+
 ## Already in place
 
 These were written for Windows and need testing, not writing:
@@ -17,10 +40,10 @@ These were written for Windows and need testing, not writing:
   - fonts: `core/fonts.ts:17`;
   - the browser helper's name: `agent-browser.exe` (`core/browser.ts:8`);
   - URL opening: `core/mcp.ts:33`.
-- **Terminals off on Windows on purpose:** `hasPty = os !== 'windows'` (`core/platform.ts:162`), and the app falls back where it's checked (`app.tsx:1482,1546,1639,2010`).
+- **Terminal support:** Bun 1.4.4 provides ConPTY through `Bun.spawn({ terminal })`, so inline terminals can run on Windows. The persistent terminal holder still uses a Unix-domain socket and stays off there; sessions fall back to the app-owned PTY and end when Vellum exits.
 - **Window chrome:** Windows keeps the system title bar (`app.tsx:2385`).
 - **File association** (`core/opener.ts`):
-  - registration: `registerWindows`, per-user `reg add`;
+  - registration: `registerWindows`, per-user ProgID, Open with, and Default Apps capabilities;
   - single instance: `fileArgs` / `handOff`, with the inbox in `~/.vellum/inbox`;
   - status: untested.
 - **GPUIX:** publishes `@gpuix/native-win32-x64-msvc` and `-win32-arm64-msvc` at 0.11.0.
@@ -28,12 +51,12 @@ These were written for Windows and need testing, not writing:
 ## Phase 1 — dev run (`bun app.tsx`)
 
 1. On Windows: run `bun install`, then `bun app.tsx`. Fix whatever stops it from opening a window and sending a turn through OpenCode's free model, run in a scratch `VELLUM_HOME` (see `scripts/fake-acp.ts` for an offline agent).
-2. `app.tsx:1448`: `process.env.SHELL || '/bin/zsh'` → use `shellArgv` / `shellCommand` from `core/platform.ts`.
+2. `app.tsx`: interactive shell creation uses `interactiveShell()`; one-shot `!` commands use the platform-specific `shellArgv()`.
 3. `core/platform.ts:138`: `revealFile` uses `open -R` → `explorer /select,"<file>"` on Windows, and `xdg-open` on the folder on Linux.
 4. **Mac-only features:** hide them off macOS instead of letting them fail.
-   - Mobile simulator: `core/mobile.ts` uses `xcrun simctl`. Gate the phone button and its menus on `isMac`.
-   - Open in: `core/openin.ts` finds macOS apps with `open -a` and makes icons with `sips`. Either list Windows targets (VS Code `code`, Cursor, Explorer, Windows Terminal `wt -d`) or show Explorer only.
-   - Notifications: `core/native-notify.ts:54` already reports `unavailable`. Confirm Settings says so plainly.
+   - Mobile simulator: `core/mobile.ts` uses `xcrun simctl`; `mobileSupported` gates the view and tools to macOS on Apple Silicon.
+   - Open in: `core/openin.ts` finds macOS apps with `open -a` and makes icons with `sips`; Windows lists Explorer only.
+   - Notifications: `core/native-notify.ts` reports `unavailable`; Settings now explains desktop alerts are unavailable while the in-app inbox remains available.
    - Dock: `core/dock.ts` is already a no-op off darwin.
 
 **Done when:** the app opens, a note sends and streams, the file pane opens a file, Settings opens, and nothing logs an error at launch.
@@ -47,9 +70,10 @@ These were written for Windows and need testing, not writing:
    - `readPreview().rel` (`core/preview.ts:67`);
    - `ui/FileTree.tsx`, `core/filetree.ts`;
    - `core/filelinks.ts` (`fileRef` returns `path.relative`);
-   - `core/export.ts` (`assetPath` splits on `path.sep`, and asset paths are stored with whichever separator wrote them; normalize to `/` in the file and convert on read);
+   - `core/agents.ts` (folder-config paths shown in the trust warning);
+   - `core/export.ts` (asset paths use `/` in exports and convert to the local separator on import);
    - `core/changes.ts`, tag values in `core/tags.ts`.
-2. `core/export.ts` `readVel`: a `.vel` made on macOS opened on Windows, and the reverse. `header.home` prefixes differ in separator and drive letter.
+2. `core/export.ts` `readVel`: a `.vel` made on macOS opened on Windows, and the reverse. `header.home` and workspace paths differ in separators, roots, and drive letters; imported absolute tool paths must move with the note.
 3. `core/opener.ts` `fileArgs`: drive-letter paths and quoted `"%1"`.
 
 **Done when:** a `#src\\file.ts`-style tag can't appear (tags always show `/`), the file pane's Show changes button shows up for an edited file, and the round-trip `.vel` test passes on both OSes.
@@ -58,32 +82,29 @@ These were written for Windows and need testing, not writing:
 
 1. Run `bun test ./core` on Windows. Fix the failures; expect separators, `/tmp` assumptions, POSIX permissions and `realpath` (`/private/var` on macOS versus 8.3 short names on Windows).
 2. The `scripts/check-*.ts` fakes write `#!/bin/sh` shims (`scripts/check-login.ts:14`, `check-move.ts:14`, `fake-acp.ts:56`, `check-termd.ts:32`). Give them a `.cmd` twin on Windows, or spawn `bun` directly.
-3. Add a GitHub Actions `windows-latest` job: `bun install`, `bunx tsc --noEmit`, `bun test ./core`.
+3. Add a GitHub Actions `windows-latest` job: frozen Bun install, core tests, platform-boundary check, bridge and Settings checks, terminal UI self-check, package build, and compiled-app smoke check.
 
-**Done when:** CI is green on windows-latest, with the same count as macOS (no new skips without a reason in the test name).
+**Done when:** CI is green on windows-latest, with the same core-test count as macOS (no new skips without a reason in the test name); the terminal self-check exercises ConPTY rather than skipping Windows.
 
-## Phase 4 — terminals (optional, larger)
+## Phase 4 — terminal persistence (optional, larger)
 
-Terminals are off on Windows. To turn them on:
+Windows inline terminals use Bun's ConPTY implementation. The Unix-socket holder remains disabled there; sessions end with Vellum. To persist sessions across restarts:
 
-1. Check whether Bun's `Bun.spawn({ terminal })` (`core/termd.ts:121`) works on Windows in the pinned Bun. If it doesn't, the PTY needs ConPTY, through `node-pty`'s prebuilt binary or a small helper.
-2. `termd` listens on a Unix socket (`core/term.ts:323,352`). On Windows use a named pipe `\\\\.\\pipe\\vellum-termd-<user>`. `existsSync(socketPath())` (`core/term.ts:454`) can't test a pipe, so replace it with a connect attempt.
-3. Then set `hasPty` from the capability rather than the OS.
+1. Replace the Unix-domain socket in `core/term.ts` and `core/termd.ts` with a per-user named pipe. Microsoft documents `\\\\.\\pipe\\<name>` and connect-based client access; `existsSync` is not a pipe availability check.
+2. Restrict the pipe to the current user and avoid remote clients; Windows named pipes can be reachable over the network unless access is restricted.
+3. Run the terminal and holder checks on Windows. ConPTY has different input/output behavior and Windows 10's inbox host drops mouse tracking, so verify keyboard input, resize, exit, and mouse interactions on supported Windows versions.
 
-**Done when:** `scripts/check-termd.ts` and `scripts/check-terminals.ts` pass on Windows.
+**Done when:** `scripts/check-termd.ts` and `scripts/check-terminals.ts` pass on Windows and held sessions survive quitting Vellum.
 
 ## Phase 5 — build and install
 
-1. `bin.ts:12` imports `@gpuix/native-darwin-arm64` directly. Pick the addon per build target, for example a `define` set by the build or one entry file per target.
-2. **`scripts/build-app.ts`** is macOS-only (`sips`, `iconutil`, `codesign`, `.app`, Swift notification helper). Add a Windows branch:
-   - compile: `bun build --compile --target=bun-windows-x64` to `dist/Vellum.exe`;
-   - icon: `.ico` from `assets/icon.png`;
-   - helpers: copy `agent-browser.exe` and `vellum-mcp.ts`. `bin/browser` is a `#!/bin/sh` wrapper, so give it a `.cmd` equivalent or call `Vellum.exe --browser` directly;
-   - installer: cargo-packager's `nsis` (or `wix`) format in `packager.json`, as a per-user install;
-   - skip the notification helper and `codesign` (sign with a real certificate later).
+The Windows build branch is configured to emit `dist/Vellum.exe`, place its GPUIX addon, browser helper, and MCP helper beside it, and use cargo-packager to create a current-user NSIS installer. The build, installer, and registered file-type launch path below remain to be verified on Windows.
+
+1. Verify the packaged addon loads from the helper directory in a compiled Windows executable; the source run must continue using `@gpuix/native`'s platform selection.
+2. **`scripts/build-app.ts`** has a Windows branch that compiles `Vellum.exe`, copies Windows helpers and creates a per-user NSIS installer from `packager.windows.json`. The native title bar remains; macOS icon conversion, notification helper, opener app, simulator helper and codesign are skipped. Add a Windows `.ico` and real code signing when ready for distribution.
 3. First launch of the built app: `registerFileTypes()` writes the per-user registry entries.
 
-**Done when:** you can double-click a `.vel` to open it in Vellum; Open with → Vellum on a `.txt` adds it to the draft; and opening a second file while Vellum runs goes to the same window, with no second window.
+**Done when:** Windows lists Vellum in Open with and Default Apps; after the user chooses Vellum, double-clicking a `.vel` opens the note; Open with → Vellum on a `.txt` adds it to the draft; and opening another file while Vellum runs reaches the existing window without a second app window. Windows requires default-app choices through system UI, so registration must never force the user's choice.
 
 ## Out of scope
 

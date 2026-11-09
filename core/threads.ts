@@ -245,7 +245,7 @@ export function relPath(workspace: string, file: string) {
   for (const base of [workspace, real(workspace)]) {
     const rel = path.relative(base, file)
     // Forward slashes on every OS: the UI and the diffs split on '/'.
-    if (!rel.startsWith('..') && !path.isAbsolute(rel)) return rel.split(path.sep).join('/')
+    if (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel)) return rel.split(path.sep).join('/')
   }
   return file
 }

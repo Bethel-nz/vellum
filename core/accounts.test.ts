@@ -1,7 +1,7 @@
 // The link check and the MCP merge, on scratch folders: a hub standing in for ~/.claude and an
 // account's config dir.
 import { beforeEach, expect, test } from 'bun:test'
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import { existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -24,7 +24,22 @@ beforeEach(() => {
   mkdirSync(path.join(hub, 'projects'), { recursive: true })
 })
 
-const isLinkTo = (link: string, target: string) => lstatSync(link).isSymbolicLink() && realpathSync(link) === realpathSync(target)
+const isLinkTo = (link: string, target: string) => {
+  const linkStat = lstatSync(link)
+  if (linkStat.isSymbolicLink()) return realpathSync(link) === realpathSync(target)
+  if (linkStat.isDirectory()) return false
+  const targetStat = statSync(target)
+  return linkStat.dev === targetStat.dev && linkStat.ino === targetStat.ino
+}
+const makeLink = (target: string, link: string, dir = false) => {
+  if (process.platform === 'win32' && dir) return symlinkSync(target, link, 'junction')
+  try {
+    symlinkSync(target, link)
+  } catch (error) {
+    if (process.platform !== 'win32' || dir) throw error
+    linkSync(target, link)
+  }
+}
 
 test('a new account links every shared entry to ~/.claude', () => {
   const did = linkAccount('work', acct)
@@ -47,7 +62,7 @@ test('a link to the old ~/.vellum/shared moves over, its contents merged and the
   mkdirSync(path.join(old, 'skills', 'mine'), { recursive: true })
   writeFileSync(path.join(old, 'skills', 'mine', 'SKILL.md'), '# mine\n')
   mkdirSync(acct, { recursive: true })
-  symlinkSync(path.join(old, 'skills'), path.join(acct, 'skills'))
+  makeLink(path.join(old, 'skills'), path.join(acct, 'skills'), true)
   const did = linkAccount('work', acct)
   expect(did.find((a) => a.name === 'skills')?.did).toBe('relinked')
   expect(isLinkTo(path.join(acct, 'skills'), path.join(hub, 'skills'))).toBe(true)
@@ -113,7 +128,7 @@ test('merging adds nothing → the hub file is left exactly as it was, not even 
   const original = '{"theme":"dark",\n   "permissions":{"allow":["Bash(git status)"]}}'
   writeFileSync(path.join(hub, 'settings.json'), original)
   mkdirSync(acct, { recursive: true })
-  symlinkSync(path.join(old, 'settings.json'), path.join(acct, 'settings.json'))
+  makeLink(path.join(old, 'settings.json'), path.join(acct, 'settings.json'))
   linkAccount('work', acct)
   expect(readFileSync(path.join(hub, 'settings.json'), 'utf8')).toBe(original)
 })

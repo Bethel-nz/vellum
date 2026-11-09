@@ -9,6 +9,7 @@ import { launch } from '@gpuix/react/automation'
 import { names, present, scratchDir } from './scratch'
 
 const home = await scratchDir('vellum-settings-')
+const windows = process.platform === 'win32'
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 const log = path.join(home, 'fake-acp.log')
 const notified = path.join(home, 'notify.log')
@@ -33,7 +34,7 @@ const sent = async () => (await Bun.file(log).text()).trim().split('\n').filter(
 const settings = async () => JSON.parse(await Bun.file(path.join(home, 'settings.json')).text())
 const open = async () => {
   await c.click()
-  await c.press('cmd-,')
+  await c.press(windows ? 'ctrl-,' : 'cmd-,')
   await app.getByTestId('settings').waitFor({ timeoutMs: 3000 })
   await wait(500)
 }
@@ -101,14 +102,18 @@ try {
   expect('Account is picked from a menu', (await settings()).newNoteProfile === second && (await count('set-new-account-menu')) === 0, `${second} → ${(await settings()).newNoteProfile}`)
   await app.getByTestId('settings-search').fill('notifications')
   await wait(250)
-  await app.getByTestId('set-notify-all').click()
+  if (windows) {
+    const text = await app.getByTestId('settings').textContent()
+    expect('Settings explains desktop alerts are unavailable on Windows', (await count('set-notify-all')) === 0 && text.includes('Desktop alerts are unavailable on Windows') && text.includes('Unavailable on this platform'))
+  } else await app.getByTestId('set-notify-all').click()
   await app.getByTestId('settings-search').fill('instructions')
   await wait(250)
   await app.getByTestId('set-instructions').fill('Answer in haiku.')
   await wait(300)
   await shot('3-new-notes')
   const saved = (await settings())
-  expect('New notes, Instructions and Notifications save', saved.newNoteMode === 'plan' && saved.newNoteThink === 'max' && saved.notify === 'all' && saved.instructions === 'Answer in haiku.', JSON.stringify(saved))
+  expect('New notes and Instructions save', saved.newNoteMode === 'plan' && saved.newNoteThink === 'max' && saved.instructions === 'Answer in haiku.', JSON.stringify(saved))
+  if (!windows) expect('Notifications save', saved.notify === 'all', JSON.stringify(saved.notify))
   await app.getByTestId('settings-done').click()
   await wait(400)
 
@@ -120,7 +125,7 @@ try {
   expect('the new note starts on the account picked', made?.profileId === second, made?.profileId)
   await c.fill('stream a short answer')
   await wait(200)
-  await c.press('cmd-enter')
+  await c.press(windows ? 'ctrl-enter' : 'cmd-enter')
   const created = async () => (await sent()).filter((m) => m.method === 'session/new').at(-1)
   expect('a new note’s session carries your instructions', await until(async () => /Answer in haiku\./.test(JSON.stringify((await created())?.params?.systemPrompt ?? ''))), JSON.stringify((await created())?.params?.systemPrompt ?? 'none').slice(0, 80))
   const configs = async () => (await sent()).filter((m) => m.method === 'session/set_config_option').map((m) => m.params.value)

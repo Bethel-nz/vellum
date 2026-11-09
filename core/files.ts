@@ -22,7 +22,7 @@ export function insideWorkspace(workspace: string, file: string): string | undef
     return
   }
   const rel = path.relative(root, target)
-  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return
+  if (rel === '' || rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return
   return target
 }
 

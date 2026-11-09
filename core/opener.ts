@@ -2,6 +2,7 @@
 // app (GPUIX drops the open-documents event); Windows passes them as arguments to a new Vellum.
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, watch, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import { helperDir } from './browser'
 import { compiled, os } from './platform'
@@ -92,7 +93,7 @@ function running(): boolean {
 /** Leaves `files` in the inbox; true when a running Vellum will take them, so this launch can quit. */
 export function handOff(files: string[]): boolean {
   mkdirSync(inbox(), { recursive: true })
-  files.forEach((f, i) => writeFileSync(path.join(inbox(), `${Date.now()}-${i}.open`), f))
+  files.forEach((f, i) => writeFileSync(path.join(inbox(), `${Date.now()}-${String(i).padStart(4, '0')}-${randomUUID()}.open`), f, { flag: 'wx' }))
   return files.length > 0 && running()
 }
 
@@ -114,17 +115,25 @@ export function watchInbox(onPaths: (files: string[]) => void): () => void {
   }
 }
 
-const reg = (key: string, value: string, name?: string) => Bun.$`reg add ${key} ${name === undefined ? '/ve' : ['/v', name]} /d ${value} /f`.quiet().nothrow()
+const reg = (key: string, value: string, name?: string, type?: string) => Bun.$`reg add ${key} ${name === undefined ? '/ve' : ['/v', name]} ${type ? ['/t', type] : []} /d ${value} /f`.quiet()
 
-/** Windows: .vel belongs to Vellum, and text files offer it in Open with; per user, no admin. */
+/** Windows: register Vellum for Open with and Default Apps; the user chooses its defaults. */
 async function registerWindows(exe: string) {
   const open = `"${exe}" "%1"`
-  await reg('HKCU\\Software\\Classes\\.vel', 'Vellum.Note')
   await reg('HKCU\\Software\\Classes\\Vellum.Note', 'Vellum note')
   await reg('HKCU\\Software\\Classes\\Vellum.Note\\DefaultIcon', `"${exe}",0`)
   await reg('HKCU\\Software\\Classes\\Vellum.Note\\shell\\open\\command', open)
   await reg('HKCU\\Software\\Classes\\Applications\\Vellum.exe\\shell\\open\\command', open)
-  for (const ext of ['.txt', '.md', '.json', '.log']) await reg('HKCU\\Software\\Classes\\Applications\\Vellum.exe\\SupportedTypes', '', ext)
+  const extensions = ['.vel', '.txt', '.md', '.json', '.log']
+  for (const ext of extensions) {
+    await reg(`HKCU\\Software\\Classes\\${ext}\\OpenWithProgids`, '', 'Vellum.Note', 'REG_SZ')
+    await reg('HKCU\\Software\\Classes\\Applications\\Vellum.exe\\SupportedTypes', '', ext, 'REG_SZ')
+  }
+  const capabilities = 'Software\\Vellum\\Capabilities'
+  await reg(`HKCU\\${capabilities}`, 'Vellum', 'ApplicationName')
+  await reg(`HKCU\\${capabilities}`, 'Open text notes and files with Vellum', 'ApplicationDescription')
+  for (const ext of extensions) await reg(`HKCU\\${capabilities}\\FileAssociations`, 'Vellum.Note', ext)
+  await reg('HKCU\\Software\\RegisteredApplications', capabilities, 'Vellum')
 }
 
 /** Once per install: tells the OS which files Vellum opens. Only the built app, never a dev run. */

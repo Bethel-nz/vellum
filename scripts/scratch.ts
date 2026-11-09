@@ -1,11 +1,12 @@
 // Scratch folders and file checks for the scripts.
+import { mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 /** A new private folder in the system temp dir, `<prefix><random>`. */
 export async function scratchDir(prefix: string): Promise<string> {
   const dir = path.join(tmpdir(), `${prefix}${Bun.randomUUIDv7()}`)
-  await Bun.$`/bin/mkdir -m 700 ${dir}`.quiet()
+  mkdirSync(dir, { recursive: true, mode: 0o700 })
   return dir
 }
 

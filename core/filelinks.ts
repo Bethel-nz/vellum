@@ -36,7 +36,7 @@ export function fileRef(workspace: string, text: string): FileRef | undefined {
   try {
     root = realpathSync(workspace)
   } catch {}
-  return { path: path.relative(root, abs) || name, ...(line ? { line } : {}), ...(line && end && end > line ? { endLine: end } : {}) }
+  return { path: (path.relative(root, abs).split(path.sep).join('/') || name), ...(line ? { line } : {}), ...(line && end && end > line ? { endLine: end } : {}) }
 }
 
 /** The reply's text with every inline code span that names a file wrapped in a link to it. */

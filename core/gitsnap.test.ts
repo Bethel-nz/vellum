@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { gitCommand } from './test-helpers'
 
 const root = mkdtempSync(path.join(tmpdir(), 'vellum-gitsnap-'))
 process.env.VELLUM_HOME ??= path.join(root, 'vellum')
@@ -106,9 +107,9 @@ test("a repo's own config can't make a snapshot run a command (fsmonitor, filter
   sh(evil, 'git', 'init', '-q')
   const marker = (n: string) => path.join(root, `ran-${n}`)
   const script = (n: string) => {
-    const f = path.join(root, `${n}.sh`)
-    writeFileSync(f, `#!/bin/sh\ntouch '${marker(n)}'\ncat\n`, { mode: 0o755 })
-    return f
+    const f = path.join(root, `${n}.ts`)
+    writeFileSync(f, `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(marker(n))}, 'ran'); await Bun.stdin.text()`)
+    return gitCommand(f)
   }
   sh(evil, 'git', 'config', 'core.fsmonitor', script('fsmonitor'))
   sh(evil, 'git', 'config', 'filter.x.clean', script('clean'))

@@ -33,6 +33,19 @@ function mapStrings(v: unknown, f: (s: string) => string): unknown {
   return v
 }
 
+const windowsPath = (value: string) => /^[a-z]:[\\/]/i.test(value) || /^\\\\[^\\]/.test(value) || /^\/\/[^/]/.test(value)
+
+/** Resolve a serialized absolute path with the path rules of the machine that wrote it. */
+function relativeTo(home: string, value: string): string | undefined {
+  const win = windowsPath(home)
+  if (win !== windowsPath(value)) return
+  const flavor = win ? path.win32 : path.posix
+  if (!flavor.isAbsolute(home) || !flavor.isAbsolute(value)) return
+  const rel = flavor.relative(flavor.resolve(home), flavor.resolve(value))
+  const escapes = rel === '..' || rel.startsWith(`..${flavor.sep}`)
+  return rel === '' || (!escapes && !flavor.isAbsolute(rel)) ? rel : undefined
+}
+
 /** The note's records with every file of Vellum's they point at (pasted images, captures) inside. */
 export async function writeVel(t: Thread, dir: string): Promise<string> {
   const lines = (await Bun.file(path.join(paths.threads, `${t.id}.jsonl`)).text()).split('\n').filter((l) => l.trim())
@@ -40,13 +53,14 @@ export async function writeVel(t: Thread, dir: string): Promise<string> {
   for (const line of lines) {
     try {
       mapStrings(JSON.parse(line), (s) => {
-        if (s.startsWith(paths.home + path.sep) && assetPath(path.relative(paths.home, s), t.id) && existsSync(s) && statSync(s).isFile()) files.add(s)
+        const rel = path.relative(paths.home, s)
+        if (rel && rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel) && assetPath(rel, t.id) && existsSync(s) && statSync(s).isFile()) files.add(s)
         return s
       })
     } catch {}
   }
   const header: Header = { type: 'vellum/export', version: VERSION, home: paths.home, title: t.title, exportedAt: new Date().toISOString() }
-  const assets: Asset[] = await Promise.all([...files].map(async (file) => ({ type: 'vellum/asset' as const, path: path.relative(paths.home, file), data: Buffer.from(await Bun.file(file).arrayBuffer()).toString('base64') })))
+  const assets: Asset[] = await Promise.all([...files].map(async (file) => ({ type: 'vellum/asset' as const, path: path.relative(paths.home, file).split(path.sep).join('/'), data: Buffer.from(await Bun.file(file).arrayBuffer()).toString('base64') })))
   mkdirSync(dir, { recursive: true })
   const out = freeName(dir, t.title, '.vel')
   await Bun.write(out, [header, ...assets].map((r) => JSON.stringify(r)).concat(lines).join('\n') + '\n')
@@ -55,8 +69,8 @@ export async function writeVel(t: Thread, dir: string): Promise<string> {
 
 /** Where a note's files may live, relative to Vellum's home: never its settings, accounts or MCP config. */
 function assetPath(rel: string, noteId: string): string | undefined {
-  const parts = path.normalize(rel).split(path.sep)
-  if (path.isAbsolute(rel) || parts.includes('..')) return
+  const parts = rel.replaceAll('\\', '/').split('/')
+  if (path.isAbsolute(rel) || path.win32.isAbsolute(rel) || parts.includes('..')) return
   if (parts[0] === 'images' && parts.length === 2) return rel
   if (parts[0] === 'captures' && parts.length > 2 && parts[1] === noteId) return rel
 }
@@ -70,26 +84,37 @@ export async function readVel(file: string, here: { profiles: string[]; profileI
   const meta = lines.find((r) => r.type === 'vellum/meta')?.meta
   if (!meta?.id) throw new Error('This export has no note in it.')
   const oldId = String(meta.id)
+  const oldWorkspace = String(meta.workspace ?? '')
+  const records = lines.filter((r) => r.type !== 'vellum/export' && r.type !== 'vellum/asset').map((r) => structuredClone(r))
   const id = newThreadId()
   // Its own captures folder moves to the new id; everything else of Vellum's is out of reach.
-  const local = (rel: string) => rel.replace(`captures${path.sep}${oldId}${path.sep}`, `captures${path.sep}${id}${path.sep}`)
+  const local = (rel: string) => rel.replaceAll('\\', '/').replace(`captures/${oldId}/`, `captures/${id}/`).split('/').join(path.sep)
   for (const rec of lines) {
     if (rec.type !== 'vellum/asset' || !assetPath(String(rec.path), oldId)) continue
-    const to = path.join(paths.home, local(path.normalize(rec.path)))
+    const to = path.join(paths.home, local(String(rec.path)))
     if (existsSync(to)) continue
     mkdirSync(path.dirname(to), { recursive: true })
     if (!realpathSync(path.dirname(to)).startsWith(realpathSync(paths.home) + path.sep)) continue
     await Bun.write(to, Buffer.from(String(rec.data), 'base64'))
   }
-  let sameAccount = header.home === paths.home && here.profiles.includes(meta.profileId)
+  const oldHomeIsNative = process.platform === 'win32' ? windowsPath(header.home) : !windowsPath(header.home) && path.posix.isAbsolute(header.home)
+  let sameAccount = oldHomeIsNative && relativeTo(header.home, paths.home) === '' && here.profiles.includes(meta.profileId)
   if (!here.profiles.includes(meta.profileId)) meta.profileId = here.profileId
   if (!here.known.includes(meta.workspace)) {
     if (!here.workspace) throw new Error('Open a project first; the note opens in it.')
     meta.workspace = here.workspace
     sameAccount = false
   }
-  const records = lines.filter((r) => r.type !== 'vellum/export' && r.type !== 'vellum/asset')
-  const moved = records.map((r) => mapStrings(r, (s) => (s === oldId ? id : s.startsWith(header.home + path.sep) ? paths.home + local(s.slice(header.home.length)) : s)))
+  const moved = records.map((r) => {
+    if (r.type === 'vellum/meta' && r.meta) r.meta.profileId = meta.profileId
+    return mapStrings(r, (s) => {
+      if (s === oldId) return id
+      const homeRel = relativeTo(header.home, s)
+      if (homeRel !== undefined) return path.join(paths.home, local(homeRel))
+      const workspaceRel = relativeTo(oldWorkspace, s)
+      return workspaceRel === undefined ? s : path.join(meta.workspace, workspaceRel.replaceAll('\\', '/').split('/').join(path.sep))
+    })
+  })
   moved.push({ type: 'vellum/imported', fresh: !sameAccount, at: new Date().toISOString() })
   await Bun.write(path.join(paths.threads, `${id}.jsonl`), moved.map((r) => JSON.stringify(r)).join('\n') + '\n')
   return id
