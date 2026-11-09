@@ -2,9 +2,10 @@
 // it, a `..` escape or a symlink pointing out is never opened, and nor is anything that looks like
 // credentials.
 
-import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { createTwoFilesPatch } from 'diff'
+import { realPath } from './path-utils'
 import { relPath } from './threads'
 
 const MAX_DIFF_BYTES = 2 * 1024 * 1024
@@ -15,9 +16,9 @@ export function insideWorkspace(workspace: string, file: string): string | undef
   let root: string
   let target: string
   try {
-    root = realpathSync(workspace)
+    root = realPath(workspace)
     // A file that does not exist yet (Write) resolves through its folder.
-    target = existsSync(abs) ? realpathSync(abs) : path.join(realpathSync(path.dirname(abs)), path.basename(abs))
+    target = existsSync(abs) ? realPath(abs) : path.join(realPath(path.dirname(abs)), path.basename(abs))
   } catch {
     return
   }

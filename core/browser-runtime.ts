@@ -84,7 +84,9 @@ class BrowserCliError extends Error {
   constructor(message: string, readonly code: string | undefined, readonly stdout: string, readonly stderr: string, readonly exitCode: number) { super(message) }
 }
 async function invoke<T = unknown>(runtime: Runtime, args: string[], timeoutMs = 120_000, attach = true) {
-  const proc = Bun.spawn([browserExecutable(), '--session', runtime.key.session, '--config', runtime.config, ...(runtime.target && attach ? ['--cdp', runtime.target.endpoint, '--pin-tab'] : []), ...args, ...(args.includes('--json') ? [] : ['--json'])], { env: environment(), cwd: runtime.dir, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' })
+  const executable = browserExecutable()
+  const command = executable.endsWith('.ts') ? [process.execPath, executable] : [executable]
+  const proc = Bun.spawn([...command, '--session', runtime.key.session, '--config', runtime.config, ...(runtime.target && attach ? ['--cdp', runtime.target.endpoint, '--pin-tab'] : []), ...args, ...(args.includes('--json') ? [] : ['--json'])], { env: environment(), cwd: runtime.dir, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' })
   let timedOut = false
   const timer = setTimeout(() => { timedOut = true; proc.kill('SIGKILL') }, timeoutMs)
   try {
@@ -314,7 +316,9 @@ export function closeBrowserSessionsOnExit() {
   for (const runtime of sessions.values()) {
     if (runtime.phase === 'closed' || Date.now() >= deadline) continue
     try {
-      const result = Bun.spawnSync([browserExecutable(), '--session', runtime.key.session, '--config', runtime.config, 'close', '--json'], { env: environment(), cwd: runtime.dir, stdout: 'ignore', stderr: 'ignore', timeout: Math.max(1, deadline - Date.now()) })
+      const executable = browserExecutable()
+      const command = executable.endsWith('.ts') ? [process.execPath, executable] : [executable]
+      const result = Bun.spawnSync([...command, '--session', runtime.key.session, '--config', runtime.config, 'close', '--json'], { env: environment(), cwd: runtime.dir, stdout: 'ignore', stderr: 'ignore', timeout: Math.max(1, deadline - Date.now()) })
       if (result.exitCode !== 0) writeFileSync(path.join(runtime.dir, 'cleanup-error.json'), JSON.stringify({ at: new Date().toISOString(), message: 'Browser cleanup did not finish before exit. Reconnect and disconnect this note to retry.' }))
     } catch {}
   }

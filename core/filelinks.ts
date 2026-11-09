@@ -1,8 +1,9 @@
 // Inline code naming a file in the note's folder becomes a link that opens it beside the note.
 
-import { realpathSync, statSync } from 'node:fs'
+import { statSync } from 'node:fs'
 import path from 'node:path'
 import { insideWorkspace } from './files'
+import { realPath } from './path-utils'
 
 const SCHEME = 'vellum-file:'
 
@@ -34,7 +35,7 @@ export function fileRef(workspace: string, text: string): FileRef | undefined {
   // Named from the folder; macOS's /var is /private/var once resolved.
   let root = workspace
   try {
-    root = realpathSync(workspace)
+    root = realPath(workspace)
   } catch {}
   return { path: (path.relative(root, abs).split(path.sep).join('/') || name), ...(line ? { line } : {}), ...(line && end && end > line ? { endLine: end } : {}) }
 }
@@ -55,6 +56,6 @@ export function linkFiles(text: string, workspace: string): string {
 export function linkTarget(workspace: string, url: string): FileRef | undefined {
   if (url.startsWith(SCHEME)) return fileRef(workspace, url.slice(SCHEME.length))
   // Any other scheme (https:, mailto:) is not a file here.
-  if (/^[a-z][a-z0-9+.-]*:/i.test(url) && !url.startsWith('file://')) return
+  if (/^[a-z][a-z0-9+.-]*:/i.test(url) && !url.startsWith('file://') && !/^[a-z]:[\\/]/i.test(url)) return
   return fileRef(workspace, url)
 }

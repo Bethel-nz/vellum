@@ -7,11 +7,12 @@
 // something that's there, and never in `.git` or under a credentials-looking name. `gitStatus`
 // is what the tree marks: git's own status of each file, as a letter.
 
-import { existsSync, mkdirSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync, type Dirent } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, renameSync, statSync, writeFileSync, type Dirent } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { insideWorkspace } from './files'
 import { noFilters, SAFE } from './gitsnap'
+import { realPath } from './path-utils'
 
 export type TreeEntry = { name: string; rel: string; dir: boolean; ignored: boolean }
 
@@ -191,7 +192,7 @@ export async function gitStatus(workspace: string): Promise<Map<string, GitMark>
   // git names the top by its real path; /tmp and the like are links.
   let base = workspace
   try {
-    base = realpathSync(workspace)
+    base = realPath(workspace)
   } catch {}
   return parseStatus(out, root, base)
 }
