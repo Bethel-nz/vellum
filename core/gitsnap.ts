@@ -13,8 +13,9 @@
 // snapshot never runs a command the repo's config names: no fsmonitor, no hooks, and every
 // filter driver's clean/smudge/process is blanked (files are hashed as they are on disk).
 
-import { mkdirSync, realpathSync } from 'node:fs'
+import { mkdirSync } from 'node:fs'
 import path from 'node:path'
+import { realPath } from './path-utils'
 import { paths } from './store'
 
 /** `config` is the `-c` overrides that keep the repo's filter drivers from running (see `noFilters`). */
@@ -75,7 +76,7 @@ export async function changedFiles(a: Snapshot, b: Snapshot, workspace: string):
   const patch = (await git(a.root, [...b.config, 'diff-tree', '-p', '-M', '--no-color', '--no-ext-diff', '-r', a.tree, b.tree, '--', a.prefix || '.'], a.env)).out
   if (!patch) return []
   // git names the real path (macOS: /private/var for /var), so the workspace has to be too.
-  const ws = realpathSync(workspace)
+  const ws = realPath(workspace)
   return splitFiles(patch).map((f) => ({ ...f, path: path.relative(ws, path.join(a.root, f.path)).split(path.sep).join('/') || f.path }))
 }
 
