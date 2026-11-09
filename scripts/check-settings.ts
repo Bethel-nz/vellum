@@ -69,13 +69,11 @@ try {
   await app.getByTestId('set-tabs-pinned').click()
   await wait(200)
   await app.getByTestId('settings').press('escape')
-  await wait(400)
-  expect('esc goes back to the note', (await count('settings')) === 0)
+  expect('esc goes back to the note', await until(async () => (await count('settings')) === 0))
 
   await open()
   await app.getByTestId('settings-done').click()
-  await wait(400)
-  expect('Done goes back to the note', (await count('settings')) === 0)
+  expect('Done goes back to the note', await until(async () => (await count('settings')) === 0))
 
   await open()
   const tabs = (await app.getByType('div').all()).map((n) => n.testId ?? '').filter((t) => /^tab-/.test(t))
