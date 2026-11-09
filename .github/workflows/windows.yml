@@ -13,7 +13,6 @@ jobs:
         with:
           bun-version: 1.4.4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: nsis-dev/setup-nsis@v1
       - name: Prepare screenshot output directory
         run: New-Item -ItemType Directory -Force screenshots
       - run: bun install --frozen-lockfile
