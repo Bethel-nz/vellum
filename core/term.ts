@@ -10,7 +10,7 @@
 import { existsSync, openSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { VtTerminal, type Grid, type KeyInput } from './ghostty'
-import { compiled, hasPty } from './platform'
+import { compiled, hasTermd, hasPty } from './platform'
 import { paths } from './store'
 import { TERMD_VERSION, Wire, type HeldTerm } from './termd'
 
@@ -209,6 +209,7 @@ type TmuxEntry = { name: string; meta: unknown; at: string }
 let tmuxOk: boolean | undefined
 
 function tmuxAvailable(): boolean {
+  if (!hasTermd) return false
   if (tmuxOk !== undefined) return tmuxOk
   try {
     tmuxOk = Bun.spawnSync(['tmux', '-V']).exitCode === 0
@@ -402,7 +403,7 @@ function startHolder() {
 
 /** The holder, started if it isn't running; undefined when there's none to be had. */
 function holder(): Promise<Link | undefined> {
-  if (!hasPty) return Promise.resolve(undefined)
+  if (!hasTermd) return Promise.resolve(undefined)
   return (g.__vellumTermd ??= (async () => {
     try {
       return await open()
@@ -449,7 +450,7 @@ export async function holdTerm(opts: TermOpts, meta: unknown): Promise<TermSessi
  * a holder that doesn't answer leaves them held for the next launch.
  */
 export async function heldTerms(): Promise<{ meta: unknown; cwd: string; session: TermSession }[]> {
-  if (!hasPty) return []
+  if (!hasTermd) return []
   // Don't start a holder just to ask: no socket, nothing held.
   if (!existsSync(socketPath())) return []
   const link = await holder()

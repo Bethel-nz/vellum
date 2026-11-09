@@ -16,13 +16,15 @@
 // the email. A login takes `--email`, else the email in $FAKE_NEXT_LOGIN (a file, used once: the
 // browser was still signed in to that account), else one made from the account's folder.
 //   VELLUM_AGENT=scripts/fake-acp.ts (scripts/check-approval.ts sets it)
+import { appendFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { STREAMED } from './fake-stream'
 import path from 'node:path'
 import { present, remove } from './scratch'
 
 if (process.argv.includes('--cli')) {
   const args = process.argv.slice(2).filter((a) => a !== '--cli')
-  const dir = process.env.CLAUDE_CONFIG_DIR ?? process.env.FAKE_DEFAULT_CONFIG ?? '/tmp/fake-acp-default'
+  const dir = process.env.CLAUDE_CONFIG_DIR ?? process.env.FAKE_DEFAULT_CONFIG ?? path.join(tmpdir(), 'fake-acp-default')
   const marker = path.join(dir, '.fake-login')
   log({ cli: args, dir })
   if (args[0] === 'auth' && args[1] === 'status') {
@@ -53,7 +55,7 @@ if (process.argv.includes('--cli')) {
  * One line onto the check's log, appended in order and whole whichever fake agent writes it.
  */
 function log(o: unknown) {
-  if (process.env.FAKE_ACP_LOG) Bun.spawnSync(['/bin/sh', '-c', 'cat >> "$1"', 'sh', process.env.FAKE_ACP_LOG], { stdin: new TextEncoder().encode(JSON.stringify(o) + '\n') })
+  if (process.env.FAKE_ACP_LOG) appendFileSync(process.env.FAKE_ACP_LOG, `${JSON.stringify(o)}\n`)
 }
 const out = (o: unknown) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...(o as object) }) + '\n')
 const update = (sessionId: string, u: unknown) => out({ method: 'session/update', params: { sessionId, update: u } })

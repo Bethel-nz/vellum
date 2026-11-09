@@ -6,6 +6,11 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { present, scratchDir } from './scratch'
 
+if (process.platform === 'win32') {
+  console.log('skip: Windows inline terminals use ConPTY; the persistent holder still requires Unix sockets')
+  process.exit(0)
+}
+
 let failed = 0
 const expect = (label: string, ok: boolean, detail = '') => {
   if (!ok) failed++

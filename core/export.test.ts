@@ -58,12 +58,14 @@ test('a crafted export can only add a note’s own files, in a project you alrea
   const asset = (p: string) => ({ type: 'vellum/asset', path: p, data: Buffer.from('evil').toString('base64') })
   const lines = [
     { type: 'vellum/export', version: 1, home: '/elsewhere', title: 'x', exportedAt: '' },
-    asset('mcp-servers.json'), asset('../outside.txt'), asset('captures/other-note/a.png'), asset('images/ok.png'), asset('captures/n9/shot.png'),
+    asset('mcp-servers.json'), asset('../outside.txt'), asset('C:\\outside.txt'), asset('\\\\server\\share\\outside.txt'), asset('captures/other-note/a.png'), asset('images/ok.png'), asset('captures/n9/shot.png'),
     { ...records[0], meta: { ...(records[0] as { meta: object }).meta, id: 'n9', workspace: '/' } },
   ]
   writeFileSync(file, lines.map((l) => JSON.stringify(l)).join('\n'))
   const id = await readVel(file, { profiles: ['main'], profileId: 'main', workspace, known: [workspace] })
   expect(await Bun.file(path.join(paths.home, 'mcp-servers.json')).exists()).toBe(false)
+  expect(await Bun.file(path.join(paths.home, 'C:', 'outside.txt')).exists()).toBe(false)
+  expect(await Bun.file(path.join(paths.home, 'server', 'share', 'outside.txt')).exists()).toBe(false)
   expect(await Bun.file(path.join(paths.home, '..', 'outside.txt')).exists()).toBe(false)
   expect(await Bun.file(path.join(paths.captures, 'other-note', 'a.png')).exists()).toBe(false)
   expect(await Bun.file(path.join(paths.home, 'images', 'ok.png')).exists()).toBe(true)
@@ -71,6 +73,30 @@ test('a crafted export can only add a note’s own files, in a project you alrea
   const t = (await readThread(path.join(paths.threads, `${id}.jsonl`)))!
   expect(t.workspace).toBe(workspace)
   expect(t.handoff).toBe(true)
+})
+
+test('Windows and POSIX export paths remap on import', async () => {
+  const foreign = [
+    { home: 'C:\\Users\\alice\\.vellum', file: 'C:\\Users\\alice\\.vellum\\images\\from-windows.png', workspace: 'C:\\Users\\alice\\repo', name: 'from-windows.png' },
+    { home: '/Users/alice/.vellum', file: '/Users/alice/.vellum/images/from-mac.png', workspace: '/Users/alice/repo', name: 'from-mac.png' },
+  ]
+  for (const [index, source] of foreign.entries()) {
+    const file = path.join(root, `${index}.vel`)
+    const lines = [
+      { type: 'vellum/export', version: 1, home: source.home, title: 'x', exportedAt: '' },
+      { type: 'vellum/asset', path: `images/${source.name}`, data: Buffer.from(source.name).toString('base64') },
+      { ...records[0], meta: { ...(records[0] as { meta: object }).meta, id: `n-${index}`, profileId: 'foreign', workspace: source.workspace } },
+      { ...records[2], images: [source.file] },
+      { type: 'assistant', message: { content: [{ type: 'tool_use', input: { file_path: `${source.workspace}${source.workspace.startsWith('C:') ? '\\' : '/'}src/main.ts` } }] } },
+    ]
+    writeFileSync(file, lines.map((line) => JSON.stringify(line)).join('\n') + '\n')
+    const id = await readVel(file, { profiles: ['main'], profileId: 'main', workspace, known: [workspace] })
+    const imported = (await Bun.file(path.join(paths.threads, `${id}.jsonl`)).text()).trim().split('\n').map((line) => JSON.parse(line))
+    const local = path.join(paths.home, 'images', source.name)
+    expect(imported.find((line) => line.type === 'vellum/user')?.images).toEqual([local])
+    expect(imported.find((line) => line.type === 'assistant')?.message.content[0].input.file_path).toBe(path.join(workspace, 'src', 'main.ts'))
+    expect(await Bun.file(local).text()).toBe(source.name)
+  }
 })
 
 test('markdown for another agent tags each component', () => {

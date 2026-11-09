@@ -1,8 +1,9 @@
 import { expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { ancestors, createEntry, gitStatus, listDir, matchFiles, parseStatus, renameEntry } from './filetree'
+import { gitCommand } from './test-helpers'
 
 const folder = () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'vellum-tree-'))
@@ -51,7 +52,7 @@ test('a folder is read again only when what it lists can have changed', () => {
   writeFileSync(path.join(dir, '.gitignore'), '*.log\n')
   expect(listDir(dir, 'src').find((e) => e.name === 'y.log')?.ignored).toBe(true)
   // A folder that's gone lists empty.
-  Bun.spawnSync(['rm', '-rf', path.join(dir, 'src')])
+  rmSync(path.join(dir, 'src'), { recursive: true, force: true })
   expect(listDir(dir, 'src')).toEqual([])
 })
 
@@ -69,7 +70,8 @@ test('new files and folders stay inside the folder and never replace anything', 
   for (const bad of ['../out.ts', 'a/../../b', '.git/x', '.credentials.json', '  '])
     expect('error' in createEntry(dir, '', bad, 'file')).toBe(true)
   const outside = mkdtempSync(path.join(tmpdir(), 'vellum-out-'))
-  symlinkSync(outside, path.join(dir, 'link'))
+  if (process.platform === 'win32') symlinkSync(outside, path.join(dir, 'link'), 'junction')
+  else symlinkSync(outside, path.join(dir, 'link'))
   expect('error' in createEntry(dir, 'link', 'x.ts', 'file')).toBe(true)
   expect(existsSync(path.join(outside, 'x.ts'))).toBe(false)
 })
@@ -104,9 +106,9 @@ test("a repo's own config can't make the tree's git status run a command", async
   const sh = (...args: string[]) => Bun.spawnSync(args, { cwd: dir, stdout: 'ignore', stderr: 'ignore' })
   const marker = (n: string) => path.join(out, `ran-${n}`)
   const script = (n: string) => {
-    const f = path.join(out, `${n}.sh`)
-    writeFileSync(f, `#!/bin/sh\ntouch '${marker(n)}'\ncat\n`, { mode: 0o755 })
-    return f
+    const f = path.join(out, `${n}.ts`)
+    writeFileSync(f, `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(marker(n))}, 'ran'); await Bun.stdin.text()`)
+    return gitCommand(f)
   }
   sh('git', 'init', '-q')
   writeFileSync(path.join(dir, '.gitattributes'), '*.txt filter=x\n*.md filter=y\n')
@@ -133,7 +135,8 @@ test("a submodule's own config can't make the tree's git status run a command ei
   const sh = (cwd: string, ...args: string[]) => Bun.spawnSync(args, { cwd, stdout: 'ignore', stderr: 'ignore' })
   const commit = (cwd: string) => sh(cwd, 'git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'one')
   const ran = path.join(out, 'ran')
-  writeFileSync(path.join(out, 'clean.sh'), `#!/bin/sh\ntouch '${ran}'\ncat\n`, { mode: 0o755 })
+  const cleaner = path.join(out, 'clean.ts')
+  writeFileSync(cleaner, `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(ran)}, 'ran'); await Bun.stdin.text()`)
   sh(sub, 'git', 'init', '-q')
   writeFileSync(path.join(sub, '.gitattributes'), '*.txt filter=x\n')
   writeFileSync(path.join(sub, 'a.txt'), 'one\n')
@@ -142,7 +145,7 @@ test("a submodule's own config can't make the tree's git status run a command ei
   sh(dir, 'git', 'init', '-q')
   sh(dir, 'git', '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', sub, 'lib')
   commit(dir)
-  sh(path.join(dir, 'lib'), 'git', 'config', 'filter.x.clean', path.join(out, 'clean.sh'))
+  sh(path.join(dir, 'lib'), 'git', 'config', 'filter.x.clean', gitCommand(cleaner))
   writeFileSync(path.join(dir, 'lib', 'a.txt'), 'two\n')
   await gitStatus(dir)
   expect(existsSync(ran)).toBe(false)

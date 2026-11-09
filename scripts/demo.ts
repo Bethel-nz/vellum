@@ -1,12 +1,13 @@
 // Records Vellum end to end on OpenCode's free model, in scratch homes: nothing billed.
 //   bun scripts/demo.ts [out.mp4]
 import path from 'node:path'
+import { tmpdir } from 'node:os'
 import { launch } from '@gpuix/react/automation'
 import { mkdtempSync } from 'node:fs'
 
 const out = path.resolve(process.argv[2] ?? 'screenshots/demo.mp4')
 // Short on purpose: the terminal socket path must stay under macOS's 104 characters.
-const root = mkdtempSync('/tmp/vd-')
+const root = mkdtempSync(path.join(tmpdir(), 'vd-'))
 const home = path.join(root, 'vellum')
 const ws = path.join(root, 'shop')
 const frames = path.join(root, 'frames')

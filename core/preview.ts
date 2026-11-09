@@ -64,7 +64,7 @@ export function codeLanguage(file: string): string | undefined {
 }
 
 export function readPreview(workspace: string, file: string): Preview {
-  const rel = path.isAbsolute(file) ? path.relative(workspace, file) : file
+  const rel = (path.isAbsolute(file) ? path.relative(workspace, file) : file).split(path.sep).join('/')
   const abs = insideWorkspace(workspace, file)
   if (!abs) return { ok: false, rel, reason: 'Only files inside this note’s folder can be previewed.' }
   if (/credentials|keychain/i.test(abs)) return { ok: false, rel, reason: 'This looks like a credentials file, so Vellum doesn’t open it.' }

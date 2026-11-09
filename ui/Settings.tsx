@@ -18,7 +18,7 @@ import { cycleModes, defaultMode, modeLabel, modes, type Think } from '../core/a
 import { effortLabel } from '../core/models'
 import { font } from './theme'
 import type { MaterialName } from './theme'
-import { keys } from '../core/platform'
+import { isMac, keys, os } from '../core/platform'
 import { Activity } from './Activity'
 import { BrowserSettings } from './BrowserSettings'
 import { McpSettings } from './McpSettings'
@@ -239,9 +239,9 @@ function ExportSettings() {
 function Notifications() {
   const [want, setWant] = useSetting('notify')
   return (
-    <SheetSection label="Notifications" hint="Desktop alerts appear while this window is unfocused. The notification inbox always keeps requests and replies together.">
-      <SheetRow label="Desktop alerts" detail="Requests include questions, approvals and agent errors. All also includes replies.">
-        <Segmented testId="set-notify" value={want ?? 'asks'} onChange={setWant} options={[{ value: 'off', label: 'Never' }, { value: 'asks', label: 'Requests' }, { value: 'all', label: 'All' }]} width={92} />
+    <SheetSection label="Notifications" hint={isMac ? 'Desktop alerts appear while this window is unfocused. The notification inbox always keeps requests and replies together.' : `Desktop alerts are unavailable on ${os === 'windows' ? 'Windows' : 'this platform'}. The notification inbox still keeps requests and replies together.`}>
+      <SheetRow label="Desktop alerts" detail={isMac ? 'Requests include questions, approvals and agent errors. All also includes replies.' : 'Unavailable on this platform; requests and replies stay in the Vellum inbox.'}>
+        {isMac ? <Segmented testId="set-notify" value={want ?? 'asks'} onChange={setWant} options={[{ value: 'off', label: 'Never' }, { value: 'asks', label: 'Requests' }, { value: 'all', label: 'All' }]} width={92} /> : null}
       </SheetRow>
     </SheetSection>
   )

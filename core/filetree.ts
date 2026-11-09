@@ -206,8 +206,8 @@ export function parseStatus(out: string, root: string, workspace: string): Map<s
     const xy = entry.slice(0, 2)
     // A rename or copy names the old path next.
     if (xy[0] === 'R' || xy[0] === 'C') i++
-    const rel = path.relative(workspace, path.join(root, entry.slice(3)))
-    if (!rel || rel.startsWith('..')) continue
+    const rel = path.relative(workspace, path.join(root, entry.slice(3))).split(path.sep).join('/')
+    if (!rel || rel === '..' || rel.startsWith('../')) continue
     const mark: GitMark = xy === '??' ? 'U' : xy[0] === 'A' ? 'A' : xy[0] === 'R' ? 'R' : xy.includes('D') ? 'D' : 'M'
     marks.set(rel.split(path.sep).join('/'), mark)
   }

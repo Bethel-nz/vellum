@@ -11,8 +11,9 @@ const home = await scratchDir('vellum-move-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 const fake = path.resolve(import.meta.dir, 'fake-acp.ts')
 const bin = path.join(home, 'bin')
-await Bun.write(path.join(bin, 'claude'), `#!/bin/sh\nexec bun ${fake} --cli "$@"\n`)
-await Bun.$`chmod 755 ${path.join(bin, 'claude')}`.quiet()
+const claude = path.join(bin, process.platform === 'win32' ? 'claude.cmd' : 'claude')
+await Bun.write(claude, process.platform === 'win32' ? `@echo off\r\n"${process.execPath}" "${fake}" --cli %*\r\n` : `#!/bin/sh\nexec "${process.execPath}" "${fake}" --cli "$@"\n`)
+if (process.platform !== 'win32') await Bun.$`chmod 755 ${claude}`.quiet()
 // Both accounts are logged in.
 const defaultConfig = path.join(home, 'default', 'claude')
 await Bun.write(path.join(defaultConfig, '.fake-login'), 'default@example.com')
@@ -24,7 +25,7 @@ await Bun.write(log, '')
 const app = await launch({
   command: 'bun',
   args: ['app.tsx'],
-  env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home'), VELLUM_AGENT: fake, PATH: `${bin}:${process.env.PATH}`, FAKE_DEFAULT_CONFIG: defaultConfig, FAKE_ACP_LOG: log },
+  env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home'), VELLUM_AGENT: fake, PATH: `${bin}${path.delimiter}${process.env.PATH}`, FAKE_DEFAULT_CONFIG: defaultConfig, FAKE_ACP_LOG: log },
 })
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const shot = (n: string) => app.screenshot({ path: `screenshots/move-${n}.png` })

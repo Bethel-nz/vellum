@@ -54,7 +54,7 @@ import { FONTS } from './assets/fonts'
 import { ImageViewer, type Viewing } from './ui/ImageViewer'
 import { fitFile, FILE_MIN, FilePreview, previewLayout, TREE_MAX, TREE_MIN, TREE_WIDTH, type Previewing } from './ui/FilePreview'
 import { purgeTrash, trashNote } from './core/trash'
-import { claudeBin, clipboardText, compiled, hasPty, isImageName, isMac, keys, openConsole, pasteImage, primary, revealFolder, revealLabel, shellArgv, tabStep } from './core/platform'
+import { claudeBin, clipboardText, compiled, hasPty, interactiveShell, isImageName, isMac, keys, openConsole, pasteImage, primary, revealFolder, revealLabel, shellArgv, tabStep } from './core/platform'
 import {
   appendLine,
   appendRecord,
@@ -65,6 +65,7 @@ import {
   handoffContext,
   readThread,
   pendingEdits,
+  relPath,
   reduce,
   titleFrom,
   writeMarkdown,
@@ -291,8 +292,8 @@ const clock = (iso: string) => {
 async function defaultFile(thread: Thread): Promise<string | undefined> {
   const workspace = thread.workspace
   // Newest group first, and in a group the file edited last.
-  const recent = collectChanges(thread).flatMap((group) => group.files.map((f) => path.relative(workspace, path.resolve(workspace, f.path))).reverse())
-  for (const rel of recent) if (!rel.startsWith('..') && (await Bun.file(path.join(workspace, rel)).exists())) return rel
+  const recent = collectChanges(thread).flatMap((group) => group.files.map((f) => relPath(workspace, path.resolve(workspace, f.path))).reverse())
+  for (const rel of recent) if (rel !== '..' && !rel.startsWith('../') && !path.isAbsolute(rel) && (await Bun.file(path.join(workspace, rel)).exists())) return rel
   const files = listDir(workspace).filter((e) => !e.dir)
   return (files.find((e) => /^readme(\.|$)/i.test(e.name)) ?? files.find((e) => !e.ignored) ?? files[0])?.rel
 }
@@ -679,7 +680,7 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
     if (!active) return byFile
     for (const group of collectChanges(active).reverse())
       for (const f of group.files) {
-        const rel = path.relative(active.workspace, path.resolve(active.workspace, f.path))
+        const rel = relPath(active.workspace, path.resolve(active.workspace, f.path))
         byFile.set(rel, [...(byFile.get(rel) ?? []), ...f.hunks])
       }
     return byFile
@@ -1348,8 +1349,8 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
         openNote(id)
         return
       }
-      const rel = active ? path.relative(active.workspace, file) : ''
-      const inside = Boolean(active && rel && !rel.startsWith('..') && !path.isAbsolute(rel))
+      const rel = active ? relPath(active.workspace, file) : ''
+      const inside = Boolean(active && rel && rel !== '..' && !rel.startsWith('../') && !path.isAbsolute(rel))
       const id = inside ? active!.id : startNewNote(path.dirname(file))
       if (!id) return
       const value = inside ? rel : path.basename(file)
@@ -1445,8 +1446,8 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
   )
   // A shell starts at home: the tree it works in is the one you end up in.
   const newShell = useCallback(() => {
-    const shell = process.env.SHELL || '/bin/zsh'
-    void keepTerm({ kind: 'shell', title: `${path.basename(shell)} · ~`, label: `${path.basename(shell)} · ~` }, { argv: [shell, '-l'], cwd: homedir(), env: process.env })
+    const { shell, argv } = interactiveShell()
+    void keepTerm({ kind: 'shell', title: `${path.basename(shell)} · ~`, label: `${path.basename(shell)} · ~` }, { argv, cwd: homedir(), env: process.env })
   }, [keepTerm])
   // The terminals kept from last time come back as tabs, without taking you away from your note.
   const restoredTerms = useRef(false)
@@ -1544,7 +1545,7 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
         return s?.loggedIn
       }
       if (!hasPty) {
-        // No PTY on Windows: the login runs in a console window of its own; watch for it to land.
+        // Without PTY support, the login runs in a separate console; watch for it to land.
         openConsole(argv, homedir(), env)
         showToastRef.current(`Finish logging in to ${profile.name} in the new window`)
         const started = Date.now()

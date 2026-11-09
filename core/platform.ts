@@ -6,7 +6,7 @@
 //   clipboard  pbcopy/pbpaste · PowerShell Set-/Get-Clipboard · wl-copy/xclip/xsel
 //   folders    open · explorer · xdg-open
 //   shell      $SHELL -lc · %ComSpec% /d /s /c
-//   PTY        POSIX only, so on Windows interactive `claude` opens in a console
+//   PTY        POSIX PTY on macOS/Linux; Bun ConPTY on Windows
 
 import { appendFileSync, linkSync, mkdirSync, statSync, symlinkSync } from 'node:fs'
 import { homedir, userInfo } from 'node:os'
@@ -133,6 +133,10 @@ export function revealFolder(dir: string) {
 export function revealFile(file: string) {
   const log = process.env.VELLUM_OPEN_LOG
   if (log) return appendFileSync(log, JSON.stringify({ reveal: file }) + '\n')
+  if (os === 'windows') {
+    try { Bun.spawn(['explorer', `/select,${path.resolve(file)}`], { stdout: 'ignore', stderr: 'ignore', windowsHide: true }) } catch {}
+    return
+  }
   if (os !== 'mac') return revealFolder(path.dirname(file))
   try {
     Bun.spawn(['open', '-R', file], { stdout: 'ignore', stderr: 'ignore' })
@@ -143,6 +147,12 @@ export function revealFile(file: string) {
 export function shellArgv(command: string): string[] {
   if (os === 'windows') return [process.env.ComSpec ?? 'cmd.exe', '/d', '/s', '/c', command]
   return [process.env.SHELL ?? (os === 'mac' ? '/bin/zsh' : '/bin/sh'), '-lc', command]
+}
+
+/** The interactive shell Vellum opens in a terminal tab. cmd.exe starts interactively without flags. */
+export function interactiveShell(): { shell: string; argv: string[] } {
+  const shell = os === 'windows' ? process.env.ComSpec ?? 'cmd.exe' : process.env.SHELL ?? (os === 'mac' ? '/bin/zsh' : '/bin/sh')
+  return { shell, argv: os === 'windows' ? [shell] : [shell, '-l'] }
 }
 
 /**
@@ -158,8 +168,10 @@ export function loginShellPath(): string | undefined {
   return r.stdout.toString().match(new RegExp(`${mark}(.+)${mark}`))?.[1]
 }
 
-/** PTY support: POSIX only, off on Windows. */
-export const hasPty = os !== 'windows'
+/** Bun 1.4.4 provides ConPTY on Windows; older or alternate runtimes retain the console fallback. */
+export const hasPty = typeof Bun.Terminal === 'function'
+/** The long-lived terminal holder uses Unix-domain sockets, which this version has not ported. */
+export const hasTermd = os !== 'windows'
 
 let claudePath: string | undefined
 /** The official binary, resolved once (on Windows through PATHEXT, so claude.exe or claude.cmd). */
@@ -167,10 +179,7 @@ export function claudeBin(): string {
   return (claudePath ??= Bun.which('claude') ?? 'claude')
 }
 
-/**
- * Windows only: run an interactive program in a console window of its own, since there is no PTY
- * to host it inline. The console inherits `env`, so CLAUDE_CONFIG_DIR still picks the profile.
- */
+/** Windows fallback for a runtime without ConPTY; the console inherits the selected account env. */
 export function openConsole(argv: string[], cwd: string, env: Record<string, string>) {
   // cmd.exe parses this line again, so only plain words (paths, flags, session ids) may pass.
   if (argv.slice(1).some((a) => !/^[\w.:\\/-]+$/.test(a))) throw new Error('openConsole: refusing an argument cmd.exe would re-parse')

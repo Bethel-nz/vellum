@@ -24,7 +24,7 @@ export function printedFile(command: string): string | undefined {
   if (!words) return undefined
   const [cmd, ...args] = words
   if (!cmd) return undefined
-  const name = cmd.split('/').pop()!
+  const name = cmd.split(/[\\/]/).pop()!
   if (name === 'sed') return sedFile(args)
   if (!PRINTERS.has(name)) return undefined
   const valued = VALUED[name === 'batcat' ? 'bat' : name]!
