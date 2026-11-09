@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { blockStarts, chunks, safeEnd, settlePoints } from './stream'
+import { blockStarts, chunks, HOLD_MS, naturalEnds, revealTo, safeEnd } from './stream'
 
 const at = (md: string, needle: string) => md.indexOf(needle)
 
@@ -13,25 +13,29 @@ test('a list carries on across a blank line', () => {
   expect(chunks(md).map((c) => c.text.trim())).toEqual(['- one\n\n- two', 'After.'])
 })
 
-test('a blank line, a heading and a closed fence settle; a half-done sentence does not', () => {
-  const md = 'One.\n\n# Two\n```\nx\n```\nhalf a sent'
-  const points = settlePoints(md)
-  expect(points).toContain(at(md, '# Two'))
-  expect(points).toContain(at(md, '```'))
-  expect(points).toContain(at(md, 'half'))
-  expect(points.at(-1)).toBe(at(md, 'half'))
+test('every sentence, block and whole fence line is a natural end; a half sentence is not', () => {
+  const md = 'One. Two\n\n# Head\n```\nx.y\nz\n```\nhalf a sent'
+  const ends = naturalEnds(md)
+  expect(ends).toContain(at(md, 'Two'))
+  expect(ends).toContain(at(md, '# Head'))
+  expect(ends).toContain(at(md, 'z'))
+  expect(ends).toContain(at(md, 'half'))
+  expect(ends).not.toContain(at(md, 'y'))
+  expect(ends.at(-1)).toBe(at(md, 'half'))
 })
 
-test('a sentence settles once two lines have built up, not before', () => {
-  expect(settlePoints('Short. And more')).toEqual([])
-  const md = 'A first line\nthat wraps. Then more'
-  expect(settlePoints(md)).toEqual([at(md, 'Then')])
+test('a reveal stops at the latest end, holds a half sentence, then shows its whole words', () => {
+  const md = 'Here it is. And then some wor'
+  expect(revealTo(md, 0, 0)).toBe(at(md, 'wor'))
+  expect(revealTo(md, 5, 0)).toBe(at(md, 'And'))
+  expect(revealTo(md, at(md, 'And'), 0)).toBe(at(md, 'And'))
+  expect(revealTo(md, at(md, 'And'), HOLD_MS)).toBe(at(md, 'wor'))
 })
 
-test('an open fence settles every six lines, and a forced reveal stops at whole lines', () => {
-  const md = '```\n1\n2\n3\n4\n5\n6\n7\n8'
-  expect(settlePoints(md)).toEqual([at(md, '7')])
-  expect(safeEnd(md)).toBe(at(md, '8'))
+test('inside an open fence a reveal goes a whole line at a time', () => {
+  const md = '```ts\nconst a = 1\nconst b'
+  expect(revealTo(md, 0, 0)).toBe(at(md, 'const b'))
+  expect(revealTo(md, at(md, 'const b'), HOLD_MS)).toBe(at(md, 'const b'))
   expect(safeEnd('Hello wor')).toBe('Hello '.length)
   expect(safeEnd('Hello world ')).toBe('Hello world '.length)
 })

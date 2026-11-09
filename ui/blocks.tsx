@@ -2,7 +2,7 @@
 // bubbles, no avatars, no timestamps. Your text and Claude's replies are both
 // editable in place; tool work renders as quiet embeds between them.
 
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useGpuixRequired, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { forDiff, summarize, type Block, type Tag, type ToolCall } from '../core/threads'
 import type { BrowserSession, SavedCapture } from '../core/capture'
@@ -21,11 +21,13 @@ import { TerminalBlock } from './TerminalBlock'
 import { TokenText, type TokenContext } from './Tokens'
 import { tokens } from '../core/tags'
 import { splitFences } from '../core/fences'
+import { chunks, revealTo } from '../core/stream'
+import { linkFiles, linkTarget } from '../core/filelinks'
 import type { Identity } from '../core/avatar'
 import { useLoaded } from './useLoaded'
 import { formatTokens } from '../core/models'
 import { copyText, primary } from '../core/platform'
-import { concentric, diffHeaderClip, diffInk, diffTheme, font, nativeTheme, radiusBase, replyText, replyTheme, type } from './theme'
+import { concentric, diffHeaderClip, diffInk, diffTheme, font, nativeTheme, noteCard, radiusBase, replyText, replyTheme, type } from './theme'
 import { useAgent } from '../components/AgentContext'
 
 const COMMIT_MS = 500
@@ -229,11 +231,66 @@ function UserText({ block, actions }: { block: Extract<Block, { kind: 'user' }>;
   )
 }
 
-/** Claude's reply: rendered markdown, which turns into its source while you edit it. */
+/** Outside the component: opening the pane re-renders the reply that then gets the click. */
+let linkPressedAt = 0
+
+const REVEAL_TICK_MS = 50
+
+function useShown(text: string, streaming: boolean): string {
+  const latest = useRef(text)
+  latest.current = text
+  const [shown, setShown] = useState(streaming ? '' : text)
+  const movedAt = useRef(0)
+  useEffect(() => {
+    if (!streaming) return
+    let cursor = 0
+    const tick = () => {
+      const md = latest.current
+      if (md.length <= cursor) return
+      const end = revealTo(md, cursor, Date.now() - movedAt.current)
+      if (end <= cursor) return
+      cursor = end
+      movedAt.current = Date.now()
+      setShown(md.slice(0, end))
+    }
+    tick()
+    const timer = setInterval(tick, REVEAL_TICK_MS)
+    return () => clearInterval(timer)
+  }, [streaming])
+  return streaming ? shown : text
+}
+
+const ReplyRow = memo(function ReplyRow({ text, workspace, testId, onLink }: { text: string; workspace: string; testId: string; onLink: (e: { value?: string }) => void }) {
+  const m = useM()
+  return (
+    <div testId={testId} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {splitFences(text).map((p, i) =>
+        p.kind === 'code' ? (
+          <CodeCard key={i} code={p.code} language={p.language} testId={`${testId}-code`} />
+        ) : p.text.trim() ? (
+          <markdown key={i} source={linkFiles(p.text, workspace)} theme={replyTheme(m)} onLinkClick={onLink} style={{ color: replyText(m) }} />
+        ) : null,
+      )}
+    </div>
+  )
+})
+
+/** Claude's reply, one row per block; streaming and finished draw the same rows. */
 function AssistantBlock({ block, actions }: { block: Extract<Block, { kind: 'assistant' }>; actions: BlockActions }) {
   const m = useM()
   const [editing, setEditing] = useState(false)
-  const parts = useMemo(() => splitFences(block.markdown || ' '), [block.markdown])
+  const workspace = actions.tokens.workspace
+  const shown = useShown(block.markdown, block.streaming)
+  const rows = useMemo(() => chunks(shown), [shown])
+  const tokens = useRef(actions.tokens)
+  tokens.current = actions.tokens
+  const openLink = useCallback((e: { value?: string }) => {
+    const { onOpen, workspace } = tokens.current
+    const ref = e.value ? linkTarget(workspace, e.value) : undefined
+    if (!ref || !onOpen) return
+    linkPressedAt = Date.now()
+    onOpen(ref.path, ref.line, ref.endLine)
+  }, [])
   if (editing && !block.streaming) {
     return (
       <div onMouseDownOutside={() => setEditing(false)} style={{ position: 'relative' }}>
@@ -254,15 +311,11 @@ function AssistantBlock({ block, actions }: { block: Extract<Block, { kind: 'ass
     )
   }
   return (
-    <div testId={`reply-${block.id}`} onClick={() => !block.streaming && setEditing(true)} style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 12, cursor: block.streaming ? 'default' : 'text' }}>
+    <div testId={`reply-${block.id}`} onClick={() => !block.streaming && Date.now() - linkPressedAt > 150 && setEditing(true)} style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 12, cursor: block.streaming ? 'default' : 'text' }}>
       <AgentMark />
-      {parts.map((p, i) =>
-        p.kind === 'code' ? (
-          <CodeCard key={i} code={p.code} language={p.language} testId={`code-${block.id}-${i}`} />
-        ) : (
-          <markdown key={i} source={p.text} theme={replyTheme(m)} style={{ color: replyText(m) }} />
-        ),
-      )}
+      {rows.map((row) => (
+        <ReplyRow key={row.start} text={row.text} workspace={workspace} testId={`reply-${block.id}-${row.start}`} onLink={openLink} />
+      ))}
     </div>
   )
 }
@@ -363,37 +416,101 @@ function ActivityBlock({ block, onInspect }: { block: Extract<Block, { kind: 'ac
   </div>
 }
 
+/** The card pads the diff evenly itself, so the native body adds no space of its own below. */
+const cardDiffTheme = (m: ReturnType<typeof useM>) => { const t = diffTheme(m); return { ...t, metrics: { ...t.metrics, diffBodyBottomPad: 0 } } }
+
 /**
- * A frameless diff. The row above it names the file and counts, so the native file and
+ * A diff on the note's card. The row above it names the file and counts, so the native file and
  * first hunk header rows are clipped off (at height 0 their text would still paint).
  */
-export function DiffCard({ patch, maxLines, onShowMore }: { patch: string; maxLines?: number; onShowMore?: () => void }) {
+export function DiffCard({ patch, maxLines, onShowMore, onLine }: { patch: string; maxLines?: number; onShowMore?: () => void; onLine?: (line?: number) => void }) {
   const m = useM()
   return (
-    <div style={{ paddingTop: 6, overflow: 'hidden' }}>
-      {/* The clip box starts below the padding, so nothing of the headers shows through it. */}
+    <div style={{ ...noteCard(m), paddingTop: 6, paddingBottom: 6, paddingLeft: 4, paddingRight: 4, overflow: 'hidden' }}>
+      {/* The clip box starts below the padding, so nothing of the headers shows through it. The
+          padding also keeps the row washes inside the card's curve, which the clip does not follow. */}
       <div style={{ overflow: 'hidden' }}>
-        <diff patch={forDiff(patch)} wordDiff maxLines={maxLines} onShowMore={onShowMore} theme={diffTheme(m)} style={{ marginTop: -diffHeaderClip }} />
+        <diff patch={forDiff(patch)} wordDiff maxLines={maxLines} onShowMore={onShowMore} onLineClick={onLine ? (e: { newLine?: number }) => onLine(e.newLine) : undefined} theme={cardDiffTheme(m)} style={{ marginTop: -diffHeaderClip }} />
       </div>
     </div>
   )
 }
 
-function EditBlock({ block }: { block: Extract<Block, { kind: 'edit' }> }) {
+type DiffRow = { kind: 'add' | 'del' | 'same'; line: number; text: string } | { kind: 'gap' }
+
+/** The lines of a unified patch, one row each, with a gap row between hunks. */
+export function diffRows(patch: string): DiffRow[] {
+  const rows: DiffRow[] = []
+  let oldLine = 0, newLine = 0, hunks = 0
+  for (const raw of patch.split('\n')) {
+    const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)/.exec(raw)
+    if (hunk) {
+      if (hunks++) rows.push({ kind: 'gap' })
+      oldLine = Number(hunk[1]); newLine = Number(hunk[2])
+    } else if (!hunks || raw.startsWith('\\')) continue
+    else if (raw.startsWith('+')) rows.push({ kind: 'add', line: newLine++, text: raw.slice(1) })
+    else if (raw.startsWith('-')) rows.push({ kind: 'del', line: oldLine++, text: raw.slice(1) })
+    else if (raw.startsWith(' ')) { rows.push({ kind: 'same', line: newLine, text: raw.slice(1) }); oldLine++; newLine++ }
+  }
+  return rows
+}
+
+/**
+ * Every character of a change, for a preview someone decides on (the approval card). The native
+ * diff clips long lines and can neither wrap nor scroll sideways, so these rows wrap under
+ * themselves instead, without syntax colour.
+ */
+export function WrappedDiff({ patch }: { patch: string }) {
+  const m = useM()
+  const ink = diffInk(m)
+  const rows = useMemo(() => diffRows(patch), [patch])
+  const line = { ...type.mono, fontFamily: font.mono }
+  return (
+    <div testId="wrapped-diff" style={{ display: 'flex', flexDirection: 'column', paddingTop: 6 }}>
+      {rows.map((row, i) => row.kind === 'gap' ? (
+        <text key={i} style={{ ...line, color: m.textMuted, paddingLeft: 44 }}>⋯</text>
+      ) : (
+        <div key={i} style={{ display: 'flex', flexDirection: 'row', alignItems: 'start', backgroundColor: row.kind === 'add' ? m.diffAdd : row.kind === 'del' ? m.diffDel : undefined }}>
+          <div style={{ width: 2, alignSelf: 'stretch', flexShrink: 0, backgroundColor: row.kind === 'add' ? ink.add : row.kind === 'del' ? ink.del : undefined }} />
+          <text style={{ ...line, width: 28, flexShrink: 0, textAlign: 'right', color: m.textMuted }}>{String(row.line)}</text>
+          <text style={{ ...line, width: 14, flexShrink: 0, textAlign: 'center', color: row.kind === 'add' ? ink.add : row.kind === 'del' ? ink.del : m.textFaint }}>{row.kind === 'add' ? '+' : row.kind === 'del' ? '−' : ''}</text>
+          <text style={{ ...line, flexGrow: 1, minWidth: 0, paddingRight: 8, color: m.text }}>{row.text || ' '}</text>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function EditBlock({ block, onOpen }: { block: Extract<Block, { kind: 'edit' }>; onOpen?: (file: string, line?: number) => void }) {
   const m = useM()
   const [open, setOpen] = useState(false)
+  const [hot, setHot] = useState(false)
+  const openAt = block.path && onOpen ? (line?: number) => onOpen(block.path, line) : undefined
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <text style={{ fontSize: 13, lineHeight: 18, color: m.textMuted }}>Edit</text>
-        <FileIcon path={block.path} size={12} />
-        <text style={{ fontSize: 12.5, lineHeight: 18, color: m.text, fontFamily: font.mono }}>{block.path}</text>
+        {/* The file opens in the pane beside the note, as a file chip does. */}
+        <div
+          testId="edit-open"
+          role="button"
+          aria-label={`Open ${block.path} beside the note`}
+          tabIndex={openAt ? 0 : undefined}
+          onClick={openAt ? () => openAt() : undefined}
+          onKeyDown={openAt ? (e: KeyEvent) => { if (e.key === 'enter' || e.key === 'space') { e.preventDefault(); openAt() } } : undefined}
+          onMouseEnter={() => setHot(true)}
+          onMouseLeave={() => setHot(false)}
+          style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0, cursor: openAt ? 'pointer' : undefined }}
+        >
+          <FileIcon path={block.path} size={12} />
+          <text style={{ fontSize: 12.5, lineHeight: 18, color: openAt && hot ? m.blue : m.text, fontFamily: font.mono, whiteSpace: 'nowrap', textOverflow: 'ellipsis-start', minWidth: 0 }}>{block.path}</text>
+        </div>
         <text style={{ ...type.meta, color: diffInk(m).add, fontFamily: font.mono }}>{`+${block.added}`}</text>
         <text style={{ ...type.meta, color: diffInk(m).del, fontFamily: font.mono }}>{`−${block.removed}`}</text>
         {block.status === 'error' ? <Meta color={m.danger}>failed</Meta> : null}
       </div>
       {block.error ? <text style={{ ...type.meta, color: m.danger, lineClamp: 3 }}>{block.error}</text> : null}
-      <DiffCard patch={block.patch} maxLines={open ? undefined : 12} onShowMore={() => setOpen(true)} />
+      <DiffCard patch={block.patch} maxLines={open ? undefined : 12} onShowMore={() => setOpen(true)} onLine={openAt} />
     </div>
   )
 }
@@ -424,7 +541,7 @@ function ErrorBlock({ block, onLogin }: { block: Extract<Block, { kind: 'error' 
   const limit = block.usageLimit ?? usageLimitFromText(block.text)
   // Once the limit has reset, the notice is history: the note drops it.
   if (limit) return <UsageLimitBanner limit={limit} hideAfterReset testId={`error-${block.id}`} />
-  return <Alert tone="danger" title={block.text} icon={block.login ? 'shieldX' : undefined} singleLine={block.login} testId={`error-${block.id}`} action={block.login ? <Quiet onPress={onLogin} testId={`error-login-${block.id}`}><text style={{ fontSize: 12.5, lineHeight: 16, color: m.text, whiteSpace: 'nowrap' }}>Log in</text></Quiet> : undefined} />
+  return <Alert inNote tone="danger" title={block.login ? "You're signed out. Log in to carry on." : block.text} icon={block.login ? 'shieldX' : undefined} singleLine={block.login} testId={`error-${block.id}`} action={block.login ? <Quiet onPress={onLogin} testId={`error-login-${block.id}`}><text style={{ fontSize: 12.5, lineHeight: 16, color: m.text, whiteSpace: 'nowrap' }}>Log in</text></Quiet> : undefined} />
 }
 
 export type BlockActions = {
@@ -458,7 +575,7 @@ export const BlockView = memo(function BlockView({ block, actions }: { block: Bl
     case 'activity':
       return !actions.showThoughts && !block.items.length ? null : <ActivityBlock block={actions.showThoughts ? block : { ...block, thoughts: 0, thinking: undefined, summary: summarize(0, block.items) }} onInspect={actions.onInspectTools} />
     case 'edit':
-      return <EditBlock block={block} />
+      return <EditBlock block={block} onOpen={actions.tokens.onOpen} />
     case 'shell':
       return block.source === 'agent' ? (
         <AgentShell block={block} />

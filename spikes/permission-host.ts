@@ -16,7 +16,7 @@ const send = (o: unknown) => {
   proc.stdin.write(JSON.stringify(o) + '\n')
   proc.stdin.flush()
 }
-// The host opens the control channel first, as an SDK host does.
+// The host opens the control channel first.
 send({ type: 'control_request', request_id: 'init-1', request: { subtype: 'initialize', hooks: null } })
 send({ type: 'user', message: { role: 'user', content: 'Run the shell command `echo vellum-spike > out.txt` with the Bash tool, then reply with one word: done.' } })
 

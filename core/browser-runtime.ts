@@ -47,7 +47,7 @@ export function browserTitle(args: string[]) {
   if (['open', 'goto', 'navigate'].includes(verb)) { try { return `${label} · ${new URL(args[1]!).hostname}` } catch {} }
   return label
 }
-const reserved = /^--(?:session|session-name|namespace|profile|cdp|auto-connect|state|restore|restore-save|restore-check-url|restore-check-text|restore-check-fn|config|stream-port|pin-tab|no-pin-tab|executable-path|engine|provider|extensions|args|plugin|plugins|headed|init-script|init-scripts|enable|proxy|proxy-bypass|proxy-user|proxy-pass|webgpu|download-path)(?:=|$)/
+const reserved = /^--(?:session|session-name|namespace|profile|cdp|auto-connect|state|restore|restore-save|restore-check-url|restore-check-text|restore-check-fn|config|stream-port|pin-tab|no-pin-tab|executable-path|engine|provider|extensions|args|plugin|plugins|headed|init-script|init-scripts|enable|proxy|proxy-bypass|proxy-user|proxy-pass|webgpu|download-path|screenshot-dir|extension|ca-cert|allow-file-access|action-policy)(?:=|$)/
 /** Stream frame ceiling (16:10, matching the viewer box). Caps default to the
  * session viewport, so the viewport is sized up alongside (owned sessions only;
  * never resize a user's attached Chrome tab). */
@@ -118,13 +118,15 @@ async function start(runtime: Runtime) {
   }
   const stream = await invoke<StreamStatusData>(runtime, ['stream', 'status', '--json'])
   if (!stream.data?.enabled || typeof stream.data.port !== 'number' || !Number.isInteger(stream.data.port)) throw new Error('Browser could not start. Install a supported Chrome browser, then retry.')
-  runtime.streamPort = stream.data.port
+  const port = stream.data.port
   // Wider frames for the viewer: size up the owned session viewport to the
   // stream ceiling. Attached tabs are left alone. Best effort: a failure here
   // keeps the default viewport rather than failing the session.
   if (!runtime.target) await invoke<ViewportData>(runtime, ['set', 'viewport', String(STREAM_WIDTH), String(STREAM_HEIGHT)], 10_000).catch(() => {})
   const info = await invoke<SessionInfoData>(runtime, ['session', 'info', '--json'], 5000)
   if (typeof info.data?.pid === 'number' && Number.isInteger(info.data.pid) && info.data.pid > 0) runtime.daemonPid = info.data.pid
+  // The port goes out with the daemon it belongs to: a viewer that saw it sooner checked a PID not yet known.
+  runtime.streamPort = port
   state(runtime, 'ready')
 }
 function enqueue<T>(runtime: Runtime, operation: () => Promise<T>): Promise<T> {
@@ -133,16 +135,39 @@ function enqueue<T>(runtime: Runtime, operation: () => Promise<T>): Promise<T> {
   return result
 }
 /** Which argument of a command names the file it writes, and what kind of file that is. */
-function artifactSlot(args: string[]): { kind: 'screenshot' | 'pdf' | 'download' | 'video' | 'trace' | 'har'; index: number } | undefined {
+/** Flags of the artifact commands that take a value, so the value isn't read as a path. */
+const valueFlags = new Set(['--threshold', '--screenshot-quality', '--screenshot-format', '--fps', '--contact-sheet-threshold', '--categories', '--content'])
+/**
+ * The file a command writes, read the way the CLI reads it: positional arguments past the flags,
+ * in each command's own order (`screenshot [selector] [path]`, `download <selector> <path>`,
+ * `record start <path> [url]`, `trace|profiler stop [path]`, `network har stop [path]`, `pdf <path>`).
+ * `pathAt` is the path's place in argv, if one was given; more arguments than the command takes
+ * are refused, so nothing past them can name a file.
+ */
+function artifactSlot(args: string[]): { kind: 'screenshot' | 'pdf' | 'download' | 'video' | 'trace' | 'har'; pathAt?: number; stop?: boolean } | undefined {
   const kind = args[0] === 'screenshot' ? 'screenshot' : args[0] === 'pdf' ? 'pdf' : args[0] === 'download' ? 'download' : args[0] === 'record' && ['start', 'restart', 'stop'].includes(args[1]!) ? 'video' : ['trace', 'profiler'].includes(args[0]!) && args[1] === 'stop' ? 'trace' : args[0] === 'network' && args[1] === 'har' && args[2] === 'stop' ? 'har' : undefined
   if (!kind) return undefined
-  return { kind, index: kind === 'video' || kind === 'trace' || kind === 'download' ? 2 : kind === 'har' ? 3 : 1 }
+  const positions: number[] = []
+  for (let i = 1; i < args.length; i++) {
+    if (!args[i]!.startsWith('-')) positions.push(i)
+    else if (valueFlags.has(args[i]!)) i++
+  }
+  const image = (i: number | undefined) => i !== undefined && /\.(png|jpe?g|webp)$/i.test(args[i]!)
+  const [most, pathAt] =
+    kind === 'screenshot' ? [2, positions.length === 2 ? positions[1] : image(positions[0]) ? positions[0] : undefined]
+    : kind === 'pdf' ? [1, positions[0]]
+    : kind === 'download' ? [2, positions[1]]
+    : kind === 'video' ? (args[1] === 'stop' ? [1, undefined] : [3, positions[1]])
+    : kind === 'trace' ? [2, positions[1]]
+    : [3, positions[2]]
+  if (positions.length > most) throw new Error(`Too many arguments for ${args.slice(0, kind === 'har' ? 3 : kind === 'video' || kind === 'trace' ? 2 : 1).join(' ')}. Name the file only, like shot.png; it's saved in this browser session's folder.`)
+  return { kind, pathAt, stop: kind === 'video' && args[1] === 'stop' }
 }
 export async function browserCommand(noteId: string, input: BrowserCommandInput, context: BrowserContext): Promise<BrowserCommandResult> {
   const args = browserArguments(input.args)
   // A named artifact (screenshot, pdf, download, recording, trace, HAR) is a plain file name in
   // the session's folder: a path could write over any of the person's files.
-  const slot = artifactSlot(args), named = slot && args[slot.index] && !args[slot.index]!.startsWith('-') ? args[slot.index]! : undefined
+  const slot = artifactSlot(args), named = slot?.pathAt !== undefined ? args[slot.pathAt] : undefined
   if (named !== undefined && !plainName(named)) throw new Error(`Name the file only, like shot.png: it's saved in this browser session's folder (got "${named}")`)
   if (connecting.has(noteId)) throw new Error('Browser connection is changing; wait for it to finish')
   let runtime = sessions.get(noteId)
@@ -164,10 +189,10 @@ export async function browserCommand(noteId: string, input: BrowserCommandInput,
     let executed = args
     const kind = slot?.kind
     if (slot && kind) {
-      const { index } = slot
       outputPath = path.join(current.dir, named ?? `${actionId}.${kind === 'screenshot' ? 'png' : kind === 'pdf' ? 'pdf' : kind === 'video' ? 'webm' : kind === 'har' ? 'har' : kind === 'download' ? 'bin' : 'json'}`)
-      executed = [...args]; if (named === undefined) executed.splice(index, 0, outputPath); else executed[index] = outputPath
-      if (args[0] === 'record' && args[1] === 'stop') { outputPath = current.recordingPath; executed = args }
+      // The path goes where the CLI reads it: in place of the one given, or after the arguments.
+      executed = [...args]; if (slot.pathAt !== undefined) executed[slot.pathAt] = outputPath; else executed.push(outputPath)
+      if (slot.stop) { outputPath = current.recordingPath; executed = args }
     }
     try {
       await start(current)
@@ -195,7 +220,8 @@ export async function browserCommand(noteId: string, input: BrowserCommandInput,
         const raw = url.data?.url
         if (typeof raw === 'string') { try { const safe = new URL(raw); current.url = safe.protocol === 'about:' ? raw : safe.origin } catch {} }
       }
-      state(current, result.exitCode ? 'error' : current.control === 'pending' ? 'waiting-user' : 'ready', result.exitCode ? 'Browser action failed. Open activity for details or retry.' : undefined)
+      // Read afresh: the person may have asked for control while the command ran.
+      state(current, result.exitCode ? 'error' : (current as Runtime).control === 'pending' ? 'waiting-user' : 'ready', result.exitCode ? 'Browser action failed. Open activity for details or retry.' : undefined)
     } catch (error) {
       if (error instanceof BrowserCliError) result = { ...result, stdout: error.stdout, exitCode: error.exitCode, code: error.code }
       result.stderr = error instanceof BrowserCliError ? [...new Set([error.message, error.stderr].filter(Boolean))].join('\n') : error instanceof Error ? error.message : 'Browser failed'
@@ -237,7 +263,8 @@ export async function requestBrowserControl(noteId: string, source: 'viewer' | '
   for (const listener of changes) listener()
   await runtime.tail
   if (runtime.controlEpoch !== epoch || runtime.control !== 'pending') throw new Error('Browser control request cancelled')
-  if (runtime.uncertain || runtime.stopping || runtime.phase === 'closed') throw new Error('Browser command has not safely settled')
+  // Read afresh: the session may have closed while the command settled.
+  if (runtime.uncertain || runtime.stopping || (runtime as Runtime).phase === 'closed') throw new Error('Browser command has not safely settled')
   runtime.control = 'user'; state(runtime, 'waiting-user')
 }
 export function hasBrowserControl(key: BrowserKey) { const runtime = sessions.get(key.noteId); return Boolean(validateBrowser(key) && runtime?.control === 'user' && runtime.controlSource === 'viewer') }
@@ -257,7 +284,7 @@ export async function stopBrowserSession(noteId: string, duringConnect = false) 
   } catch (error) { state(runtime, 'error', 'Browser cleanup failed. Retry disconnect.'); throw error }
   finally { runtime.stopping = false }
 }
-export async function closeAllBrowserSessions() { await Promise.allSettled([...sessions.keys()].map(stopBrowserSession)) }
+export async function closeAllBrowserSessions() { await Promise.allSettled([...sessions.keys()].map((noteId) => stopBrowserSession(noteId))) }
 
 const captureLeases = new Map<string, string>()
 export async function acquireBrowserCapture(installationId: string, tabId: number) {
@@ -280,8 +307,8 @@ export async function moveBrowserTarget(noteId: string, targetKey: string) {
   return browserSession(noteId, { action: 'connect', mode: 'toolbar', targetKey })
 }
 
-/** GPUIX 0.11 exits synchronously after its last window closes. Wait for a bounded
- * close RPC here; a fire-and-forget child would be orphaned by process.exit. */
+/** Wait for a bounded close RPC at exit; a fire-and-forget child would be orphaned
+ * by process.exit. */
 export function closeBrowserSessionsOnExit() {
   const deadline = Date.now() + 8000
   for (const runtime of sessions.values()) {

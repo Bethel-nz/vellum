@@ -47,7 +47,7 @@ else {
   let models: string[] = []
   let asked = 0
   let lastError = ''
-  // OpenCode lists free models that it has since retired; the check takes the first that answers.
+  // The check takes the first free model that answers.
   let freeModel: string | undefined
 
   const runner = (sessionId?: string) => {

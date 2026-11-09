@@ -48,3 +48,32 @@ test('serializes note actions, waits for cancellation settlement, holds control 
     expect(exit, stderr).toBe(0)
   } finally { rmSync(home, { recursive: true, force: true }) }
 }, 15_000)
+
+test('a viewer that connects the moment the stream port appears finds the session valid', async () => {
+  const { mkdtempSync, rmSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const path = await import('node:path')
+  const home = mkdtempSync(path.join(tmpdir(), 'vellum-browser-start-'))
+  try {
+    const source = `
+      import { expect } from 'bun:test';
+      import { browserCommand, getBrowserSession, stopBrowserSession, verifyBrowserConnection } from './core/browser-runtime';
+      let checked;
+      const watch = setInterval(() => {
+        const s = getBrowserSession('fixture');
+        if (!checked && s?.streamPort) checked = { phase: s.phase, valid: verifyBrowserConnection(s) };
+      }, 1);
+      const result = await browserCommand('fixture', {args:['open','https://example.com']}, {signal:new AbortController().signal});
+      clearInterval(watch);
+      expect(result.exitCode).toBe(0);
+      expect(checked).toBeDefined();
+      expect(await checked.valid).toBe(true);
+      expect(getBrowserSession('fixture').streamPort).toBeGreaterThan(0);
+      expect(getBrowserSession('fixture').phase).not.toBe('disconnected');
+      await stopBrowserSession('fixture');
+    `
+    const child = Bun.spawn([process.execPath, '-e', source], { cwd: path.resolve(import.meta.dir, '..'), env: { ...process.env, VELLUM_HOME: home, VELLUM_BROWSER_EXECUTABLE: path.resolve(import.meta.dir, '../scripts/fake-browser.ts'), VELLUM_BROWSER_FIXTURE_LOG: path.join(home, 'cli.log') }, stdout: 'pipe', stderr: 'pipe' })
+    const [exit, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+    expect(exit, stderr).toBe(0)
+  } finally { rmSync(home, { recursive: true, force: true }) }
+}, 15_000)

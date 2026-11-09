@@ -31,8 +31,9 @@ inline. Import tokens, never hardcode. Verify by execution, not by eye alone.
   `duration.{instant .12, fast .16, exit .18, standard .24, considered .48}`,
   `stagger.item .035` capped at 4, entrances only. `leave()` uses `ease.exit`.
   All transitions via `tween()/enter()/leave()/wash()` (100 ms press/hover).
-- Exits on elevated surfaces are atomic: unmount whole, never fade the shadow.
-  No `AnimatePresence` exits around popovers/menus/sheets. Only scrims fade.
+- The spring runner fades a shadow with its surface's opacity, so shadowed surfaces may
+  fade; under reduced motion they close atomically. Menus, popovers, approvals and toasts
+  unmount whole (MOTION-CONTRACT.md §6).
 - Reduced motion: `tween()` collapses to duration 0 and layout must still be correct;
   keep one-shot confirmation in another channel, never remove feedback.
 - Frequency governs motion: 100+/day paths (menus, palette, tag popup, keyboard
@@ -40,8 +41,8 @@ inline. Import tokens, never hardcode. Verify by execution, not by eye alone.
   actions. Occasional surfaces (sheets, panes) up to `considered`. One deliberate
   motion per surface. Interruptible always: retarget springs, no `isAnimating`
   guards, no `pointer-events:none` holds, transitions not keyframes.
-- Streaming: first paint ≤200 ms from first delta; immutable `StreamChunk` rows;
-  never animate streaming text; streaming pins the surface open and never steals
+- Streaming: first paint ≤200 ms from first delta; one row per block, the same
+  streaming and finished, growing at natural ends; never animate streaming text; streaming pins the surface open and never steals
   composer focus.
 
 ## Hit-testing (six shipped bugs came from violating these)
@@ -87,8 +88,10 @@ inline. Import tokens, never hardcode. Verify by execution, not by eye alone.
 ## Composition, states, voice
 
 - Layout: flex only (`grid`/`flexWrap` don't exist in this GPUIX version — chunk
-  grid rows in JS). Shell inset 4, strip 36, status 28, composer tail 160 with
-  `paddingBottom: 52`. Resize clamps; long content internal-scrolls, window
+  grid rows in JS). Shell inset 4, strip 36, status 28 docked in its own row under
+  the note (text ends above it, never under it, no edge fades; it steps back while
+  you scroll and returns once the page settles), composer tail 160
+  with `paddingBottom: 12`. Resize clamps; long content internal-scrolls, window
   never pushed. One focal point per surface; no card-per-fact, no gradients,
   no glow, no oversized radii/pills/shadows.
 - Every control handles idle/hover/pressed/selected/focused/disabled(`.45`)/
@@ -108,9 +111,8 @@ inline. Import tokens, never hardcode. Verify by execution, not by eye alone.
 
 ## Verify before claiming done
 
-- `bunx tsc --noEmit` — error set must equal the known baseline (3 pre-existing:
-  `app.tsx` VirtualList, `DockPanel` testId, `ModelPicker` args). New errors block.
-- `bun test ./core` — 113 pass, 0 fail.
+- `bunx tsc --noEmit` — 0 errors. New errors block.
+- `bun test ./core` — 121 pass, 1 skip, 0 fail.
 - `scripts/check-*.ts` for every touched surface (motion, new-note, tokens,
   approval, width…) — all pass. `check-motion`'s toast step flakes under paused
   clock on baseline too; confirm against stashed baseline before blaming a change.

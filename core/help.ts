@@ -13,8 +13,8 @@ export const helpMarkdown = `Vellum is a note you talk to. You write; Claude ans
 
 | Key | What it does |
 |---|---|
-| ↵ or ⌘↵ | Send what you wrote |
-| ⇧↵ | Start a new line |
+| ⌘↵ | Send what you wrote |
+| ↵ | Start a new line |
 | ⇧⇥ | Change the mode: Ask, Edits, Plan, Auto |
 | @ | Tag a file, folder or skill |
 | # | Tag a file; \`#path:42\` points at a line |

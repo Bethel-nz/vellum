@@ -17,7 +17,6 @@
 //   → write {id, data} / resize {id, cols, rows} / kill {id} / detach {id}
 //                                        ← data {id, data} / exit {id, code}
 
-// The socket's folder, its permissions and the exit-time cleanup are node:fs's work.
 import { chmodSync, existsSync, lstatSync, mkdirSync, unlinkSync } from 'node:fs'
 import path from 'node:path'
 

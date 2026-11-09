@@ -1,4 +1,4 @@
-// Arc's press-to-confirm pill. Width reveals each face; text and corners never scale.
+// A press-to-confirm pill. Width reveals each face; text and corners never scale.
 // Pending/result faces follow real callbacks. No elevation, blur, rotation or spring physics.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useGpuixRequired, type PublicInstance } from '@gpuix/react'

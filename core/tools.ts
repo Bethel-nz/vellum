@@ -65,7 +65,6 @@ export function normalizeToolCall(call: any, previous: Partial<ToolCall> = {}): 
   const raw = call.rawOutput
   const content = (call.content ?? []).flatMap((part: any) => part.type === 'content' && part.content?.type === 'text' ? [part.content.text] : []).join('\n') || undefined
   const text = typeof raw?.error === 'string' ? raw.error : typeof raw?.output === 'string' ? raw.output : undefined
-  // OpenCode puts the result in content and only transport metadata in rawOutput.
   const metadataOnly = raw && typeof raw === 'object' && Object.keys(raw).every((key) => ['metadata', 'exit_code', 'exitCode'].includes(key))
   const delta = call._meta?.terminal_output_delta?.data ?? call._meta?.terminal_output?.data ?? call._meta?.mcp_output_delta?.data
   const output = typeof raw === 'string' ? raw : text ?? content ?? (raw != null && !metadataOnly ? JSON.stringify(raw, null, 2) : typeof delta === 'string' ? (previous.output ?? '') + delta : undefined)

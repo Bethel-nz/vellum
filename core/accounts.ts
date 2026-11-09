@@ -2,8 +2,7 @@
 //
 // Each Vellum account's CLAUDE_CONFIG_DIR links the entries in SHARED to ~/.claude, so every
 // account has your skills, settings, plugins, agents, commands and session history, and can
-// continue a conversation another account started. Claude writes through those links (checked:
-// `claude plugin enable` and `claude mcp add` keep a symlinked settings.json / .claude.json).
+// continue a conversation another account started. Claude writes through those links.
 // Everything else stays per account: .claude.json (the login identity), credentials, the live
 // sessions/ registry, caches, telemetry. The list is an allowlist, so anything new Claude adds
 // stays private until it is chosen here.

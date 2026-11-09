@@ -10,6 +10,7 @@ import config from '../packager.json'
 import { remove } from './scratch'
 import { prepareNotificationHelper } from './notification-helper'
 import { prepareAgentBrowser } from './agent-browser-runtime'
+import { buildOpener } from '../core/opener'
 
 const root = path.resolve(import.meta.dir, '..')
 const dist = path.join(root, 'dist')
@@ -20,8 +21,7 @@ const run = (argv: string[]) => {
   if (r.exitCode !== 0) throw new Error(`${argv.join(' ')} exited with ${r.exitCode}`)
 }
 
-// libghostty-vt-node reads its wasm from beside its own file, which a bundle has no notion of:
-// import it as a file instead, so the binary carries it.
+// The wasm is imported as a file, so the binary carries it.
 const ghosttyWasm: import('bun').BunPlugin = {
   name: 'ghostty-wasm',
   setup(build) {
@@ -64,12 +64,14 @@ for (const size of [16, 32, 128, 256, 512]) {
   }
 }
 run(['iconutil', '-c', 'icns', iconset, '-o', path.join(dist, 'AppIcon.icns')])
+await buildOpener(path.join(helpers, 'Vellum Opener.app'), { appId: config.identifier, icon: path.join(dist, 'AppIcon.icns') })
 
 console.log('bundling dist/bundle/Vellum.app')
 await remove(path.join(dist, 'bundle', 'Vellum.app'))
 run(['cargo', 'packager', '--release', '--config', 'packager.json'])
 const bundledHelpers = path.join(dist, 'bundle/Vellum.app/Contents/MacOS/helpers')
 cpSync(path.join(helpers, 'Vellum Notifications.app'), path.join(bundledHelpers, 'Vellum Notifications.app'), { recursive: true })
+cpSync(path.join(helpers, 'Vellum Opener.app'), path.join(bundledHelpers, 'Vellum Opener.app'), { recursive: true })
 for (const file of ['browser', 'vellum-mcp.ts', 'agent-browser', 'agent-browser.manifest.json', 'agent-browser.LICENSE']) await Bun.write(path.join(bundledHelpers, file), Bun.file(path.join(helpers, file)))
 cpSync(path.join(helpers, 'simdriver'), path.join(bundledHelpers, 'simdriver'), { recursive: true })
 await Bun.$`chmod 755 ${path.join(bundledHelpers, 'browser')} ${path.join(bundledHelpers, 'agent-browser')}`.quiet()

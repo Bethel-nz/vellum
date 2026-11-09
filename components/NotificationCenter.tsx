@@ -1,11 +1,11 @@
-// Arc's notification center. Caller-supplied data only; no agent or app integration.
+// A notification center. Caller-supplied data only; no agent or app integration.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { DismissableLayer, useGpuixRequired, useWindowSize, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { motion } from './spring'
 import { FloatingLayer } from '@gpuix/react/floating'
 import { Button as Base } from '@gpuix/react/button'
 import { concentric, elevation, radiusBase } from '../ui/theme'
-import { Button, Label } from './Button'
+import { Button, CloseButton, Label } from './Button'
 import { Icon } from './Icon'
 import { Lifted } from './Lifted'
 import { PopoverBackdrop } from './PopoverBackdrop'
@@ -150,7 +150,7 @@ export function NotificationCenter({ notifications, label = 'Notifications', onR
                 <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}><text style={{ fontSize: narrow ? 18 : 22, lineHeight: narrow ? 22 : 27, color: m.text, fontWeight: 500, flexShrink: 1, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{label}</text><div style={{ height: 21, minWidth: 21, paddingLeft: 5, paddingRight: 5, borderRadius: concentric(radiusBase, 3), backgroundColor: m.chipBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Count value={unread} testId={`${testId}-count`} /></div></div>
                 <motion.div key={unread ? 'unread' : 'read'} initial={reduced ? false : { opacity: 0, top: offset.tooltip }} animate={{ opacity: 1, top: 0 }} transition={enter()} style={{ position: 'relative', pointerEvents: 'none' }}><text style={{ fontSize: 12, lineHeight: 17, color: m.textMuted }}>{unread ? 'Updates waiting for you' : 'No unread notifications'}</text></motion.div>
               </div>
-              <Button buttonRef={closeButton} title="Close notifications" testId={`${testId}-close`} onPress={() => setOpen(false)} style={{ width: 30, height: 30, paddingLeft: 0, paddingRight: 0, borderRadius: concentric(radiusBase, 2) }}><Icon name="x" size={17} /></Button>
+              <CloseButton buttonRef={closeButton} title="Close notifications (esc)" testId={`${testId}-close`} onPress={() => setOpen(false)} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingLeft: narrow ? 12 : 20, paddingRight: narrow ? 12 : 17, paddingBottom: 13, minHeight: 52, borderBottomWidth: 1, borderColor: m.border, flexShrink: 0 }}>
               {/* biome-ignore lint/a11y/useSemanticElements: GPUIX has div hosts, not HTML fieldsets. */}

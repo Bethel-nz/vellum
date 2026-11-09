@@ -31,11 +31,13 @@ const expect = (label: string, ok: boolean, detail = '') => {
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}${detail ? ` (${detail})` : ''}`)
 }
 const c = app.getByTestId('composer')
-/** The composer's top inside the page, or undefined while it isn't painted. */
+/** The composer's top inside the note (the page above the status bar's row), or undefined while it isn't in view. */
 const composerY = async () => {
   const page = await app.getByTestId('page').bounds()
+  const bar = await app.getByTestId('status-bar').bounds().catch(() => undefined)
+  const bottom = Math.min(page.y + page.height, bar?.y ?? Infinity)
   const b = await c.bounds().catch(() => undefined)
-  return b && b.y + b.height > page.y && b.y < page.y + page.height ? Math.round(b.y - page.y) : undefined
+  return b && b.y + b.height > page.y && b.y < bottom ? Math.round(b.y - page.y) : undefined
 }
 const scrollUp = async (ticks: number) => {
   const page = await app.getByTestId('page').bounds()

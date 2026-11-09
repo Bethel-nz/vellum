@@ -6,6 +6,5 @@ import textarea from '../arc/textarea/textarea.module.css?inline'
 import checkbox from '../arc/checkbox/checkbox.module.css?inline'
 import segmented from '../arc/segmented-control/segmented-control.module.css?inline'
 
-// CSS minification can rewrite url(...) imports as quoted URLs. Constructed sheets allow neither.
 export const shadowStyles = [dialkit, foundation, button, textarea, checkbox, segmented, panel].join('\n')
   .replace(/@import\s*(?:url\([^)]*\)|"[^"]*"|'[^']*')[^;]*;/gi, '')

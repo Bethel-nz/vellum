@@ -1,5 +1,5 @@
-// A label on hover, after arc's tooltip: 3px offset, opacity over `instant`. Wraps the headless
-// GPUIX tooltip so every one shares the delay and the popup recipe.
+// A label on hover: 3px offset, opacity over `instant`. Every one shares the delay and the
+// popup recipe.
 
 import type { ReactNode } from 'react'
 import { motion } from './spring'

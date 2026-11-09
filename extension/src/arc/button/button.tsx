@@ -89,7 +89,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     if (typeof ref === "function") ref(node); else if (ref) ref.current = node;
   }, [ref]);
   // A trigger that anchors a menu, popover, or dialog keeps its rect still while pressed, so the layer never measures a scaled anchor.
-  // Radix triggers (asChild) pass aria-haspopup or data-state through; the stylesheet repeats the guard.
   const popup = props["aria-haspopup"];
   const anchorsLayer = (popup !== undefined && popup !== false && popup !== "false") || props.role === "combobox" || (props as Record<string, unknown>)["data-state"] !== undefined;
   const inert = disabled || loading || props["aria-disabled"] === true || props["aria-disabled"] === "true";

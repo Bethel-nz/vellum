@@ -9,8 +9,8 @@
 //     threads/<id>.jsonl           raw events, append-only, source of truth
 //     threads/<id>.md              readable transcript, rewritten on change
 
-// Reading is Bun.file's. Folders are node:fs's, and so is writing state: Bun.write is async only,
-// and a quit right after a change (⌘Q with a draft half written) must not lose it.
+// Writing state is synchronous: a quit right after a change (⌘Q with a draft half written)
+// must not lose it.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
@@ -60,8 +60,11 @@ export function writeJson(file: string, value: unknown) {
 export type Settings = {
   /** First-run setup was completed or explicitly skipped. */
   onboardingComplete?: boolean
-  /** Project folders whose hooks, MCP servers or plugins you've let run (core/agents.ts `projectConfig`). */
-  trustedFolders?: string[]
+  /**
+   * Project config you've let run (core/agents.ts `folderConfig`), by `agent:folder`: the
+   * fingerprint of the files you trusted. Changed files ask again.
+   */
+  trustedConfig?: Record<string, string>
   /** dark (default) or light. Older files say groknight, smoke or frost (ui/theme.ts materialNamed). */
   material?: 'dark' | 'light' | 'groknight' | 'smoke' | 'frost'
   /** Tab strip: always shown, collapsed while writing, or hidden (⌘⇧T reveals). */
@@ -103,6 +106,10 @@ export type Settings = {
   notify?: 'off' | 'asks' | 'all'
   /** Local active-time and agent-runtime counters, paused when false. */
   activityTracking?: boolean
+  /** Where exports go, each project in a folder of its own; unset is ~/Downloads/vellum/export. */
+  exportFolder?: string
+  /** The install the OS last learned Vellum's file types from. */
+  fileTypes?: string
   lastThreadId?: string
   /** Project shown when no note is open, and the last active note in each project. */
   lastProject?: string

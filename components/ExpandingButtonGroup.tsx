@@ -1,4 +1,4 @@
-// Arc's expanding pill, using the same width tween as the tab strip. The icon keeps its
+// An expanding pill, using the same width tween as the tab strip. The icon keeps its
 // inset while the label is revealed by clipping; the native button owns every press.
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useGpuixRequired, type EventPayload, type KeyEvent, type PublicInstance } from '@gpuix/react'
@@ -20,7 +20,7 @@ export type ExpandingButtonGroupItem = {
   popover?: ReactNode
 }
 
-// The status bar keeps its 28px outer height. Arc's 3px surround and fixed icon inset
+// The status bar keeps its 28px outer height; a 3px surround and fixed icon inset
 // leave a 22px inner pill, matching the rest of Vellum's compact controls.
 const height = 22
 const inset = 4

@@ -1,10 +1,13 @@
+import { useWindowSize } from '@gpuix/react'
 import { Button, Icon, Label, useM } from '../../components'
 import { navigation, pageInfo, slug, type SettingsPage } from './catalog'
 
 export function SettingsNavigation({ page, query, shown, onQuery, onOpen, onBack }: { page: SettingsPage; query: string; shown: (page: SettingsPage) => boolean; onQuery: (query: string) => void; onOpen: (page: SettingsPage) => void; onBack: () => void }) {
   const m = useM()
+  // Below 900 the navigation yields room to the page being edited.
+  const narrow = useWindowSize().width < 900
   const visible = navigation.map((group) => group.filter(shown)).filter((group) => group.length)
-  return <div testId="settings-navigation" style={{ display: 'flex', flexDirection: 'column', width: 248, flexShrink: 0, paddingTop: 24, paddingLeft: 10, paddingRight: 10, paddingBottom: 10 }}>
+  return <div testId="settings-navigation" style={{ display: 'flex', flexDirection: 'column', width: narrow ? 200 : 248, flexShrink: 0, paddingTop: 24, paddingLeft: 10, paddingRight: 10, paddingBottom: 10 }}>
     <Button onPress={onBack} testId="settings-done" title="Back to note (esc)" style={{ justifyContent: 'flex-start', height: 30, paddingLeft: 6, paddingRight: 6 }}><Icon name="chevronLeft" size={15} /><Label muted>Back to note</Label></Button>
     <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, height: 32, flexShrink: 0, marginTop: 8, paddingLeft: 10, paddingRight: 10, borderWidth: 1, borderColor: m.border, borderRadius: 10, backgroundColor: m.pane }}>
       <Icon name="search" size={14} color={m.textMuted} />

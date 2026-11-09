@@ -66,11 +66,9 @@ async function screenshot(tabId: number, name: string, box?: { x: number; y: num
 }
 
 /**
- * A page box (CSS pixels, nodeBox) cut out of a screenshot of what's on screen. The crop is done
- * here, not with the screenshot's `clip`: the Codex app's browser keeps a clip's size but drops its
- * offset, so every element capture came back as the page's top-left corner. The image's own width
- * gives its pixels per CSS pixel, which covers zoom and Retina. The part of the box off screen is
- * left out; nodeBox scrolls the element into view first.
+ * A page box (CSS pixels, nodeBox) cut out of a screenshot of what's on screen. The image's own
+ * width gives its pixels per CSS pixel, which covers zoom and Retina. The part of the box off
+ * screen is left out; nodeBox scrolls the element into view first.
  */
 async function cropped(tabId: number, box: { x: number; y: number; w: number; h: number }): Promise<string> {
   const { cssVisualViewport: view } = await command<{ cssVisualViewport: { pageX: number; pageY: number; clientWidth: number; clientHeight: number } }>(tabId, 'Page.getLayoutMetrics')
@@ -197,7 +195,7 @@ async function handle(message: WorkerMessage, sender: chrome.runtime.MessageSend
   if (sender.id !== chrome.runtime.id) throw new Error('This request did not come from Vellum Snapshot.')
   // Page-side scripts can request capture operations, but cannot read connection credentials.
   const popup = sender.url === chrome.runtime.getURL('popup.html')
-  if (sender.tab && !popup && message.type !== 'toolbar-presence' && message.type !== 'capture' && message.type !== 'snapshot' && message.type !== 'page-screenshot' && message.type !== 'capture-status' && message.type !== 'appearance' && message.type !== 'notes' && message.type !== 'settings' && message.type !== 'target' && message.type !== 'bridge-settings') throw new Error('This action is only available in the extension popup.')
+  if (sender.tab && !popup && message.type !== 'toolbar-presence' && message.type !== 'capture' && message.type !== 'snapshot' && message.type !== 'related-shots' && message.type !== 'page-screenshot' && message.type !== 'capture-status' && message.type !== 'appearance' && message.type !== 'notes' && message.type !== 'settings' && message.type !== 'target' && message.type !== 'bridge-settings') throw new Error('This action is only available in the extension popup.')
   switch (message.type) {
     case 'toolbar-presence': {
       if (!sender.tab || sender.frameId !== 0) throw new Error('Toolbar presence requires the top-frame extension sender')
@@ -235,6 +233,31 @@ async function handle(message: WorkerMessage, sender: chrome.runtime.MessageSend
         await content(tabId, { type: 'restore-animations' }).catch(() => {})
         if (attached) await chrome.debugger.detach({ tabId }).catch(() => {})
     await release?.().catch(() => {})
+        busy.delete(tabId)
+      }
+    }
+    case 'related-shots': {
+      // Pictures of what a recorded interaction opened, each alone, taken as the recording ends while
+      // they're still open. One that can't be pictured (gone, or not drawn) is skipped, not an error.
+      const tabId = sender.tab?.id ?? await activeTab()
+      if (busy.has(tabId)) throw new Error('A capture is already being prepared.')
+      busy.add(tabId)
+      let attached = false
+      let release: (() => Promise<void>) | undefined
+      try {
+        release = await captureLease(tabId)
+        await chrome.debugger.attach({ tabId }, '1.3'); attached = true
+        await command(tabId, 'Page.enable')
+        await command(tabId, 'DOM.enable')
+        const shots: Array<Upload | null> = []
+        for (const ref of message.refs.slice(0, 5)) {
+          if (!/^[\w-]{1,100}$/.test(ref)) { shots.push(null); continue }
+          shots.push(await nodeBox(tabId, ref).then((box) => screenshot(tabId, `${ref}.png`, box, ref)).catch(() => null))
+        }
+        return shots
+      } finally {
+        if (attached) await chrome.debugger.detach({ tabId }).catch(() => {})
+        await release?.().catch(() => {})
         busy.delete(tabId)
       }
     }

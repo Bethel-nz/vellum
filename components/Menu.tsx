@@ -1,6 +1,6 @@
-// A dropdown menu, after arc's dropdown-menu and Glass's account menu.
+// A dropdown menu.
 //
-// Motion (arc): the panel arrives from the trigger side (opacity + 5px offset, `fast` on the enter
+// Motion: the panel arrives from the trigger side (opacity + 5px offset, `fast` on the enter
 // curve), rows follow with a 35ms stagger capped at four, and one highlight glides between rows on
 // the snappy curve. The keyboard moves the highlight instantly.
 //
@@ -139,7 +139,12 @@ function MenuPanel({ onClose, items, header, width, side, align, testId, onActiv
     ;(it as { onSelect: () => void }).onSelect()
   }
   const onKeyDown = (e: KeyEvent) => {
-    if (e.key === 'down' || (e.modifiers?.ctrl && e.key === 'n')) {
+    // Escape closes the menu alone, not the pane or sheet it sits in.
+    if (e.key === 'escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      onClose()
+    } else if (e.key === 'down' || (e.modifiers?.ctrl && e.key === 'n')) {
       e.preventDefault()
       move(1)
     } else if (e.key === 'up' || (e.modifiers?.ctrl && e.key === 'p')) {

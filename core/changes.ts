@@ -4,6 +4,7 @@
 // it stands in for that turn's edit blocks, so files a shell command changed are there too. Selected hunks go into your draft as ± pills (hunk tags) carrying the hunk and
 // your comments on its lines; `promptFor` spells them out for Claude.
 
+import { applyPatch, createTwoFilesPatch, parsePatch, reversePatch } from 'diff'
 import { hunksOnly, type Block, type HunkNote, type Tag, type Thread } from './threads'
 
 export type LineRef = { side: 'old' | 'new'; line: number }
@@ -203,4 +204,25 @@ export function noteRows(rows: HunkRow[], n: HunkNote): [number, number] | undef
   const a = rowOf(rows, n)
   const b = n.endLine ? rowOf(rows, { side: n.endSide ?? n.side, line: n.endLine }) : a
   return a < 0 || b < 0 ? undefined : [Math.min(a, b), Math.max(a, b)]
+}
+
+/** The note's edits as one whole-file diff, by undoing its hunks newest first; undefined if one no longer fits. */
+export function wholeFileDiff(rel: string, current: string, hunks: Hunk[]): string | undefined {
+  let before = current
+  for (const h of [...hunks].reverse()) {
+    const [patch] = parsePatch(`--- a/${rel}\n+++ b/${rel}\n${h.patch.endsWith('\n') ? h.patch : `${h.patch}\n`}`)
+    if (!patch) return undefined
+    const back = applyPatch(before, reversePatch(patch))
+    if (back === false) return undefined
+    before = back
+  }
+  return fullDiff(rel, before, current)
+}
+
+/** Two versions of a file as one diff with every line in it; undefined when they're the same. */
+export function fullDiff(rel: string, before: string, after: string): string | undefined {
+  if (before === after) return undefined
+  const whole = createTwoFilesPatch(rel, rel, before, after, '', '', { context: Number.MAX_SAFE_INTEGER })
+  // The same header every other <diff> here gets, not `Index:` and a rule.
+  return `--- a/${rel}\n+++ b/${rel}\n${whole.slice(whole.indexOf('@@'))}`
 }

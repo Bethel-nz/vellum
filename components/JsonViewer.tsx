@@ -1,11 +1,11 @@
-// Arc's JSON tree, translated to native rows. Animated visuals never own clicks.
+// A JSON tree of native rows. Animated visuals never own clicks.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useGpuixRequired, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { motion } from './spring'
 import { Button as Base } from '@gpuix/react/button'
 import { jsonBranch, jsonBranches, jsonCopy, jsonCount, jsonEntries, jsonRows, jsonText, jsonWithin, searchJson, type JsonKind, type JsonRow } from '../core/json'
 import { copyText } from '../core/platform'
-import { font, radiusBase, radiusXl } from '../ui/theme'
+import { font, radiusBase, radiusXl, scrollbarWidth } from '../ui/theme'
 import type { IconName } from '../ui/icons'
 import { Button } from './Button'
 import { Icon } from './Icon'
@@ -92,8 +92,7 @@ export function JsonViewer({ data, rootName = 'root', defaultExpandDepth = 1, ex
       const target = targets.current.get(active)
       if (target) renderer.focusElement?.(target.id)
     }
-    // GPUIX scroll offsets are negative. Scroll directly once the row heights have settled;
-    // scroll position is not one of the renderer's tweenable style properties.
+    // Scroll directly once the row heights have settled.
     const timer = setTimeout(() => {
       const node = tree.current
       const bounds = node && renderer.getElementBounds?.(node.id)
@@ -190,7 +189,7 @@ export function JsonViewer({ data, rootName = 'root', defaultExpandDepth = 1, ex
       <ToolButton name="expandAll" title="Expand all" testId={`${testId}-expand`} onPress={() => { setExpanded(new Set(jsonBranches(data, rootName))); setClosed({ needle, paths: new Set() }); move(active, false) }} />
       <ToolButton name="collapseAll" title="Collapse all" testId={`${testId}-collapse`} onPress={() => { setExpanded(new Set(jsonBranches(data, rootName, 1))); setClosed({ needle, paths: new Set([...(search?.ancestors ?? [])].filter((id) => id !== rootName)) }); setPages({}); move(rootName, false) }} />
     </div> : null}
-    <div ref={tree} testId={`${testId}-tree`} role="tree" aria-label={label} onMouseLeave={() => setHovered(undefined)} style={{ minHeight: 0, maxHeight, overflowY: 'scroll', scrollbarColor: m.scrollbar, scrollbarWidth: 6 }}>
+    <div ref={tree} testId={`${testId}-tree`} role="tree" aria-label={label} onMouseLeave={() => setHovered(undefined)} style={{ minHeight: 0, maxHeight, overflowY: 'scroll', scrollbarColor: m.scrollbar, scrollbarWidth }}>
       <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', flexShrink: 0, margin: 6 }}>
         <motion.div initial={false} animate={{ top: activeIndex * ROW + 1 }} transition={tween(reduced || active !== activeRaw ? { duration: 0 } : spring.smooth)} style={{ position: 'absolute', left: 0, right: 0, height: ROW - 2, borderRadius: radiusBase, backgroundColor: m.chipBg, pointerEvents: 'none' }} />
         {rows.map((row, index) => {

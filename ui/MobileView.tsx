@@ -230,9 +230,8 @@ export function MobileView({ radius, onClose, onLeave, onResize, onCapture, onMo
       <Button onPress={() => connected ? disconnect() : void connect().catch((e) => setError((e as Error).message))} disabled={!device || busy} testId="mobile-connect" variant={connected ? 'quiet' : 'solid'}><Label variant={connected ? 'quiet' : 'solid'}>{busy ? 'Starting…' : connected ? 'Disconnect' : device?.state === 'Booted' ? 'Connect' : 'Boot'}</Label></Button>
     </div>
     <div
-      // A press anywhere else in the pane (the margin, the frame) is the pane's too: GPUIX would
-      // start a text selection there and carry it into the note, so the window cover takes the
-      // drag and nothing gets selected.
+      // A press anywhere else in the pane (the margin, the frame) is the pane's too: the window
+      // cover takes the drag and nothing gets selected.
       onMouseDown={(event) => { if (!down.current) hold(event) }}
       onLayout={(event) => { const width = Math.round(event.width ?? 0); const height = Math.round(event.height ?? 0); if (width > 0 && height > 0) setRoom((previous) => previous.width === width && previous.height === height ? previous : { width, height }) }} style={{ flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
       <div style={{ position: 'relative', width: screenWidth + bezel * 2 + 8, height: screenHeight + bezel * 2, flexShrink: 0 }}>

@@ -6,9 +6,8 @@
 //   clipboard  pbcopy/pbpaste · PowerShell Set-/Get-Clipboard · wl-copy/xclip/xsel
 //   folders    open · explorer · xdg-open
 //   shell      $SHELL -lc · %ComSpec% /d /s /c
-//   PTY        Bun's PTY is POSIX only, so on Windows interactive `claude` opens in a console
+//   PTY        POSIX only, so on Windows interactive `claude` opens in a console
 
-// Links, folders and the checks' appended log are node:fs's work; reading and copying files is Bun.file's.
 import { appendFileSync, linkSync, mkdirSync, statSync, symlinkSync } from 'node:fs'
 import { homedir, userInfo } from 'node:os'
 import path from 'node:path'
@@ -17,14 +16,14 @@ export type OS = 'mac' | 'windows' | 'linux'
 export const os: OS = process.platform === 'darwin' ? 'mac' : process.platform === 'win32' ? 'windows' : 'linux'
 export const isMac = os === 'mac'
 /**
- * Running as the compiled Vellum binary (scripts/build-app.ts) rather than from source. There is
- * no Bun beside it to run a script, so it runs its own parts instead (bin.ts).
+ * Running as the compiled Vellum binary (scripts/build-app.ts) rather than from source,
+ * running its own helper parts (bin.ts).
  */
 export const compiled = /^(\/\$bunfs|B:\\~BUN)/.test(import.meta.dir)
 
 type Mods = { shift?: boolean; ctrl?: boolean; alt?: boolean; cmd?: boolean } | undefined
 
-/** The app's command key is held: ⌘ on macOS, Ctrl elsewhere (GPUIX's `cmd` is Super/Win there). */
+/** The app's command key is held: ⌘ on macOS, Ctrl elsewhere. */
 export function primary(mods: Mods): boolean {
   return Boolean(isMac ? mods?.cmd : mods?.ctrl && !mods.cmd)
 }
@@ -96,7 +95,7 @@ const pasteCommand = () =>
           ['xsel', '--clipboard', '--output'],
         ])
 
-/** Put text on the system clipboard (GPUIX has no clipboard API yet). False when nothing can. */
+/** Put text on the system clipboard. False when nothing can. */
 export function copyText(text: string): boolean {
   const argv = copyCommand()
   if (!argv) return false
@@ -159,7 +158,7 @@ export function loginShellPath(): string | undefined {
   return r.stdout.toString().match(new RegExp(`${mark}(.+)${mark}`))?.[1]
 }
 
-/** Bun's PTY is POSIX only; on Windows a spawn with `terminal` fails with ENOTSUP. */
+/** PTY support: POSIX only, off on Windows. */
 export const hasPty = os !== 'windows'
 
 let claudePath: string | undefined

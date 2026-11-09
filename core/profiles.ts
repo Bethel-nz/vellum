@@ -3,7 +3,6 @@
 // Vellum never reads, copies or displays credential files. A profile folder links your setup and
 // history from ~/.claude (core/accounts.ts), so the login is the only thing that differs.
 
-// mkdir with a mode has no Bun.file form.
 import { mkdirSync } from 'node:fs'
 import { linkAccount } from './accounts'
 import { accountHome, agentFor, type AgentId } from './agents'

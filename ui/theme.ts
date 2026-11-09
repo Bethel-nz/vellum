@@ -19,6 +19,9 @@ export function materialNamed(name: string | undefined): MaterialName {
 }
 
 export const shellInset = 4
+export const scrollbarWidth = 4
+/** How far a scroller flush with a card's hairline sits in, so its thumb clears the edge and the corner's curve. */
+export const scrollbarInset = 4
 export const radiusBase = 10
 export const radiusXl = 14
 export const windowRadius = radiusXl + shellInset
@@ -52,14 +55,13 @@ export const font = {
   termAdvance: hasTermFont ? 1266 / 2048 : 0.6,
   /** File-type glyphs (components/FileIcon.tsx); undefined when no Nerd Font is installed. */
   icons: nerd,
-  /** If a family fails to register, GPUI falls back per glyph; these are the named fallbacks. */
+  /** Named fallbacks, used per glyph when a family fails to register. */
   sansFallback: 'Inter',
   monoFallback: 'SF Mono',
 }
 
 export const type = {
-  // Size-specific tracking is not available in GPUI text, so hierarchy comes
-  // from size + weight + leading as a set.
+  // Hierarchy comes from size + weight + leading as a set (no tracking).
   body: { fontSize: 14, lineHeight: 22 },
   user: { fontSize: 14.5, lineHeight: 23 },
   meta: { fontSize: 11.5, lineHeight: 16 },
@@ -353,7 +355,7 @@ export function nativeTheme(m: Material): GpuixTheme {
       mdBlockGap: 12,
       mdHeadingSizes: [19, 16, 14.5, 14],
       mdHeadingLineHeights: [26, 23, 22, 22],
-      mdCodeRadius: concentric(radiusBase, 2),
+      mdCodeRadius: radiusXl,
       // No language label on code blocks: the header row collapses to nothing.
       mdCodeHeaderTextSize: 0,
       mdCodeHeaderPaddingY: 0,
@@ -371,21 +373,21 @@ export function nativeTheme(m: Material): GpuixTheme {
 }
 
 /**
- * Claude's prose reads a step back from yours: your paragraphs are `text` at medium weight,
- * replies sit 85% of the way from `textUi` to `textMuted`: 7.5–8:1 on every material against
- * your 14.5–20:1, a step you see at a glance and still comfortable for a long reply (a 60% step
- * read as the same colour next to yours). Code, inline code and bold keep their own colours.
+ * Claude's prose is primary reading, so it is `textUi`, not a step toward `textMuted`, which
+ * made most of the note look secondary. Your paragraphs stay apart by `text` at medium weight
+ * and the gutter marks. Code, inline code and bold keep their own colours.
  */
-export const replyText = (m: Material) => mix(m.textUi, m.textMuted, 0.85)
+export const replyText = (m: Material) => m.textUi
+
+/**
+ * A card that sits in the note (code block, diff, tool activity, an in-note alert): one surface,
+ * one hairline, one radius, so the note's blocks read as a family. Rows inside inset 4px with
+ * `concentric(radiusXl, 5)`: GPUIX clips to a rectangle, not to this curve.
+ */
+export const noteCard = (m: Material) => ({ backgroundColor: m.codeBg, borderWidth: 1, borderColor: m.border, borderRadius: radiusXl })
 
 export function replyTheme(m: Material): GpuixTheme {
   return { ...nativeTheme(m), text: replyText(m) }
-}
-
-/** Two opaque #rrggbb colours, `t` of the way from `a` to `b`. */
-function mix(a: string, b: string, t: number) {
-  const ch = (hex: string, i: number) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16)
-  return `#${[0, 1, 2].map((i) => Math.round(ch(a, i) + (ch(b, i) - ch(a, i)) * t).toString(16).padStart(2, '0')).join('')}`
 }
 
 // ---------------------------------------------------------------- diffs

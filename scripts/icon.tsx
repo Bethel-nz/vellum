@@ -1,4 +1,4 @@
-// The app icon, drawn with GPUIX and saved as assets/icon.png (1024×1024) for the Dock.
+// The app icon, saved as assets/icon.png (1024×1024) for the Dock.
 // A placeholder until real artwork: Vellum's "V" in the accent on the dark pane, on the macOS
 // icon grid (an 824px rounded square centred on 1024, radius 185).
 //   bun scripts/icon.tsx

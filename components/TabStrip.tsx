@@ -51,7 +51,7 @@ export type StripTab = {
 export type StripTerm = { id: string; title: string; running: boolean }
 
 /** The pill fits its title, within reason. Geist 12.5/500 averages ~6.9px a character. */
-const pillWidth = (t: StripTab, cap = 280) => Math.round(Math.min(cap, Math.max(124, t.title.length * 6.9 + 30 + 54)))
+const pillWidth = (t: StripTab, cap = 380) => Math.round(Math.min(cap, Math.max(160, t.title.length * 6.9 + 30 + 38)))
 
 export function TabStrip({
   tabs,
@@ -107,7 +107,7 @@ export function TabStrip({
   // Under ~1100px the centred row collides with the leading/trailing clusters:
   // cap the pill, hide the changes summary, let the account collapse to its dot (app.tsx).
   const collapsed = bandWidth > 0 && (bandWidth - centreWidth) < 320
-  const cap = collapsed ? 180 : 280
+  const cap = collapsed ? 220 : 380
   const noteIndex = view === 'notes' ? tabs.findIndex((tab) => tab.id === activeId) : -1
   const termIndex = view === 'terminal' ? terms.findIndex((tab) => tab.id === activeTermId) : -1
   const noteWidth = tabs.reduce((sum, tab, i) => sum + (i === noteIndex ? pillWidth(tab, cap) : BOX) + HIT_X * 2, 0)
@@ -222,11 +222,13 @@ function Tab({
   // No menu to open: the pill shows its ✕ all the time, as a terminal's does.
   const bare = term || tab.plain
   const tone = tab.needsYou ? m.blue : tab.running ? m.accent : tab.unread ? m.textUi : hover ? m.textFaint : m.selected
+  // A quiet note is an outline, a page waiting; colour fills it only when the note has something to say.
+  const idle = !active && !tab.needsYou && !tab.running && !tab.unread && !hover
   const box = (
     <div style={{ height: 28, paddingLeft: HIT_X, paddingRight: HIT_X, display: 'flex', alignItems: 'center' }}>
       <motion.div
         initial={false}
-        animate={{ width: active ? pillWidth(tab, cap ?? 280) : BOX, height: active ? PILL : BOX, borderRadius: active ? controlRadius : 3 }}
+        animate={{ width: active ? pillWidth(tab, cap ?? 380) : BOX, height: active ? PILL : BOX, borderRadius: active ? controlRadius : 3 }}
         transition={tween(spring.morph)}
         style={{
           // A motion.div keeps presses to itself; let them reach the tab button.
@@ -235,22 +237,20 @@ function Tab({
           flexDirection: 'row',
           alignItems: 'center',
           overflow: 'hidden',
-          backgroundColor: active ? '#00000000' : tone,
-          borderWidth: 0,
-          borderColor: m.borderFocused,
+          backgroundColor: active || idle ? '#00000000' : tone,
+          borderWidth: idle ? 1 : 0,
+          borderColor: m.textFaint,
         }}
       >
         {active ? (
           <div testId={bare ? undefined : 'title-menu'} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 7, flexGrow: 1, minWidth: 0, paddingLeft: 10, paddingRight: 6 }}>
             {term ? null : tab.running ? <Dot color={m.accent} size={6} pulse /> : <Dot color={tab.dot ?? m.textFaint} size={6} />}
             <text style={{ flexShrink: 1, minWidth: 0, fontSize: 12.5, lineHeight: 16, fontWeight: 500, color: m.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{tab.title}</text>
-            {bare ? null : <Icon name="chevronDown" size={11} color={menuOpen ? m.text : m.textFaint} />}
             <div style={{ flexGrow: 1 }} />
-            {hover || bare ? (
-              <div style={{ width: 18, height: 18, flexShrink: 0 }} />
-            ) : (
-              <text style={{ fontSize: 10.5, lineHeight: 14, color: m.textFaint, fontFamily: font.mono, flexShrink: 0 }}>{tab.time}</text>
-            )}
+            {/* The menu's chevron sits at the far end; on hover the ✕ takes its place. */}
+            <div style={{ width: 18, height: 18, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {bare || hover ? null : <Icon name="chevronDown" size={11} color={menuOpen ? m.text : m.textFaint} />}
+            </div>
           </div>
         ) : null}
       </motion.div>

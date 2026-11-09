@@ -6,7 +6,7 @@ test('ACK follows accepted image submission, skips a stalled backlog and keeps v
   let release: (() => void) | undefined, socket: any
   const gate = new Promise<void>(resolve => { release = resolve })
   const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request, server) { return server.upgrade(request) ? undefined : new Response() }, websocket: { open(ws) { socket = ws }, message(_ws, message) { messages.push(JSON.parse(String(message))) } } })
-  const stream = new BrowserStream(server.port, async frame => { painted.push(frame.seq); expect(frame.width).toBe(1024); expect(frame.viewportWidth).toBe(800); if (frame.seq === 1) await gate; return true }, () => {})
+  const stream = new BrowserStream(server.port!, async frame => { painted.push(frame.seq); expect(frame.width).toBe(1024); expect(frame.viewportWidth).toBe(800); if (frame.seq === 1) await gate; return true }, () => {})
   try {
     for (let i = 0; i < 40 && !socket; i++) await Bun.sleep(5)
     expect(socket).toBeDefined()

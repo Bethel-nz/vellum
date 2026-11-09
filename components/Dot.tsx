@@ -1,5 +1,5 @@
 // A status / identity dot. `pulse` breathes for a running agent: 1.8s loop on the material
-// curve. GPUIX has no repeating motion, so the dot flips its target every half cycle.
+// curve, its target flipping every half cycle.
 
 import { useEffect, useState } from 'react'
 import { motion } from './spring'

@@ -1,4 +1,4 @@
-// Arc's model/effort composition, backed only by the current agent's options.
+// A model/effort composition, backed only by the current agent's options.
 // Rows have static native click overlays; animated copy never owns a press.
 import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react'
 import { DismissableLayer, useGpuixRequired, useWindowSize, type KeyEvent, type PublicInstance } from '@gpuix/react'
@@ -7,7 +7,7 @@ import { Button as Base } from '@gpuix/react/button'
 import { FloatingLayer } from '@gpuix/react/floating'
 import type { Think } from '../core/asks'
 import { effortLabel, fallbackEfforts, shortModel, type EffortOption, type ModelOption } from '../core/models'
-import { concentric, elevation, radiusBase, radiusXl } from '../ui/theme'
+import { concentric, elevation, radiusBase, radiusXl, scrollbarWidth } from '../ui/theme'
 import { useAgent } from './AgentContext'
 import { Icon } from './Icon'
 import { Button } from './Button'
@@ -120,12 +120,12 @@ export function ModelPicker({ models, model, resolvedModel, efforts = fallbackEf
               <Icon name="search" size={13} color={m.textMuted} />
               <input ref={search} testId="model-search" value={query} placeholder="Search models…" onChange={(event) => { keyboardNav.current = true; setQuery(event.value ?? ''); setActive(0); setSub(null) }} onSubmit={() => activate(active)} onKeyDown={(event) => {
                 if (event.key === 'escape') { event.preventDefault(); if (sub) setSub(null); else onClose() }
-                else if (['down', 'up', 'right'].includes(event.key) || event.modifiers?.ctrl && ['n', 'p'].includes(event.key)) navigate(event)
+                else if (['down', 'up', 'right'].includes(event.key ?? '') || event.modifiers?.ctrl && ['n', 'p'].includes(event.key ?? '')) navigate(event)
                 event.stopPropagation()
               }} style={{ flexGrow: 1, minWidth: 0, fontSize: 12.5, color: m.text }} />
               {query ? <Button onPress={() => { keyboardNav.current = true; setQuery(''); setActive(0); if (search.current) renderer.focusElement?.(search.current.id) }} testId="model-search-clear" title="Clear model search" style={{ width: 22, paddingLeft: 0, paddingRight: 0 }}><Icon name="x" size={11} /></Button> : null}
             </div>
-            <div testId="model-results" style={{ maxHeight: Math.max(120, Math.min(360, window.height - 190)), minHeight: 0, overflowY: 'scroll', pointerEvents: 'auto', scrollbarColor: m.scrollbar, scrollbarWidth: 5 }}>
+            <div testId="model-results" style={{ maxHeight: Math.max(120, Math.min(360, window.height - 190)), minHeight: 0, overflowY: 'scroll', pointerEvents: 'auto', scrollbarColor: m.scrollbar, scrollbarWidth }}>
               {filtered.length ? filtered.map((option, index) => <PickerRow key={option.value} nodeRef={(node) => { rows.current[index] = node }} label={modelTitle(option, resolvedModel)} description={modelDetail(option)} icon={<Icon name={agent.id} size={18} color={agent.id === 'claude' ? '#d97757' : m.textMuted} />} checked={(model ?? 'default') === option.value} selected={active === index && !sub} index={index} onHover={(moved) => { if (allowHover(moved)) { setActive(index); setSub(null) } }} onPress={() => choose(option)} testId={`model-${option.value}`} />) : <text testId="model-search-empty" style={{ padding: 12, fontSize: 12, lineHeight: 18, color: m.textMuted }}>No matching models.</text>}
             </div>
             <div style={{ height: 1, margin: 8, backgroundColor: m.border }} />

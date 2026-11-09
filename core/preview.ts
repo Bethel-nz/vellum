@@ -43,10 +43,10 @@ export function previewKind(file: string): PreviewKind {
   return 'code'
 }
 
-// GPUIX's <code> highlights a fixed set of grammars (bash, c, css, go, html, js and ts, json,
-// markdown, python, rust, toml, yaml) and leaves everything else plain. A file of a type it has no
-// grammar for borrows the nearest one it has, close enough for comments, strings and keywords;
-// SQL and Lua have none near, so they stay plain. Undefined leaves the pick to <code>.
+// Code highlighting covers a fixed set of grammars (bash, c, css, go, html, js and ts, json,
+// markdown, python, rust, toml, yaml); everything else stays plain. A file of a type with no
+// grammar borrows the nearest one, close enough for comments, strings and keywords; SQL and Lua
+// have none near, so they stay plain. Undefined leaves the pick to <code>.
 const BORROWED: Record<string, string> = {
   '.xml': 'html', '.svg': 'html', '.plist': 'html', '.xhtml': 'html', '.vue': 'html', '.svelte': 'html',
   '.env': 'bash', '.envrc': 'bash', '.zsh': 'bash', '.zshrc': 'bash', '.bashrc': 'bash', '.profile': 'bash', '.gitignore': 'bash', '.dockerignore': 'bash', '.gitattributes': 'bash', '.ini': 'bash', '.cfg': 'bash', '.conf': 'bash', '.mk': 'bash',

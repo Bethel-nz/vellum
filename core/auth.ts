@@ -3,15 +3,12 @@
 // Who: `claude auth status --json` under the account's CLAUDE_CONFIG_DIR. It reads the login
 // without a model turn (loggedIn, email, subscriptionType; exit 1 when logged out).
 //
-// Logging in follows ACP's terminal authentication: the agent lists its methods at initialize
-// (the Claude adapter offers `claude-ai-login` and `console-login`), and the client runs the agent
-// program again with the method's args in a terminal the person can see. Exit 0 means it worked.
-// For the Claude adapter that is `--cli auth login --claudeai`, which hands over to your `claude`.
-// OpenCode's is `opencode acp --login`.
+// Logging in follows ACP's terminal authentication: the agent lists its methods at initialize,
+// and the client runs the agent program again with the method's args in a terminal the person
+// can see. Exit 0 means it worked.
 //
-// Codex's adapter only offers methods it runs itself (a browser it opens, a key in its env), so
-// Vellum runs `codex login` in the same terminal instead, under the account's CODEX_HOME, and
-// asks `codex login status` who's in. Neither starts a session.
+// Codex has no terminal method, so Vellum runs `codex login` in the same terminal instead, under
+// the account's CODEX_HOME, and asks `codex login status` who's in. Neither starts a session.
 
 import { homedir } from 'node:os'
 import path from 'node:path'
@@ -109,7 +106,7 @@ function codexMethods(): LoginMethod[] {
   ]
 }
 
-/** What the Claude adapter offers today, for when asking it fails. */
+/** Known methods, for when asking the agent fails. */
 const knownMethods: LoginMethod[] = [
   { id: 'claude-ai-login', name: 'Claude Subscription', args: ['--cli', 'auth', 'login', '--claudeai'], env: {} },
   { id: 'console-login', name: 'Anthropic Console', description: 'API usage billing', args: ['--cli', 'auth', 'login', '--console'], env: {} },
@@ -144,14 +141,12 @@ export function loginMethods(profile: Profile): Promise<LoginMethod[]> {
 }
 
 /**
- * argv and env for one login method under an account, and how it reads (`claude auth login …`).
- * An account that was logged in before asks for the same email again (`--email`, which claude's
- * login takes; an addition to the method's args, so the browser offers the right account).
+ * argv and env for one login method under an account. An account that was logged in
+ * before asks for the same email again, so the browser offers the right account.
  */
 export function loginCommand(profile: Profile, method: LoginMethod): { argv: string[]; env: Record<string, string>; label: string } {
   if (method.argv) return { argv: method.argv, env: { ...profileEnv(profile), ...method.env }, label: [path.basename(method.argv[0]!), ...method.argv.slice(1)].join(' ') }
   const login = method.args.includes('login')
-  // `--email` is claude's login flag; other agents' logins get the method's args as they are.
   const args = [...method.args, ...(login && profile.email && agentFor(profile).id === 'claude' ? ['--email', profile.email] : [])]
   const claude = agentFor(profile).id === 'claude'
   const label = claude ? ['claude', ...args.filter((a) => a !== '--cli')].join(' ') : [path.basename(agentArgv(profile)[0]!), ...agentArgv(profile).slice(1), ...args].join(' ')

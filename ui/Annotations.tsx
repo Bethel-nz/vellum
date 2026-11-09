@@ -5,8 +5,8 @@ import { Button as Base } from '@gpuix/react/button'
 import { AnimatePresence, motion } from '../components/spring'
 import { spring, tween, useReducedMotion } from '../components/motion'
 import { Scroll } from '../components/Scroll'
-import { font, radiusBase, radiusXl } from './theme'
-import { Button, closedByOutsidePress, Icon, Label, Menu, Meta, Segmented, SidePanel, type MenuItem } from '../components'
+import { font, radiusBase, radiusXl, scrollbarWidth } from './theme'
+import { Button, CloseButton, closedByOutsidePress, Icon, Label, Menu, Meta, Segmented, SidePanel, type MenuItem } from '../components'
 import { annotationPage, captureOpen, type AnnotationCapture } from '../core/annotations'
 import type { CaptureStatus, SavedCapture } from '../core/capture'
 import { captureDir } from '../core/captures'
@@ -83,17 +83,18 @@ export function Annotations({ open, onClose, captures, notes, onOpen, onInspect,
       <Icon name="pencil" size={15} color={m.textMuted} />
       <text style={{ fontSize: 14, lineHeight: 20, fontWeight: 600, color: m.text }}>Annotations</text>
       <div style={{ flexGrow: 1 }} />
-      <Button onPress={onClose} title="Close annotations" testId="annotations-close"><Icon name="x" size={14} /></Button>
+      <CloseButton onPress={onClose} title="Close annotations (esc)" testId="annotations-close" />
     </div>
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingLeft: 16, paddingRight: 16, paddingBottom: 16, flexShrink: 0 }}>
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, height: 34, paddingLeft: 11, paddingRight: 11, borderRadius: radiusBase, backgroundColor: m.chipBg, flexGrow: 1, minWidth: 0 }}>
-          <Icon name="search" size={14} color={m.textMuted} />
-          <input ref={input} value={query} testId="annotations-search" placeholder="Search annotations…" onChange={(event) => setQuery(event.value ?? '')} style={{ flexGrow: 1, minWidth: 0, fontSize: 12.5, color: m.text }} />
+        {/* The same search pill and Filters pill as the Library (ui/SearchResults.tsx). */}
+        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 9, height: 38, paddingLeft: 12, paddingRight: 12, borderRadius: 19, backgroundColor: m.chipBg, flexGrow: 1, minWidth: 0 }}>
+          <Icon name="search" size={16} />
+          <input ref={input} value={query} testId="annotations-search" placeholder="Search annotations…" onChange={(event) => setQuery(event.value ?? '')} style={{ flexGrow: 1, minWidth: 0, fontSize: 13.5, color: m.text }} />
         </div>
         <div onKeyDown={(event) => { if (event.key === 'escape' && filterMenu) { event.preventDefault(); event.stopPropagation(); setFilterMenu(false) } }} style={{ position: 'relative', flexShrink: 0 }}>
-          <Button testId="annotations-filter" selected={Boolean(host || project)} title="Filter by site or project" onPress={() => setFilterMenu((value) => !value && !closedByOutsidePress('annotations-filter'))} style={{ height: 30, paddingLeft: 8, paddingRight: 8 }}><Icon name="settings" size={14} /><Label>Filters</Label></Button>
-          <Menu open={filterMenu} onClose={() => setFilterMenu(false)} items={filters} align="end" width={280} closeKey="annotations-filter" testId="annotations-filters" />
+          <Button testId="annotations-filter" selected={filterMenu || Boolean(host || project)} title="Filter by site or project" onPress={() => setFilterMenu((value) => !value && !closedByOutsidePress('annotations-filter'))} style={{ height: 38, paddingLeft: 12, paddingRight: 12, borderRadius: 19, borderWidth: 1, borderColor: m.border }}><Icon name="settings" size={15} /><Label>Filters</Label></Button>
+          <Menu open={filterMenu} onClose={() => setFilterMenu(false)} items={filters} side="bottom" align="end" width={280} closeKey="annotations-filter" testId="annotations-filters" />
         </div>
       </div>
       <Segmented pill testId="annotations-state" value={filter} onChange={setFilter} width="fill" options={([
@@ -103,7 +104,7 @@ export function Annotations({ open, onClose, captures, notes, onOpen, onInspect,
       {error ? <text style={{ fontSize: 12, lineHeight: 17, color: m.danger }}>{error}</text> : null}
     </div>
     {!filtered.length ? <div testId="annotations-empty" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 7 }}><text style={{ fontSize: 13, lineHeight: 19, color: m.textUi }}>{captures.length ? 'No annotations match.' : 'No annotations yet.'}</text><text style={{ fontSize: 12, lineHeight: 18, color: m.textMuted }}>{captures.length ? 'Try another filter or search.' : 'Select elements with Vellum Snapshot and send them to a note.'}</text></div> : null}
-    <virtual-list {...window.props} testId="annotations-list" alignment="top" estimatedItemHeight={132} overdraw={400} style={{ flexGrow: 1, minHeight: 0, marginLeft: 16, marginRight: 16, marginBottom: 16, borderRadius: radiusXl, borderWidth: filtered.length ? 1 : 0, borderColor: m.border, backgroundColor: m.pane, scrollbarColor: m.scrollbar, scrollbarWidth: 6 }}>
+    <virtual-list {...window.props} testId="annotations-list" alignment="top" estimatedItemHeight={132} overdraw={400} style={{ flexGrow: 1, minHeight: 0, marginLeft: 16, marginRight: 16, marginBottom: 16, borderRadius: radiusXl, borderWidth: filtered.length ? 1 : 0, borderColor: m.border, backgroundColor: m.pane, scrollbarColor: m.scrollbar, scrollbarWidth }}>
       {filtered.slice(window.start, window.end).map(({ saved, note }) => {
         const id = identity(saved)
         const isExpanded = expanded === id
@@ -142,7 +143,7 @@ export function Annotations({ open, onClose, captures, notes, onOpen, onInspect,
                 { kind: 'separator' },
                 captureOpen(saved) ? { label: 'Dismiss', icon: 'x', testId: `annotation-dismiss-${saved.capture.id}`, onSelect: () => onStatus(saved, 'dismissed') } : { label: 'Reopen', icon: 'refresh', testId: `annotation-reopen-${saved.capture.id}`, onSelect: () => onStatus(saved, 'queued') },
               ]} />
-              <Menu open={routeMenu === id} onClose={() => setRouteMenu(undefined)} align="end" width={300} closeKey={`annotation-route-${id}`} testId="annotation-route-menu" header={(submit) => <div style={{ padding: 8 }}><input onSubmit={submit} ref={routeInput} value={routeQuery} testId="annotation-route-search" placeholder="Find a destination note…" onChange={(event) => setRouteQuery(event.value ?? '')} onKeyDown={(event) => { if (!['escape', 'down', 'up', 'enter'].includes(event.key) && !(event.modifiers?.ctrl && ['n', 'p'].includes(event.key))) event.stopPropagation() }} style={{ height: 30, paddingLeft: 8, paddingRight: 8, fontSize: 12, color: m.text, backgroundColor: m.chipBg, borderRadius: 6 }} /></div>} items={targets.length ? targets.map((target) => ({ label: target.title, hint: target.workspace ? path.basename(target.workspace) : undefined, testId: `annotation-target-${target.id}`, onSelect: () => void route(saved, target.id) })) : [{ kind: 'label', label: 'No matching notes' }]} />
+              <Menu open={routeMenu === id} onClose={() => setRouteMenu(undefined)} align="end" width={300} closeKey={`annotation-route-${id}`} testId="annotation-route-menu" header={(submit) => <div style={{ padding: 8 }}><input onSubmit={submit} ref={routeInput} value={routeQuery} testId="annotation-route-search" placeholder="Find a destination note…" onChange={(event) => setRouteQuery(event.value ?? '')} onKeyDown={(event) => { if (!['escape', 'down', 'up', 'enter'].includes(event.key ?? '') && !(event.modifiers?.ctrl && ['n', 'p'].includes(event.key ?? ''))) event.stopPropagation() }} style={{ height: 30, paddingLeft: 8, paddingRight: 8, fontSize: 12, color: m.text, backgroundColor: m.chipBg, borderRadius: 6 }} /></div>} items={targets.length ? targets.map((target) => ({ label: target.title, hint: target.workspace ? path.basename(target.workspace) : undefined, testId: `annotation-target-${target.id}`, onSelect: () => void route(saved, target.id) })) : [{ kind: 'label', label: 'No matching notes' }]} />
             </div>
           </div>
           {!isExpanded && (saved.summary || saved.reply) ? <text style={{ fontSize: 11.5, lineHeight: 17, color: m.textMuted, lineClamp: 1 }}>{saved.summary || saved.reply}</text> : null}

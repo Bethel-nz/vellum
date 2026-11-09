@@ -1,4 +1,4 @@
-// Vellum: a markdown note you can talk to. Drives the official `claude` CLI.
+// Vellum: a markdown note you can talk to.
 //
 // Layout: a tab bar of open notes on the glass, then the page: its title (with
 // a menu) and the note itself. The note is one editable document; new writing
@@ -11,13 +11,11 @@ import { render, useGpuixRequired, useWindowSize, type EventPayload, type KeyEve
 import { AnimatePresence, motion } from './components/spring'
 import { ApprovalCard, Button, closedByOutsidePress, DockPanel, Field, Menu, stripHeight, TabStrip, useToast, type MenuItem as MenuEntry, type StripTab } from './components'
 import { FloatingLayer } from '@gpuix/react/floating'
-import { StreamChunk, useStreamChunks } from './components/StreamChunk'
-import { AgentMark } from './components/AgentMark'
 import { AgentWorking } from './components/AgentWorking'
 import { ConfirmMorph } from './components/ConfirmMorph'
 import { UsageLimitBanner } from './components/UsageLimitBanner'
 import { usageLimitFromText, usageLimitKey } from './core/usage'
-import { duration, ease, setReducedMotion, tween } from './components/motion'
+import { duration, ease, enter, leave, setReducedMotion, tween } from './components/motion'
 import { AgentRunner, killAllAgents } from './core/agent'
 import { mcp } from './core/mcp'
 import { recoverCaptureDeliveries, startBridge, updateCapture } from './core/bridge'
@@ -43,6 +41,8 @@ import type { QuestionContent } from './core/questions'
 import { type Ask, type PermissionMode, type Think } from './core/asks'
 import { createProfile, existingAgentProfile, loadProfiles, profileEnv, profileForWorkspace, rememberWorkspace, updateProfile, type Profile } from './core/profiles'
 import { loadJson, paths, readSettings, updateSettings, writeJson } from './core/store'
+import { exportDir, readVel, writeMarkdownExport, writeVel } from './core/export'
+import { fileArgs, handOff, registerFileTypes, watchInbox } from './core/opener'
 import { promptFor, relabel, tagsIn, tagText } from './core/tags'
 import { heldTerms, holdTerm, killAllTerms, restoreTmuxTerms, startTerm, tmuxShell, type TermSession } from './core/term'
 import { appIsActive, setDockIcon } from './core/dock'
@@ -63,6 +63,7 @@ import {
   newThreadId,
   describeEdits,
   handoffContext,
+  readThread,
   pendingEdits,
   reduce,
   titleFrom,
@@ -72,8 +73,8 @@ import {
   type Thread,
   type VellumRecord,
 } from './core/threads'
-import { BlockView, DiffCard, toolActivityGroups, type BlockActions } from './ui/blocks'
-import { Composer, type QueuedMessage } from './ui/Composer'
+import { BlockView, toolActivityGroups, WrappedDiff, type BlockActions } from './ui/blocks'
+import { Composer, composerJustLeft, type QueuedMessage } from './ui/Composer'
 import { ProjectPicker } from './ui/ProjectPicker'
 import { TrustNotice } from './components/TrustNotice'
 import { History } from './ui/History'
@@ -105,6 +106,9 @@ import {
   materialNames,
   materials,
   windowRadius,
+  scrollbarInset,
+  scrollbarWidth,
+  type as typeScale,
   type MaterialName,
 } from './ui/theme'
 
@@ -113,8 +117,8 @@ const MAX_TABS = 9
 /** The phone pane's bounds when dragged: room for the phone and its controls, up to the phone's own size. */
 const MOBILE_MIN = 300
 const MOBILE_MAX = 520
-/** ↵ / ⌘↵ in the composer don't answer a card younger than this. */
-const ASK_KEY_DELAY_MS = 400
+/** ↵ / ⌘↵ in the composer don't answer a card younger than this. check-approval widens it for loaded machines. */
+const ASK_KEY_DELAY_MS = Number(process.env.VELLUM_ASK_KEY_DELAY_MS) || 400
 const motionPref = (p: MotionPref) => setReducedMotion(p === 'system' ? undefined : p === 'reduce')
 motionPref(readSettings().motion ?? 'system')
 // What has been in the trash 30 days goes for good at launch (core/trash.ts).
@@ -144,21 +148,19 @@ const shortcuts: { current?: (e: KeyEvent) => void } = {}
 
 // ---------------------------------------------------------------- document
 
-function Paragraph({ children, kind, nodeRef }: { children: React.ReactNode; kind?: Block['kind'] | 'title' | 'status' | 'composer' | 'stream'; nodeRef?: React.Ref<PublicInstance> }) {
+function Paragraph({ children, kind, nodeRef }: { children: React.ReactNode; kind?: Block['kind'] | 'title' | 'status' | 'composer'; nodeRef?: React.Ref<PublicInstance> }) {
   const top = kind === 'user' || kind === 'composer' ? 12 : kind === 'title' ? 20 : 12
   const width = readingWidthFor(useWindowSize().width)
-  const bottom = kind === 'composer' ? 52 : 6
+  const bottom = kind === 'composer' ? 12 : 6
   return (
-    <div ref={nodeRef} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', paddingTop: kind === 'stream' ? 6 : top, paddingBottom: kind === 'stream' ? 6 : bottom }}>
+    <div ref={nodeRef} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', paddingTop: top, paddingBottom: bottom }}>
       <div style={{ width: '100%', maxWidth: width, paddingLeft: 28, paddingRight: 28 }}>{children}</div>
     </div>
   )
 }
 
 function Reply({ block, actions }: { block: Extract<Block, { kind: 'assistant' }>; actions: BlockActions }) {
-  const chunks = useStreamChunks(block.markdown, block.streaming)
-  if (!block.streaming) return <Paragraph kind="assistant"><BlockView block={block} actions={actions} /></Paragraph>
-  return <>{chunks.map((chunk, index) => <Paragraph key={chunk.id} kind="stream"><div style={{ position: 'relative' }}>{index === 0 ? <AgentMark /> : null}<StreamChunk text={chunk.text} id={`stream-${block.id}-${chunk.id}`} /></div></Paragraph>)}</>
+  return <Paragraph kind="assistant"><BlockView block={block} actions={actions} /></Paragraph>
 }
 
 // The whole page is the note: your paragraphs, Claude's replies and tool work,
@@ -222,18 +224,20 @@ const Document = memo(function Document({
     const error = block.usageLimit ?? usageLimitFromText(block.text)
     return error?.state === 'reached' && (error.window === limit.window || error.window === 'usage') && (!error.resetsAt || !limit.resetsAt || error.resetsAt === limit.resetsAt)
   })
+  const showsLimit = Boolean(limit && !hasLimitError && dismissedLimit !== limitKey)
   return (
+    // Inset here, not on the list, so it keeps the sizing it virtualizes with.
+    <div style={{ flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column', paddingTop: scrollbarInset, paddingRight: scrollbarInset }}>
     <virtual-list
       ref={listRef}
       onVisibleRange={(e) => onVisibleRange?.([e.startIndex ?? 0, e.endIndex ?? 0])}
-      onScroll={() => activity.touch()}
       alignment="top"
       followTail={!inspectingTools}
       estimatedItemHeight={90}
       overdraw={600}
-      style={{ flexGrow: 1, minHeight: 0, width: '100%', scrollbarColor: m.scrollbar, scrollbarWidth: 10 }}
+      style={{ flexGrow: 1, minHeight: 0, width: '100%', scrollbarColor: m.scrollbar, scrollbarWidth }}
     >
-      <div key="head" style={{ height: 16 }} />
+      <div key="head" style={{ height: 16 - scrollbarInset }} />
       {thread.blocks.map((original) => {
         const grouped = toolGroups.get(original.id)
         if (grouped === null) return <div key={original.id} style={{ height: 0 }} />
@@ -254,7 +258,7 @@ const Document = memo(function Document({
           </div>
         </Paragraph>
       ) : null}
-      {limit && !hasLimitError && dismissedLimit !== limitKey ? <Paragraph key="usage-limit" kind="status">
+      {limit && showsLimit ? <Paragraph key="usage-limit" kind="status">
         <UsageLimitBanner limit={limit} hideAfterReset onDismiss={limit.state === 'approaching' ? () => setDismissedLimit(limitKey) : undefined} />
       </Paragraph> : null}
       {notice ? <Paragraph key="notice" kind="status">{notice}</Paragraph> : null}
@@ -264,6 +268,7 @@ const Document = memo(function Document({
       {/* Room past the end, like an editor; clicking it puts the caret back at the end. */}
       <div key="tail" onClick={onTailClick} style={{ height: 160, cursor: 'text' }} />
     </virtual-list>
+    </div>
   )
 })
 
@@ -304,6 +309,7 @@ function NoteMenu({
   canOpenClaude,
   onRename,
   onOpenClaude,
+  onExport,
   onClose,
 }: {
   thread: Thread
@@ -313,6 +319,7 @@ function NoteMenu({
   canOpenClaude: boolean
   onRename: (title: string) => void
   onOpenClaude: () => void
+  onExport: (kind: 'vel' | 'md') => void
   onClose: () => void
 }) {
   const m = useM()
@@ -340,6 +347,9 @@ function NoteMenu({
     { label: 'Open in Claude Code', icon: 'terminal', testId: 'menu-open-claude', disabled: !canOpenClaude, onSelect: onOpenClaude },
     { label: revealLabel, icon: 'folder', onSelect: () => revealFolder(thread.workspace) },
     { kind: 'separator' },
+    { label: 'Export note', hint: '.vel', icon: 'download', testId: 'menu-export-vel', onSelect: () => onExport('vel') },
+    { label: 'Export as Markdown', hint: 'for agents', icon: 'download', testId: 'menu-export-md', onSelect: () => onExport('md') },
+    { kind: 'separator' },
     { label: 'Close tab', icon: 'x', shortcut: '⇧⌘W', testId: 'menu-close', onSelect: onClose },
   ]
   return (
@@ -352,7 +362,8 @@ function NoteMenu({
         testId="title-menu-panel"
         header={
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingLeft: 9, paddingRight: 9, paddingTop: 5, paddingBottom: 7 }}>
-            <Meta color={m.textMuted} mono>{folder}</Meta>
+            {/* One line inside the menu: the start gives way, the folder's own name stays. */}
+            <text style={{ ...typeScale.meta, minWidth: 0, color: m.textMuted, fontFamily: font.mono, whiteSpace: 'nowrap', textOverflow: 'ellipsis-start' }}>{process.env.HOME && folder.startsWith(`${process.env.HOME}/`) ? `~${folder.slice(process.env.HOME.length)}` : folder}</text>
             <Meta>{`${profile?.name ?? thread.profileId}${thread.model ? ` · ${thread.model}` : ''}`}</Meta>
           </div>
         }
@@ -492,7 +503,13 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
   const [models, setModels] = useState<Record<string, ModelOption[]>>(cachedModels)
   const [efforts, setEfforts] = useState<Record<string, EffortOption[]>>({})
   const [denying, setDenying] = useState(false)
-  const [drafts, setDrafts] = useState<Record<string, Draft>>(savedDrafts)
+  const [drafts, setDraftsState] = useState<Record<string, Draft>>(savedDrafts)
+  // Written first, so a send before the next render reads the latest keystroke.
+  const draftsRef = useRef(drafts)
+  const setDrafts = useCallback((update: (all: Record<string, Draft>) => Record<string, Draft>) => {
+    draftsRef.current = update(draftsRef.current)
+    setDraftsState(draftsRef.current)
+  }, [])
   // At-launch New note uses the same page creation path as ⌘N.
   const [overlay, setOverlay] = useState<null | 'new' | 'settings' | 'history' | 'changes' | 'annotations'>(() => (readSettings().atLaunch === 'new' ? 'new' : null))
   // Settings opens on Accounts when it's about an account (the account menu, no account yet).
@@ -507,11 +524,9 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
   const togglePreview = useCallback((noteId: string, file: Previewing) => {
     setPreviews((all) => {
       const { [noteId]: open, ...rest } = all
-      return open?.path === file.path && open.line === file.line && open.endLine === file.endLine ? rest : { ...rest, [noteId]: file }
+      return open && !open.tree && open.path === file.path && open.line === file.line && open.endLine === file.endLine ? rest : { ...rest, [noteId]: file }
     })
   }, [])
-  /** Whether the file pane shows the folder's tree (⇧⌘E); one choice for every note. */
-  const [fileTree, setFileTree] = useState(() => readSettings().fileTree ?? false)
   const [mobileOpen, setMobileOpen] = useState(() => mobileSupported && readSettings().mobileView === true)
   useEffect(() => registerMobileOpener(() => { setMobileOpen(true); updateSettings({ mobileView: true }) }), [])
   const toggleMobile = () => setMobileOpen((open) => { updateSettings({ mobileView: !open }); return !open })
@@ -537,10 +552,6 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
   }
   const mobileOverlay = windowSize.width < 960
   const workspaceWidth = windowSize.width - (mobileOpen && !mobileOverlay ? mobileWidth + shellInset : 0)
-  const showTree = useCallback((open: boolean) => {
-    setFileTree(open)
-    updateSettings({ fileTree: open })
-  }, [])
   /** A pasted image open full size over everything (ui/ImageViewer.tsx). */
   const [viewing, setViewing] = useState<Viewing>()
   const [captureViewing, setCaptureViewing] = useState<SavedCapture>()
@@ -607,14 +618,26 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
 
   const annotationCaptures = useMemo(() => collectAnnotations(threads), [threads])
   const annotationOpenCount = annotationCaptures.filter(({ saved }) => captureOpen(saved)).reduce((sum, { saved }) => sum + saved.capture.elements.length, 0)
+  // While you scroll the note the status bar steps back, and returns once the page settles.
+  const [scrolling, setScrolling] = useState(false)
+  const settle = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // The list reports no scroll of its own; a wheel over the page bubbles here.
+  const onNoteScroll = useCallback(() => {
+    activity.touch()
+    setScrolling(true)
+    if (settle.current) clearTimeout(settle.current)
+    settle.current = setTimeout(() => setScrolling(false), 700)
+  }, [])
+  useEffect(() => () => { if (settle.current) clearTimeout(settle.current) }, [])
   const previewing = active ? previews[active.id] : undefined
+  // The tree comes with the pane Files opens; a file opened from the note (a diff, a chip) comes alone.
+  const fileTree = Boolean(previewing?.tree)
+  const showTree = (open: boolean) => active && setPreviews((all) => (all[active.id] ? { ...all, [active.id]: { ...all[active.id], tree: open } } : all))
   // The pane's sizes once dragged: the file side (unset follows the window) and the tree.
   const [paneSize, setPaneSize] = useState(() => ({ file: readSettings().previewWidth, tree: readSettings().fileTreeWidth ?? TREE_WIDTH }))
   const previewSize = previewLayout(workspaceWidth, fileTree ? paneSize.tree : 0, paneSize.file)
   // A drag on the pane's edge or the tree's: where it started, and the sizes then.
   const [resizing, setResizing] = useState<{ edge: 'pane' | 'tree' | 'mobile'; x: number; file: number; tree: number }>()
-  // An edge's drag is the edge's: GPUIX would also run a text selection from the press into the
-  // note, so each step drops it.
   const startResize = (edge: 'pane' | 'tree' | 'mobile', x: number, reset: boolean) => {
     renderer.clearSelection?.()
     if (edge === 'mobile') {
@@ -661,23 +684,16 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
       }
     return byFile
   }, [active?.blocks, active?.workspace])
-  /**
-   * Files on the strip and ⇧⌘E: opens the pane on the tree, or shows the tree in an open pane;
-   * with the tree showing, hides it, and closes a pane that has no file open.
-   */
+  /** Files on the strip and ⇧⌘E: opens the pane on the tree, or closes the pane. */
   const toggleFiles = () => {
     if (!active) return
-    if (!previewing) {
-      const thread = active
-      void defaultFile(thread).then((file) => {
-        setPreviews((all) => ({ ...all, [thread.id]: { path: file } }))
-        showTree(true)
-      })
-    } else if (!fileTree) showTree(true)
-    else {
-      showTree(false)
-      if (!previewing.path) setPreviews(({ [active.id]: _, ...rest }) => rest)
+    if (previewing) {
+      setPreviews(({ [active.id]: _, ...rest }) => rest)
+      setTimeout(focusComposer, 30)
+      return
     }
+    const thread = active
+    void defaultFile(thread).then((file) => setPreviews((all) => ({ ...all, [thread.id]: { path: file, tree: true } })))
   }
   const activeProfile = profiles.find((p) => p.id === active?.profileId)
   // The note's agent decides which of Vellum's modes there are, and what they're called.
@@ -949,9 +965,6 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
     })
   }, [])
 
-  const draftsRef = useRef(drafts)
-  draftsRef.current = drafts
-
   /** Lines picked in the file preview go on the end of the draft as a `#path:12-18` chip. */
   const mentionTag = useCallback((threadId: string, tag: Tag) => {
     const d = draftsRef.current[threadId] ?? { text: '', tags: [] }
@@ -979,33 +992,34 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
   )
 
   // Config that runs a folder's own code as the agent starts there (core/agents.ts
-  // `projectConfig`), by agent and folder: looked up once a launch, off the frame.
-  const [folderConfigs, setFolderConfigs] = useState<Record<string, string[]>>({})
+  // `folderConfig`), by agent and folder, and the fingerprints of the config you've trusted. Only
+  // an explicit trust of these exact files counts; changed files ask again.
+  type FolderConfig = Awaited<ReturnType<typeof folderConfig>>
+  const [folderConfigs, setFolderConfigs] = useState<Record<string, FolderConfig>>({})
   const folderConfigsRef = useRef(folderConfigs)
-  const [trustedFolders, setTrustedFolders] = useState(() => readSettings().trustedFolders ?? [])
-  const trustedRef = useRef(trustedFolders)
+  const [trustedConfig, setTrustedConfig] = useState(() => readSettings().trustedConfig ?? {})
+  const trustedRef = useRef(trustedConfig)
   const configKey = (thread: Thread) => `${agentFor(profilesRef.current.find((p) => p.id === thread.profileId) ?? {}).id}:${thread.workspace}`
+  /** Looks at the folder's config again (off the frame) and keeps what it found for the notice. */
   const loadFolderConfig = useCallback(async (thread: Thread) => {
-    const key = configKey(thread)
-    if (folderConfigsRef.current[key]) return
     const found = await folderConfig(thread.workspace, agentFor(profilesRef.current.find((p) => p.id === thread.profileId) ?? {}))
-    folderConfigsRef.current = { ...folderConfigsRef.current, [key]: found }
+    folderConfigsRef.current = { ...folderConfigsRef.current, [configKey(thread)]: found }
     setFolderConfigs(folderConfigsRef.current)
+    return found
   }, [])
   /**
-   * What keeps this note from sending until you trust its folder: [] when nothing does, undefined
-   * before the folder's been looked at. A folder an agent has already run in counts as trusted.
+   * What keeps this note from sending until you trust its folder's config: [] when nothing does,
+   * undefined before the folder's been looked at.
    */
   const untrustedConfig = (thread: Thread): string[] | undefined => {
     const config = folderConfigsRef.current[configKey(thread)]
-    if (!config?.length) return config
-    const folder = thread.workspace
-    return trustedRef.current.includes(folder) || threadsRef.current.some((t) => t.workspace === folder && t.claudeSessionId) ? [] : config
+    if (!config?.files.length) return config && []
+    return trustedRef.current[configKey(thread)] === config.fingerprint ? [] : config.files
   }
   const untrustedRef = useRef(untrustedConfig)
   untrustedRef.current = untrustedConfig
   // Read again whenever a folder's config lands or you trust one.
-  const trustFiles = useMemo(() => (active ? untrustedConfig(active) : undefined), [active, folderConfigs, trustedFolders])
+  const trustFiles = useMemo(() => (active ? untrustedConfig(active) : undefined), [active, folderConfigs, trustedConfig])
 
   /**
    * The send path the composer and the queue drain land on: a recipe expands first — its
@@ -1017,8 +1031,13 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
     // Only a recipe waits on the disk; everything else goes out in the same tick.
     let body = text
     // A folder whose config runs its own code waits for your trust (the notice above the composer).
-    if (untrustedRef.current(thread) === undefined) await loadFolderConfig(thread)
-    if (untrustedRef.current(thread)?.length) return
+    // Looked at afresh for every send, so config added or changed since the note opened still asks;
+    // what was being sent goes back into the composer under the notice.
+    await loadFolderConfig(thread)
+    if (untrustedRef.current(thread)?.length) {
+      if (!captureId) setDraft(thread.id, text, tags, images)
+      return
+    }
     const call = body.startsWith('$') ? recipeCall(body, await loadRecipes(thread.workspace)) : undefined
     if (call) {
       thread = threadsRef.current.find((t) => t.id === thread.id) ?? thread
@@ -1049,7 +1068,7 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
     }
     const prompt = body ? promptFor(body, used, { workspace: thread.workspace, scopes: thread.tagScopes }) : ''
     runnerFor(thread).send([handoff, edits, prompt].filter(Boolean).join('\n\n'), images)
-  }, [record, runnerFor])
+  }, [loadFolderConfig, record, runnerFor, setDraft])
 
   /**
    * A message into the turn Claude is running (core/agent.ts `steer`): it reads it as soon as it
@@ -1117,11 +1136,13 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
   const sendRef = useRef(send)
   sendRef.current = send
 
-  /** Lets the folder's config run from now on, and sends what you'd written. */
-  const trustFolder = useCallback((folder: string) => {
-    trustedRef.current = [...new Set([...trustedRef.current, folder])]
-    setTrustedFolders(trustedRef.current)
-    updateSettings({ trustedFolders: trustedRef.current })
+  /** Lets these exact config files run for this agent in this folder, and sends what you'd written. */
+  const trustFolder = useCallback((thread: Thread) => {
+    const config = folderConfigsRef.current[configKey(thread)]
+    if (!config) return
+    trustedRef.current = { ...trustedRef.current, [configKey(thread)]: config.fingerprint }
+    setTrustedConfig(trustedRef.current)
+    updateSettings({ trustedConfig: trustedRef.current })
     sendRef.current()
     focusComposer()
   }, [focusComposer])
@@ -1292,7 +1313,7 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
       ?? (current?.workspace === folder ? current.profileId : profileForWorkspace(list, folder)?.id) ?? list[0]?.id
     if (!profileId) { openSettings('Accounts'); return }
     setView('notes')
-    createThread(profileId, folder)
+    return createThread(profileId, folder)
   }, [createThread, openSettings, project])
 
   const selectProject = (folder: string) => {
@@ -1306,6 +1327,47 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
       ?? threadsRef.current.find((thread) => thread.workspace === folder)
     if (note) { openNote(note.id); setTimeout(focusComposer, 32) }
     else startNewNote(folder)
+  }
+  const exportNote = async (kind: 'vel' | 'md') => {
+    if (!active) return
+    const dir = exportDir(readSettings().exportFolder, active.workspace)
+    try {
+      const file = kind === 'vel' ? await writeVel(active, dir) : await writeMarkdownExport(active, activeAgent.title, dir)
+      showToast(`Exported to ${file.replace(homedir(), '~')}`)
+    } catch (error) { showToast(`Couldn’t export: ${(error as Error).message}`, 'danger') }
+  }
+  /** A .vel opens as its note; any other file joins the open note as context, or a new note in its folder. */
+  const openFile = async (file: string) => {
+    setOverlay(null)
+    try {
+      if (file.endsWith('.vel')) {
+        const id = await readVel(file, { profiles: profiles.map((p) => p.id), profileId: activeProfile?.id ?? profiles[0]!.id, workspace: active?.workspace, known: [...recentFolders, ...threadsRef.current.map((t) => t.workspace)] })
+        const thread = await readThread(path.join(paths.threads, `${id}.jsonl`))
+        if (!thread) throw new Error('the note didn’t load')
+        setThreads((prev) => [thread, ...prev])
+        openNote(id)
+        return
+      }
+      const rel = active ? path.relative(active.workspace, file) : ''
+      const inside = Boolean(active && rel && !rel.startsWith('..') && !path.isAbsolute(rel))
+      const id = inside ? active!.id : startNewNote(path.dirname(file))
+      if (!id) return
+      const value = inside ? rel : path.basename(file)
+      setView('notes')
+      mentionTag(id, { type: 'file', value })
+      setPreviews((all) => ({ ...all, [id]: { path: value } }))
+    } catch (error) { showToast(`Couldn’t open ${path.basename(file)}: ${(error as Error).message}`, 'danger') }
+  }
+  const openFileRef = useRef(openFile)
+  openFileRef.current = openFile
+  useEffect(() => {
+    void registerFileTypes()
+    return watchInbox((files) => { for (const file of files) void openFileRef.current(file) })
+  }, [])
+  const pickFile = async () => {
+    setProjectMenu(false)
+    const file = (await renderer.promptForPaths?.({ files: true, directories: false, multiple: false, prompt: 'Open' }).catch(() => null))?.[0]
+    if (file) void openFile(file)
   }
   const browseProject = async () => {
     setProjectMenu(false)
@@ -1720,7 +1782,6 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
       e.preventDefault()
       void browseProject()
     } else if (key === 'w' && mods.shift) {
-      // Plain ⌘W is GPUIX's native Close Window (it quits a one-window app) and never reaches us.
       e.preventDefault()
       if (view === 'terminal' && termId) closeTerm(termId)
       else if (activeId) closeTab(activeId)
@@ -1898,7 +1959,7 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
               } : undefined}
               leading={
                 <>
-                  <ProjectPicker workspace={project} recent={recentFolders} open={projectMenu} onOpenChange={setProjectMenu} onPick={selectProject} onBrowse={() => { void browseProject() }} />
+                  <ProjectPicker workspace={project} recent={recentFolders} open={projectMenu} onOpenChange={setProjectMenu} onPick={selectProject} onBrowse={() => { void browseProject() }} onOpenFile={() => { void pickFile() }} />
                   <Button onPress={() => setOverlay((current) => current === 'history' ? null : 'history')} selected={overlay === 'history'} testId="open-history" title={keys('Library · search notes (⌘K) · recipes (⇧⌘Y)')}>
                     <Icon name="library" size={15} />
                   </Button>
@@ -1920,6 +1981,7 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
                     canOpenClaude={Boolean(active.claudeSessionId) && activeAgent.claudeCode}
                     onRename={(title) => record(active.id, { type: 'vellum/title', title })}
                     onOpenClaude={openClaude}
+                    onExport={(kind) => void exportNote(kind)}
                     onClose={() => closeTab(active.id)}
                   />
                 ) : null
@@ -1954,7 +2016,7 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
                   {activeBrowser ? <BrowserLauncher browser={activeBrowser} /> : null}
                   <Button onPress={() => setOverlay((current) => current === 'annotations' ? null : 'annotations')} selected={overlay === 'annotations'} testId="open-annotations" title="Annotations across all notes"><Icon name="pencil" size={14} />{annotationOpenCount ? <Meta color={m.textMuted}>{String(annotationOpenCount)}</Meta> : null}</Button>
                   {mobileSupported ? <Button onPress={toggleMobile} selected={mobileOpen} testId="open-mobile" title="Mobile view (⇧⌘M)"><Icon name="phone" size={14} /></Button> : null}
-                  {active && !term ? <Button onPress={toggleFiles} selected={Boolean(previewing) && fileTree} testId="open-files" title={keys('Files in this folder (⇧⌘E)')}><Icon name={previewing && fileTree ? 'folderOpen' : 'folderClosed'} size={14} /></Button> : null}
+                  {active && !term ? <Button onPress={toggleFiles} selected={Boolean(previewing)} aria-expanded={Boolean(previewing)} testId="open-files" title={previewing ? 'Close the file pane (esc)' : keys('Files in this folder (⇧⌘E)')}><Icon name={previewing ? 'folderOpen' : 'folderClosed'} size={14} /></Button> : null}
                 </>
               }
             />
@@ -1984,22 +2046,21 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
             <HelpNote onWrite={writeFromHelp} />
           ) : active ? (
             <>
-              {/* Text scrolls under the strip through a short fade instead of a hard edge. */}
-              <div ref={browserPage} testId="page" onMouseMove={hoverPane('page')} style={{ position: 'relative', flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column', ...(activePane === 'page' ? {} : { userSelect: 'none' }) }}>
+              <div ref={browserPage} testId="page" onMouseMove={hoverPane('page')} onScroll={onNoteScroll} style={{ position: 'relative', flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column', ...(activePane === 'page' ? {} : { userSelect: 'none' }) }}>
               <Document
                 thread={active}
                 actions={actions}
                 onStop={interrupt}
                 waiting={pendingAsks.length > 0}
-                onTailClick={focusComposer}
+                onTailClick={() => { if (!composerJustLeft()) focusComposer() }}
                 listRef={noteList}
                 onVisibleRange={visibleRows.set}
                 captureTarget={captureJump?.noteId === active.id ? captureJump : undefined}
-                notice={trustFiles?.length ? <TrustNotice files={trustFiles} agent={activeAgent.title} onTrust={() => trustFolder(active.workspace)} /> : undefined}
+                notice={trustFiles?.length ? <TrustNotice files={trustFiles} agent={activeAgent.title} onTrust={() => trustFolder(active)} /> : undefined}
                 composer={
                   <Composer
                     key={active.id}
-                    submitOnEnter
+                    sendRow
                     value={draft.text}
                     tags={draft.tags}
                     images={draft.images}
@@ -2065,23 +2126,11 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
                   />
                 }
               />
-              <div
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  // Clear of the card's rounded corners: GPUI doesn't clip a child to its parent's
-                  // radius, so a fade reaching the edges paints square corners over the curve.
-                  left: paneRadius,
-                  right: Math.max(12, paneRadius),
-                  height: 24,
-                  pointerEvents: 'none',
-                  background: { type: 'linear-gradient', angle: 180, stops: [{ color: m.pane, position: 0 }, { color: `${m.pane.slice(0, 7)}00`, position: 1 }] },
-                }}
-              />
               <Timeline thread={active} list={noteList} rows={visibleRows} />
               {activeBrowser ? <AgentScreenHost key={activeBrowser.generation} browser={activeBrowser} thread={active} rows={visibleRows} page={browserPage} onTakeControl={() => runners.current.get(active.id)?.interrupt()} onDrivingChange={driving => setDrivingBrowserNoteId(driving ? active.id : undefined)} /> : null}
-              <div style={{ position: 'absolute', left: 0, right: 0, bottom: 10, display: 'flex', flexDirection: 'row', justifyContent: 'center', pointerEvents: 'none' }}>
-                <div style={{ pointerEvents: 'auto' }}>
+              {/* The status bar has its own row under the note, so text ends above it, never under it. */}
+              <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', flexShrink: 0, paddingBottom: 6 }}>
+                <motion.div initial={false} animate={{ opacity: scrolling ? 0 : 1 }} transition={scrolling ? leave('exit') : enter('standard')} style={{ display: 'flex', flexDirection: 'row' }}>
                 <StatusBar
                   key={active.id}
                   accountLabel={activeProfile?.name ?? activeAgent.title}
@@ -2112,7 +2161,7 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
                   running={active.running}
                   onCompact={compact}
                 />
-                </div>
+                </motion.div>
               </div>
               </div>
             </>
@@ -2178,7 +2227,7 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
             onAllow={() => answer('allow')}
             onAlways={() => answer('always')}
             onDeny={(message) => answer('deny', message)}
-            preview={pendingAsks[0]?.patch ? <DiffCard patch={pendingAsks[0].patch} /> : undefined}
+            preview={pendingAsks[0]?.patch ? <WrappedDiff patch={pendingAsks[0].patch} /> : undefined}
           />
           <AskUserQuestions ask={term ? undefined : pendingAsks[0]} onAnswer={answerQuestions} />
           </div>
@@ -2197,7 +2246,7 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
               tree={fileTree}
               changes={fileChanges}
               onTree={showTree}
-              onOpenFile={(file) => setPreviews((all) => ({ ...all, [active.id]: { path: file } }))}
+              onOpenFile={(file) => setPreviews((all) => ({ ...all, [active.id]: { path: file, tree: true } }))}
               onMention={(file, line, endLine) => mentionTag(active.id, { type: 'file', value: file, line, ...(endLine ? { endLine } : {}) })}
               onMentionPath={(rel, dir) => mentionTag(active.id, dir ? { type: 'folder', value: `${rel}/` } : { type: 'file', value: rel })}
               onViewImage={(src) => setViewing({ images: [src], index: 0 })}
@@ -2321,6 +2370,9 @@ function windowSize(spec: string | undefined) {
   return { width: w || 1080, height: h || 780 }
 }
 
+// A file opened with Vellum while it runs goes to that window; this launch only carried it.
+if (handOff(fileArgs(process.argv.slice(2)))) process.exit(0)
+
 render(<Startup />, {
   title: 'Vellum',
   appName: 'Vellum',
@@ -2340,6 +2392,4 @@ render(<Startup />, {
   },
 })
 
-// Run from `bun app.tsx`, the Dock would show Bun's icon: only a .app bundle names one (core/dock.ts).
-// Vellum.app names its own (scripts/build-app.ts).
 if (!compiled) setTimeout(() => setDockIcon(path.join(import.meta.dir, 'assets', 'icon.png')), 0)

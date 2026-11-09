@@ -254,7 +254,7 @@ export class McpManager {
     this.#closed = true
     for (const { server } of this.#snapshot.servers) this.#generation.set(server.id, (this.#generation.get(server.id) ?? 0) + 1)
     for (const auth of this.#auth.values()) auth.dispose()
-    // Exit handlers cannot await the SDK's graceful shutdown timer. Stop only our own children.
+    // Stop only our own children; exit handlers cannot wait for graceful shutdown.
     for (const transport of this.#stdio.values()) if (transport.pid) { try { process.kill(transport.pid, 'SIGTERM') } catch {} }
     for (const client of this.#clients.values()) void client.close().catch(() => {})
     this.#clients.clear(); this.#stdio.clear()

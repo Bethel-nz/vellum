@@ -43,7 +43,7 @@ export function literalToolCall(code: string) {
     let args: Record<string, unknown> | undefined
     try {
       const value = Bun.JSON5.parse(code.slice(open + 1, end).trim().replace(/,\s*$/, ''))
-      if (value && typeof value === 'object' && !Array.isArray(value)) args = value
+      if (value && typeof value === 'object' && !Array.isArray(value)) args = value as Record<string, unknown>
     } catch { /* Identifiers, calls, spreads and expressions are not literal arguments. */ }
     calls.push({ name: name.split('.').at(-1)!, arguments: args, code, ...(discovery ? { discovery: true } : {}) })
     // Keep scanning the arguments too: a nested tool invocation makes this a multi-call script.

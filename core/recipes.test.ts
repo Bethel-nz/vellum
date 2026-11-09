@@ -1,6 +1,5 @@
 // Recipes on disk and how one expands. VELLUM_HOME is a scratch folder (core/test-setup.ts).
 import { expect, test } from 'bun:test'
-// Bun.file has no symlink: the link a repo could plant stays node:fs.
 import { symlinkSync } from 'node:fs'
 import path from 'node:path'
 import { scratchDir } from '../scripts/scratch'

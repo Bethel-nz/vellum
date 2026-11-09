@@ -1,13 +1,11 @@
-// The Dock icon while Vellum runs from `bun app.tsx`: macOS would show Bun's (or a blank) icon,
-// because only a .app bundle names one. AppKit's setApplicationIconImage swaps it at runtime, the
-// way Electron's app.dock.setIcon does, called through bun:ffi since GPUIX has no option for it.
+// The Dock icon while Vellum runs from `bun app.tsx`, swapped in at runtime.
 // macOS only, main thread only; anywhere else it does nothing.
 
 import { dlopen, FFIType, ptr } from 'bun:ffi'
 
 const cstr = (s: string) => ptr(Buffer.from(s + '\0', 'utf8'))
 
-/** Show `png` (or any image AppKit reads) as the Dock icon. Returns whether it took. */
+/** Show `png` as the Dock icon. Returns whether it took. */
 export function setDockIcon(png: string): boolean {
   if (process.platform !== 'darwin' || Bun.file(png).size === 0) return false
   try {
@@ -35,7 +33,7 @@ export function setDockIcon(png: string): boolean {
   }
 }
 
-/** AppKit fallback for builds without GPUIX window activation callbacks. */
+/** Fallback for builds without window activation callbacks. */
 let focusedWindow: (() => boolean) | undefined
 export function appIsActive(): boolean {
   if (process.platform !== 'darwin') return true

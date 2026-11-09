@@ -90,7 +90,20 @@ function compactCss(css: Record<string, string>) {
 	return result;
 }
 
-export function simplifySamples(rows: Array<Record<string, number>>) {
+export type SampleDigest = {
+	count: number;
+	retained: number;
+	simplified?: boolean;
+	observedWindowMs?: number;
+	columns: string[];
+	tolerances: Record<string, number>;
+	summary: Record<string, { start: number; min: number; minAt: number; max: number; maxAt: number; final: number }>;
+	values: number[][];
+	curveRef?: string;
+	requiresRawCurve?: boolean;
+};
+
+export function simplifySamples(rows: Array<Record<string, number>>): SampleDigest {
 	if (!rows.length)
 		return {
 			count: 0,
@@ -231,8 +244,55 @@ function withoutInlineImageData(capture: Capture) {
 }
 
 /** A deterministic view for agents; capture.json and image files remain the raw source. */
+/** The compact view of an element's animations; `ref` is where the full data sits in capture.json. */
+function compactAnimations(animations: Capture["elements"][number]["animations"], ref: string) {
+	return animations.map((animation, index) => ({
+		id: index + 1,
+		origin: animation.origin,
+		kind: animation.kind,
+		...(animation.name ? { name: animation.name } : {}),
+		...(animation.trigger ? { trigger: animation.trigger } : {}),
+		...(animation.gesture ? { gesture: animation.gesture } : {}),
+		...(animation.timing
+			? {
+					timing: {
+						...animation.timing,
+						...(animation.timing.easing
+							? { easing: easing(animation.timing.easing, `${ref}.animations[${index}].timing.easing`) }
+							: {}),
+					},
+				}
+			: {}),
+		...(animation.keyframes
+			? {
+					keyframes: spread(animation.keyframes.length, 16).map(
+						(frameIndex) => animation.keyframes![frameIndex],
+					),
+					...(animation.keyframes.length > 16
+						? {
+								keyframeCount: animation.keyframes.length,
+								curveRef: `${ref}.animations[${index}].keyframes`,
+							}
+						: {}),
+				}
+			: {}),
+		...(animation.samples
+			? { observedMotion: { ...simplifySamples(animation.samples), curveRef: `${ref}.animations[${index}].samples` } }
+			: {}),
+		...(animation.frames?.length
+			? { screenshotRefs: animation.frames }
+			: {}),
+	}));
+}
+
+export function agentCapture(capture: Capture, full: true): ReturnType<typeof withoutInlineImageData>;
+export function agentCapture(capture: Capture, full?: false): ReturnType<typeof compactCapture>;
+export function agentCapture(capture: Capture, full?: boolean): ReturnType<typeof withoutInlineImageData> | ReturnType<typeof compactCapture>;
 export function agentCapture(capture: Capture, full = false) {
-	if (full) return withoutInlineImageData(capture);
+	return full ? withoutInlineImageData(capture) : compactCapture(capture);
+}
+
+function compactCapture(capture: Capture) {
 	return {
 		version: capture.version,
 		id: capture.id,
@@ -259,43 +319,7 @@ export function agentCapture(capture: Capture, full = false) {
 			),
 			...(element.parent ? { parent: element.parent } : {}),
 			...(element.react ? { react: element.react } : {}),
-			animations: element.animations.map((animation, index) => ({
-				id: index + 1,
-				origin: animation.origin,
-				kind: animation.kind,
-				...(animation.name ? { name: animation.name } : {}),
-				...(animation.trigger ? { trigger: animation.trigger } : {}),
-				...(animation.gesture ? { gesture: animation.gesture } : {}),
-				...(animation.timing
-					? {
-							timing: {
-								...animation.timing,
-								...(animation.timing.easing
-									? { easing: easing(animation.timing.easing, `elements[${elementIndex}].animations[${index}].timing.easing`) }
-									: {}),
-							},
-						}
-					: {}),
-				...(animation.keyframes
-					? {
-							keyframes: spread(animation.keyframes.length, 16).map(
-								(frameIndex) => animation.keyframes![frameIndex],
-							),
-							...(animation.keyframes.length > 16
-								? {
-										keyframeCount: animation.keyframes.length,
-										curveRef: `elements[${elementIndex}].animations[${index}].keyframes`,
-									}
-								: {}),
-						}
-					: {}),
-				...(animation.samples
-					? { observedMotion: { ...simplifySamples(animation.samples), curveRef: `elements[${elementIndex}].animations[${index}].samples` } }
-					: {}),
-				...(animation.frames?.length
-					? { screenshotRefs: animation.frames }
-					: {}),
-			})),
+			animations: compactAnimations(element.animations, `elements[${elementIndex}]`),
 			shots: element.shots,
 			...(element.snapshots?.length
 				? {
@@ -311,6 +335,22 @@ export function agentCapture(capture: Capture, full = false) {
 			...(element.rules?.length ? { authoredRules: element.rules } : {}),
 			...(element.pseudo ? { pseudo: element.pseudo } : {}),
 			...(element.listeners?.length ? { listeners: element.listeners } : {}),
+			...(element.related?.length
+				? {
+						related: element.related.map((related, index) => ({
+							id: index + 1,
+							change: related.change,
+							selector: related.selector,
+							...(related.role ? { role: related.role } : {}),
+							...(related.label ? { label: related.label } : {}),
+							...(related.text ? { text: related.text } : {}),
+							box: Object.fromEntries(Object.entries(related.box).map(([name, value]) => [name, round(value)])),
+							animations: compactAnimations(related.animations, `elements[${elementIndex}].related[${index}]`),
+							...(related.shot ? { shot: related.shot } : {}),
+						})),
+					}
+				: {}),
+			...(element.changes?.length ? { changes: element.changes } : {}),
 		})),
 		...(capture.pageShot ? { pageShot: capture.pageShot } : {}),
 	};

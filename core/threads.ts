@@ -9,7 +9,7 @@
 // own records (type "vellum/..."). Replaying the file through `reduce` rebuilds
 // the thread exactly. <id>.md is a readable copy, rewritten on change.
 
-// Appends stay synchronous so a record survives a quit; readdir and realpath have no Bun.file form.
+// Appends stay synchronous so a record survives a quit.
 import { appendFileSync, readdirSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import { createTwoFilesPatch } from 'diff'
@@ -96,6 +96,8 @@ export type Thread = ThreadMeta & {
   claudeSessionId?: string
   /** Moved to another account and not sent from since: the next turn carries the note so far. */
   handoff?: boolean
+  /** Opened from a .vel export. */
+  imported?: boolean
   /** The model the CLI reported at init (a resolved id, e.g. claude-opus-5-5). */
   model?: string
   /** The model you picked in the switcher (a `--model` value); undefined is the account default. */
@@ -148,6 +150,8 @@ export type VellumRecord =
   | { type: 'vellum/shell-exit'; termId: string; exitCode: number; output: string; grid: Grid }
   | { type: 'vellum/error'; text: string; login?: boolean }
   | { type: 'vellum/stopped' }
+  /** Opened from a .vel; `fresh` when its session can't be resumed here. */
+  | { type: 'vellum/imported'; fresh: boolean; at: string }
   /** A `#path:42` tag was widened to its whole file for the rest of the session. */
   | { type: 'vellum/tag-scope'; key: string; scope: 'file' }
   /** You answered a permission ask. */
@@ -249,12 +253,14 @@ export function relPath(workspace: string, file: string) {
 /** Drop the ---/+++ file header: the edit block already names the file. */
 /**
  * A patch as <diff> wants it: the `---`/`+++` lines stay, because that is where it learns the
- * file's language for highlighting; `Index:` and `====` go. The header rows are clipped in the UI.
+ * file's language for highlighting; `Index:`, `====` and git's "\ No newline at end of file"
+ * marker go (it is about the file's last byte, not something you review). The header rows are
+ * clipped in the UI.
  */
 export function forDiff(patch: string) {
   return patch
     .split('\n')
-    .filter((l) => !l.startsWith('Index: ') && !/^=+$/.test(l))
+    .filter((l) => !l.startsWith('Index: ') && !/^=+$/.test(l) && !l.startsWith('\\ No newline at end of file'))
     .join('\n')
 }
 
@@ -380,7 +386,7 @@ export function liveWork(thread: Thread, file?: string): { text: string; running
 
 /**
  * Apply one record (raw claude event or vellum record) to a thread.
- * Returns a new Thread; unchanged blocks keep their identity so React can skip them.
+ * Returns a new Thread; unchanged blocks keep their identity so unchanged views skip them.
  */
 export function reduce(thread: Thread, ev: any): Thread {
   const t: Thread = { ...thread, blocks: thread.blocks, r: thread.r }
@@ -500,6 +506,13 @@ export function reduce(thread: Thread, ev: any): Thread {
       t.usageLimit = undefined
       t.handoff = true
       t.updatedAt = ev.at
+      break
+    case 'vellum/imported':
+      t.imported = true
+      if (!ev.fresh) break
+      t.claudeSessionId = undefined
+      t.context = undefined
+      t.handoff = true
       break
     case 'vellum/compact':
       t.running = true
@@ -663,7 +676,7 @@ export function reduce(thread: Thread, ev: any): Thread {
             patchBlock(id, (x) => ({
               ...x,
               call: { ...x.call, ...call, detail: input ? toolDetail(t.workspace, name, input) : x.call?.detail ?? name, status: call.status ?? x.call?.status ?? 'running', ...(status ? { finishedAt: ev.at } : {}) },
-              // Codex puts the command in the title too; a call that comes without its input still shows it.
+              // A call that comes without its input still shows the command from its title.
               ...(command ? { command: String(command) } : !x.command && u.title ? { command: String(u.title) } : {}),
               ...(output !== undefined ? { output } : {}),
               ...(status ? { exitCode: status === 'error' ? call.exitCode || 1 : call.exitCode ?? 0 } : {}),
@@ -950,7 +963,7 @@ export function handoffContext(t: Thread, max = HANDOFF_MAX): string {
   const body = toMarkdown(t).replace(/^---\n[\s\S]*?\n---\n\n/, '').trim()
   const kept = body.length > max ? `(The start of the note is left out; it was longer than this.)\n\n${body.slice(-max)}` : body
   return [
-    'This note was moved here from another account, so this is a new session.',
+    t.imported ? 'This note was opened from an export, so this is a new session.' : 'This note was moved here from another account, so this is a new session.',
     'Here is the note so far, your earlier replies included, as context for what I write next:',
     '',
     '<note>',

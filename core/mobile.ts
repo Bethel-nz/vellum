@@ -19,7 +19,9 @@ export type MobileGrid = {
 export type MobileAgent = {
   snapshot(options?: { settleMs?: number; image?: boolean; grid?: boolean; cols?: number }): Promise<{ text: string; image: Uint8Array | null; settled: boolean; mode: string; elements: unknown[] } & Record<string, unknown>>
   tap(target: string, options?: { expect?: string }): Promise<{ target: string; name: string; at: [number, number] }>
-  steps(steps: unknown[]): Promise<{ ok: boolean; completed: number; failed: { index: number; code: string; error: string } | null; screenshots?: { target: string; png: Uint8Array }[]; snapshot: { text: string } | null } & Record<string, unknown>>
+  /** The screen as it is now as a plain PNG (no boxes, no grid); with `path`, also written there. */
+  screenshot(path?: string): Promise<Uint8Array>
+  steps(steps: unknown[]): Promise<{ ok: boolean; completed: number; failed: { index: number; code: string; error: string } | null; screenshots?: { target: string; png: Uint8Array; file?: string }[]; snapshot: { text: string } | null } & Record<string, unknown>>
 }
 export type MobileApp = { bundleId: string; name: string; appType: string }
 export type MobileDriver = {

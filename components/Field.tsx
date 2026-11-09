@@ -1,4 +1,4 @@
-// A single-line text field, after arc's input and Glass's "Conversation name" field: panel fill,
+// A single-line text field: panel fill,
 // hairline, and a blue focus ring that comes up over 100ms.
 
 import { useState } from 'react'

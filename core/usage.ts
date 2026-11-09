@@ -3,7 +3,7 @@ export type UsageLimit = {
   window: 'session' | 'weekly' | 'usage'
   state: 'approaching' | 'reached'
   scope?: string
-  /** Epoch milliseconds; the SDK supplies seconds. */
+  /** Epoch milliseconds. */
   resetsAt?: number
   /** Older agent errors may supply only a human-readable reset time. */
   resetText?: string
@@ -23,15 +23,22 @@ export function usageLimitFromInfo(value: unknown): UsageLimit | undefined {
   }
 }
 
-/** Restricted to known quota-error wording. Context length and API throttling stay errors. */
+/**
+ * Restricted to known quota-error wording, from every agent: Claude ("You've hit your weekly
+ * limit · resets …"), Codex ("You've hit your usage limit … try again at 3:04 PM"), OpenCode
+ * ("Free usage limit reached. …"), and an API key's "exceeded your current quota". Context
+ * length and API throttling stay errors.
+ */
 export function usageLimitFromText(text: string, reported?: UsageLimit): UsageLimit | undefined {
   const clean = text.trim().replace(/^Internal error:\s*/i, '').replace(/[’‘]/g, "'")
-  const explicit = /^(?:approaching\s+(?:your\s+)?(?:session|weekly|usage)\b.*limit|(?:session|weekly|usage)\b.*limit\s+(?:reached|exceeded)|you(?:'ve| have)\s+(?:hit|reached)\s+(?:your\s+)?(?:(?:session|weekly|usage|message)\s+)*(?:limit|usage limit)\b)/i
+  const kind = '(?:session|weekly|usage|daily|monthly|message|free)'
+  const explicit = new RegExp(`^(?:approaching\\s+(?:your\\s+)?${kind}\\b.*limit|(?:${kind}\\s+)+(?:usage\\s+)?limit\\s+(?:reached|exceeded)|you(?:'ve| have)\\s+(?:hit|reached)\\s+(?:your\\s+)?(?:${kind}\\s+)*(?:limit|usage limit)\\b|you(?:'ve| have)?\\s+exceeded\\s+your\\s+(?:current\\s+)?quota)`, 'i')
   if (!explicit.test(clean)) return
+  const reset = clean.match(/\b(?:resets?\b[^·\n]*|try again (?:at|in)\b[^.·\n]*)/i)?.[0]?.trim()
   const notice: UsageLimit = {
     window: /\bweekly\b/i.test(clean) ? 'weekly' : /\bsession\b/i.test(clean) ? 'session' : 'usage',
     state: /^approaching\b/i.test(clean) ? 'approaching' : 'reached',
-    resetText: clean.match(/\bresets?\b[^·\n]*/i)?.[0]?.trim(),
+    resetText: reset ? `${reset[0]!.toUpperCase()}${reset.slice(1)}` : undefined,
   }
   if (reported?.state === 'reached' && (notice.window === 'usage' || notice.window === reported.window)) {
     return { ...reported, state: notice.state, resetText: reported.resetsAt ? undefined : notice.resetText ?? reported.resetText }

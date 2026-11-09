@@ -101,7 +101,7 @@ test('generic tools keep input and human-readable output separately', () => {
   ])
   const activity = t.blocks.find((b) => b.kind === 'activity' && b.items.some((item) => item.id === 'oc-read'))
   const call = activity?.kind === 'activity' ? activity.items.find((item) => item.id === 'oc-read') : undefined
-  expect(call?.input.file_path).toBe('/ws/hello.txt')
+  expect(call?.input?.file_path).toBe('/ws/hello.txt')
   expect(call?.output).toBe('file contents')
 })
 

@@ -32,6 +32,6 @@
     "typescript": "^7.0.2"
   },
   "optionalDependencies": {
-    "simdriver": "0.2.0"
+    "simdriver": "0.2.1"
   }
 }

@@ -10,6 +10,7 @@ import type { StreamMouseInput } from '../core/stream-protocol'
 import { heldBrowserButton, lastBrowserFrame, releaseBrowserInput, sendBrowserInput, setBrowserDemand, watchBrowser, type BrowserViewState } from '../core/browser-view'
 import { browserCommand, releaseBrowserControl, requestBrowserControl, validateBrowser } from '../core/browser-runtime'
 import { appIsActive } from '../core/dock'
+import { isMac } from '../core/platform'
 import { useM } from './kit'
 import { concentric, elevation, font, radiusBase, radiusXl } from './theme'
 
@@ -42,6 +43,7 @@ export function AgentScreen({ session, placement, width: givenWidth, quiet, onEx
   const frameRef = useRef<ImgInstance>(null), input = useRef<PublicInstance>(null)
   const dimensions = useRef<BrowserFrame | undefined>(key ? lastBrowserFrame(key) : undefined)
   const [size, setSize] = useState({ width: dimensions.current?.width ?? 1280, height: dimensions.current?.height ?? 800 })
+  const [hasFrame, setHasFrame] = useState(Boolean(dimensions.current))
   const [view, setView] = useState<BrowserViewState>({ status: 'connecting' })
   const [details, setDetails] = useState(false), [control, setControl] = useState<'watch' | 'pending' | 'driving'>('watch'), [error, setError] = useState(''), [hovered, setHovered] = useState(false)
   const controlRef = useRef(control), mounted = useRef(true), loggedDeleteKey = useRef(false)
@@ -60,6 +62,7 @@ export function AgentScreen({ session, placement, width: givenWidth, quiet, onEx
         if (!frameRef.current) return false
         frameRef.current.setImage(frame.data)
         dimensions.current = frame
+        setHasFrame(true)
         setSize(old => old.width === frame.width && old.height === frame.height ? old : { width: frame.width, height: frame.height })
         return true
       },
@@ -98,7 +101,6 @@ export function AgentScreen({ session, placement, width: givenWidth, quiet, onEx
     if (!point) return
     if (eventType === 'mousePressed' || eventType === 'mouseReleased') sendBrowserInput(key, { type: 'input_mouse', eventType, ...point, button: event.button === 2 ? 'right' : event.button === 1 ? 'middle' : 'left', clickCount: event.clickCount || 1 })
     else if (eventType === 'mouseMoved') sendBrowserInput(key, { type: 'input_mouse', eventType, ...point, button: heldBrowserButton(key) })
-    // GPUIX 0.11 scroll deltas move content; CDP deltas move the viewport.
     else if (eventType === 'mouseWheel') sendBrowserInput(key, { type: 'input_mouse', eventType, ...point, deltaX: -(event.deltaX || 0), deltaY: -(event.deltaY || 0) })
   }
   const keyboard = (event: KeyEvent, eventType: 'keyDown' | 'keyUp') => {
@@ -126,8 +128,13 @@ export function AgentScreen({ session, placement, width: givenWidth, quiet, onEx
     )}
     {connecting ? <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: m.rootTint }}>
       <Dot color={m.textUi} size={8} pulse />
-      <text style={{ fontSize: 12, color: m.textMuted }}>Connecting to {agent.title}’s screen</text>
-    </div> : null}
+      <text style={{ fontSize: 12, color: m.textMuted }}>{`Connecting to ${agent.title}’s screen`}</text>
+    </div> : streaming && !hasFrame && !session.screenshot ? (
+      // The frame waits mounted for its first image; until one comes, the empty state covers it.
+      <div testId="browser-empty" style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: m.chipBg, borderRadius: screenRadius }}>
+        <Icon name="browser" size={28} color={m.textFaint} />
+      </div>
+    ) : null}
   </div>
 
   // The resting card in the note: the framed viewport itself, an instant hover wash with
@@ -147,6 +154,7 @@ export function AgentScreen({ session, placement, width: givenWidth, quiet, onEx
     </div>
     {state === 'error' ? (
       <Alert
+        inNote
         tone="danger"
         title="Browser needs attention"
         testId="browser-error"
@@ -158,7 +166,7 @@ export function AgentScreen({ session, placement, width: givenWidth, quiet, onEx
   </div>
 
   return <div testId={`agent-screen-${placement}`} style={{ width: width + 2, minHeight: 0, flexShrink: 0, display: 'flex', flexDirection: 'column', borderRadius: radiusXl, borderWidth: 1, borderColor: m.border, backgroundColor: m.pane, overflow: 'hidden', boxShadow: elevation(m, expanded ? 'sheet' : 'card') }}>
-    <div style={{ height: 40, paddingLeft: 12, paddingRight: 6, display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+    <div style={{ height: 40, paddingLeft: expanded && isMac ? 84 : 12, paddingRight: 6, display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
       <div testId="browser-drag" onMouseDown={onDrag} style={{ flexGrow: 1, minWidth: 0, height: 40, display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 7, cursor: onDrag ? 'move' : 'default' }}>
         <text style={{ fontSize: 12.5, fontWeight: 500, color: m.text, whiteSpace: 'nowrap', flexShrink: 0 }}>{agent.title}</text>
         <Rec startedAt={session.recordStartedAt} recording={Boolean(session.recording && streaming)} />
@@ -190,7 +198,7 @@ export function AgentScreen({ session, placement, width: givenWidth, quiet, onEx
       {streaming && state === 'error' ? <Button testId="browser-retry" onPress={() => { void browserCommand(session.noteId, { args: ['snapshot', '-i'] }, { signal: new AbortController().signal }).catch(e => setError(String(e.message))) }}><Label>Retry</Label></Button> : null}
     </div> : null}
     {details ? <div testId="browser-activity" style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, maxHeight: 190, overflowY: 'scroll', scrollbarWidth: 4 }}>
-      {(session.activities ?? []).slice(-20).map(item => <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}><text style={{ fontSize: 11, color: item.exitCode ? m.danger : m.textMuted }}>{item.title} · {item.summary ?? 'Running'}{item.durationMs === undefined ? '' : ` · ${(item.durationMs / 1000).toFixed(1)}s`}</text>{item.artifacts?.map(artifact => <text key={artifact.path} selectable style={{ fontSize: 10.5, color: m.textFaint }}>{artifact.kind}: {artifact.path}</text>)}</div>)}
+      {(session.activities ?? []).slice(-20).map(item => <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}><text style={{ fontSize: 11, color: item.exitCode ? m.danger : m.textMuted }}>{item.title} · {item.summary ?? 'Running'}{item.durationMs === undefined ? '' : ` · ${(item.durationMs / 1000).toFixed(1)}s`}</text>{item.artifacts?.map(artifact => <text key={artifact.path} style={{ fontSize: 10.5, color: m.textMuted }}>{artifact.kind}: {artifact.path}</text>)}</div>)}
       {!session.activities?.length ? <text style={{ fontSize: 11, color: m.textMuted }}>No browser activity recorded.</text> : null}
     </div> : null}
   </div>

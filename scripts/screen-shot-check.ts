@@ -20,7 +20,7 @@ try {
   await (async () => { while (!(await present(path.join(home, 'bridge.json')))) await Bun.sleep(150) })()
   const pairing = JSON.parse(await Bun.file(path.join(home, 'bridge.json')).text())
   const request = (route: string, init: RequestInit = {}) => fetch(`${pairing.endpoint}${route}`, { ...init, headers: { Authorization: `Bearer ${pairing.token}`, ...init.headers } })
-  const notes: any[] = await (await request('/notes')).json()
+  const notes = await (await request('/notes')).json() as any[]
   const note = notes.find((item) => item.active)!
   const posted = await request('/browser', { method: 'POST', body: JSON.stringify({ noteId: note.id, session: `vellum-${note.id}`, streamPort: fake.port }) })
   console.log('browser session:', posted.status)

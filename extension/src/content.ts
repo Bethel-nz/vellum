@@ -3,8 +3,8 @@ import { createRoot } from 'react-dom/client'
 import { MotionConfig } from 'motion/react'
 import { getElementAtPoint, getElementBounds, getElementSelector, isElementGrabbable } from 'react-grab/primitives'
 import type { Capture, CaptureSnapshot, SavedCapture } from '../../core/capture'
-import { animations, assets, downloadAssets, extract, observeAnimations, sample, type Selection } from './extract'
-import { worker, type CaptureSettings, type ContentMessage, type PageScreenshot, type PageScreenshotResult, type SnapshotResult, type SnapshotStateResult } from './messages'
+import { animations, assets, downloadAssets, extract, observeAnimations, sample, watchRelated, type Selection } from './extract'
+import { worker, type CaptureSettings, type ContentMessage, type PageScreenshot, type PageScreenshotResult, type SnapshotResult, type SnapshotStateResult, type Upload } from './messages'
 import { CapturePanel, type CaptureOptions } from './ui/CapturePanel'
 import { loadFonts, setAppearance, type Appearance } from './ui/appearance'
 import { shadowStyles } from './ui/styles'
@@ -74,7 +74,7 @@ function install() {
   let sampledReplay: Animation | undefined
   let sampledPosition = 0
   const labelFor = (element: Element) => element.id ? `#${element.id}` : element.getAttribute('aria-label') || element.getAttribute('name') || element.tagName.toLowerCase()
-  const hasContent = (selection: Selection) => Boolean(selection.note.trim() || comments.get(selection.ref)?.length || snapshots.get(selection.ref)?.length || previews.get(selection.element)?.size || motionChanges.get(selection.ref)?.size || selection.recorded.length)
+  const hasContent = (selection: Selection) => Boolean(selection.note.trim() || comments.get(selection.ref)?.length || snapshots.get(selection.ref)?.length || previews.get(selection.element)?.size || motionChanges.get(selection.ref)?.size || selection.recorded.length || selection.related?.length)
   const activeSelection = () => selections.find((selection) => selection.ref === activeRef)
   function activate(ref: string | null, tools = false) {
     activeRef = ref; toolsOpen = tools; picking = false; hovered = null; render(); draw()
@@ -152,7 +152,7 @@ function install() {
   }
   let appearanceTimer: ReturnType<typeof setInterval> | undefined
   let returnFocus: HTMLElement | null = null
-  let options: CaptureOptions = { triggers: true, frames: false, listeners: false }
+  let options: CaptureOptions = { triggers: true, frames: false, listeners: false, related: false }
   const savedAnimations = new Map<Animation, { currentTime: CSSNumberish | null; state: AnimationPlayState; rate: number }>()
 
   const status = (text: string, error = false) => { message = text; failed = error; render() }
@@ -504,7 +504,7 @@ function install() {
     previews.delete(selection.element)
     motionChanges.delete(selection.ref)
     selection.element = next
-    selection.recorded = []
+    selection.recorded = []; selection.related = undefined; selection.changes = undefined; selection.relatedShots = undefined
     const box = getElementBounds(next)
     pinPositions.set(selection.ref, { x: box.x + scrollX, y: box.y + box.height + scrollY })
     next.setAttribute('data-vellum-ref', selection.ref)
@@ -571,6 +571,7 @@ function install() {
     const gesture: NonNullable<Capture['elements'][number]['animations'][number]['gesture']> = { events: [] }
     let motionPromise: ReturnType<typeof observeAnimations> | undefined
     let sampledPromise: ReturnType<typeof sample> | undefined
+    let watching: ReturnType<typeof watchRelated> | undefined
     const eventTypes = ['pointerover', 'pointermove', 'pointerdown', 'pointerup', 'mouseover', 'mousemove', 'mousedown', 'mouseup', 'click', 'focusin', 'keydown', 'keyup', 'input', 'change', 'wheel']
     const capturedGesture = await new Promise<boolean>((resolve) => {
       let started = false
@@ -592,6 +593,7 @@ function install() {
           started = true
           motionPromise = observeAnimations(selection.element, duration)
           sampledPromise = sample(selection.element, duration, gesture)
+          if (options.related) watching = watchRelated(selection.element, duration, (element) => element === host || element.classList.contains('vellum-shimmer'))
           status(`Recording ${recordDuration} seconds of motion…`)
         }
         const selector = getElementSelector(target)
@@ -612,12 +614,32 @@ function install() {
       gestureStart = performance.now()
       for (const type of eventTypes) document.addEventListener(type, onEvent, true)
     })
-    if (!capturedGesture || !enabled || !motionPromise || !sampledPromise) { recording = false; status('No interaction recorded. Select Record next interaction to try again.'); return }
+    if (!capturedGesture || !enabled || !motionPromise || !sampledPromise) { void watching?.stop(); recording = false; status('No interaction recorded. Select Record next interaction to try again.'); return }
     const [motion, sampled] = await Promise.all([motionPromise, sampledPromise])
     selection.recorded.push(...motion, ...sampled)
+    if (watching) await relatedFrom(selection, await watching.stop())
     recording = false
-    status('Motion recorded. Sampled motion is marked as inferred.')
+    const related = selection.related?.length ?? 0
+    status(related ? `Motion recorded, with ${related} related element${related === 1 ? '' : 's'}. Sampled motion is marked as inferred.` : 'Motion recorded. Sampled motion is marked as inferred.')
     draw()
+  }
+  // What the interaction opened is pictured now, while it's still open, each element alone. A related
+  // element that can't be pictured keeps its data without a shot.
+  async function relatedFrom(selection: Selection, found: Awaited<ReturnType<ReturnType<typeof watchRelated>['stop']>>) {
+    const refs = found.related.map((item, index) => item.change === 'opened' && item.element.isConnected ? `${selection.ref}-related-${index + 1}` : null)
+    found.related.forEach((item, index) => { if (refs[index]) item.element.setAttribute('data-vellum-ref', refs[index]!) })
+    let shots: Array<Upload | null> = []
+    try {
+      if (refs.some(Boolean)) {
+        status('Picturing related elements…')
+        shots = await worker<Array<Upload | null>>({ type: 'related-shots', refs: refs.filter((ref): ref is string => Boolean(ref)) })
+      }
+    } catch { /* The recording keeps its data; only the pictures are missing. */ }
+    finally { found.related.forEach((item, index) => { if (refs[index]) item.element.removeAttribute('data-vellum-ref') }) }
+    const byName = new Map(shots.filter((shot): shot is Upload => Boolean(shot)).map((shot) => [shot.name, shot]))
+    selection.related = found.related.map(({ element: _, ...item }, index) => ({ ...item, ...(refs[index] && byName.has(`${refs[index]}.png`) ? { shot: `${refs[index]}.png` } : {}) }))
+    selection.changes = found.changes
+    selection.relatedShots = [...byName.values()]
   }
   async function makeCapture(selected: Selection[]): Promise<Capture> {
     return { version: 1, id: crypto.randomUUID(), createdAt: new Date().toISOString(), page: { url: location.href, title: document.title, viewport: { w: innerWidth, h: innerHeight, dpr: devicePixelRatio } }, elements: await Promise.all(selected.map((selection) => {
@@ -732,7 +754,6 @@ function install() {
           const node = await extract(selection)
           if (!selection.element.isConnected) throw new Error('Select the element again.')
           const bounds = selection.element.getBoundingClientRect()
-          // Chrome screenshot clips use document coordinates, including the page's scroll offset.
           node.box = { x: bounds.x + scrollX, y: bounds.y + scrollY, w: bounds.width, h: bounds.height }
           return { node } satisfies SnapshotStateResult
         }
@@ -748,7 +769,7 @@ function install() {
           const selected = message.ref ? selections.filter((selection) => selection.ref === message.ref) : selections
           if (!selected.length) throw new Error('Select an element before sending.')
           const capture = await makeCapture(selected)
-          return { capture, scroll: { x: scrollX, y: scrollY }, files: [...await downloadAssets(capture), ...selected.flatMap((selection) => (snapshots.get(selection.ref) ?? []).map((snapshot) => ({ name: snapshot.image.file, mime: snapshot.image.mime, data: snapshot.image.dataUrl.slice(snapshot.image.dataUrl.indexOf(',') + 1) })))] }
+          return { capture, scroll: { x: scrollX, y: scrollY }, files: [...await downloadAssets(capture), ...selected.flatMap((selection) => (snapshots.get(selection.ref) ?? []).map((snapshot) => ({ name: snapshot.image.file, mime: snapshot.image.mime, data: snapshot.image.dataUrl.slice(snapshot.image.dataUrl.indexOf(',') + 1) }))), ...selected.flatMap((selection) => selection.relatedShots ?? [])] }
         }
         case 'seek': {
           const selection = selections.find((item) => item.ref === message.ref)

@@ -15,7 +15,6 @@
 //
 // `@path` for a file and `@skill:name` for a skill still parse (older notes wrote them that way).
 
-// Walking folders is node:fs's work; whether a file is there is Bun.file's (a missing one has size 0).
 import { readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'

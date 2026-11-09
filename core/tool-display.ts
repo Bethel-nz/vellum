@@ -67,11 +67,12 @@ const mobileNames: Record<string, string> = { mobile_apps: 'List installed apps'
 function mobileTitle(name: string, args: Record<string, unknown>) {
   if (name === 'mobile_connection' && typeof args.action === 'string') return Object.hasOwn(mobileActions, args.action) ? mobileActions[args.action] : `Mobile · ${args.action}`
   if (name === 'mobile_snapshot') return 'Read simulator screen'
+  if (name === 'mobile_screenshot') return 'Screenshot simulator'
   if (name === 'mobile_tap' && typeof args.target === 'string') return `Tap ${args.target}`
   if (name === 'mobile_steps') return `Run ${Array.isArray(args.steps) ? args.steps.length + ' ' : ''}mobile steps`
   return Object.hasOwn(mobileNames, name) ? mobileNames[name] : undefined
 }
-export function displayTitle(call: ToolCall) {
+export function displayTitle(call: ToolCall): string | undefined {
   const runner = wrappedTool(call)
   const wrapped = envelope(call.arguments ?? call.input, true)
   if (wrapped) return wrapped.title

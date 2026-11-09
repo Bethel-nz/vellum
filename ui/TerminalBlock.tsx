@@ -155,8 +155,8 @@ export function TerminalBlock({
 
   useEffect(() => session?.onChange(redraw), [session])
 
-  // Focus state is tracked here as well as through onFocus/onBlur, which GPUI
-  // does not deliver while the window is inactive.
+  // Focus state is tracked here as well as through onFocus/onBlur, which are not
+  // delivered while the window is inactive.
   const focusSelf = () => {
     if (!ref.current) return
     renderer.focusElement?.(ref.current.id)
@@ -187,7 +187,7 @@ export function TerminalBlock({
   const wheelRows = useRef(0)
   const onScroll = (e: { deltaY?: number; precise?: boolean }) => {
     if (!session || !running || mode !== 'full' || !grid) return
-    // GPUI's sign: positive is toward earlier output.
+    // Positive is toward earlier output.
     wheelRows.current += e.precise ? (e.deltaY ?? 0) / LINE : (e.deltaY ?? 0)
     const rows = Math.trunc(wheelRows.current)
     if (!rows) return
@@ -261,6 +261,8 @@ export function TerminalBlock({
           flexGrow: mode === 'full' ? 1 : 0,
           minHeight: mode === 'full' ? 0 : undefined,
           padding: PAD,
+          // The footer sits 4 closer; a negative margin there collapses the block's height.
+          paddingBottom: bare ? PAD : PAD - 4,
           cursor: running ? 'text' : 'default',
           keyboardFocusDim: false,
         }}
@@ -290,7 +292,7 @@ export function TerminalBlock({
       ) : null}
       {!bare ? (
         // What a run in the note shows instead of a title bar: its state and its ways out.
-        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0, paddingLeft: PAD - 2, paddingRight: 4, marginTop: -4, paddingBottom: 4, userSelect: 'none' }}>
+        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0, paddingLeft: PAD - 2, paddingRight: 4, paddingBottom: 4, userSelect: 'none' }}>
           {running ? (
             <Meta>{hint ?? (focused ? keys('running · ⌘Esc to leave') : keys('running · click to type'))}</Meta>
           ) : exitCode !== undefined ? (
@@ -313,7 +315,7 @@ export function TerminalBlock({
         </div>
       ) : null}
       {mode === 'inline' && !running && visibleRows === 0 && !showAll ? (
-        <div style={{ paddingLeft: PAD, paddingBottom: 8, marginTop: -6 }}>
+        <div style={{ paddingLeft: PAD, paddingBottom: 8 }}>
           <Meta>Full-screen program ended; nothing was left on screen.</Meta>
         </div>
       ) : null}

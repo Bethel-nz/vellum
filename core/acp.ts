@@ -1,6 +1,6 @@
 // One ACP connection: JSON-RPC 2.0 over a child process's stdio, one message per line
 // (agentclientprotocol.com, protocol v1). Agent-agnostic: Claude, Codex and opencode all speak it.
-// Types come from @agentclientprotocol/sdk; the transport is ours, so Bun's streams stay in view.
+// Types come from @agentclientprotocol/sdk; the transport is ours.
 
 import type { AnyMessage } from '@agentclientprotocol/sdk'
 

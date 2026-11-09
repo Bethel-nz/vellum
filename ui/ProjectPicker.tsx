@@ -7,13 +7,14 @@ import { Icon, useM } from './kit'
 import { shortPath, type } from './theme'
 
 /** A project changes the page you see, never the folder of an existing note. */
-export function ProjectPicker({ workspace, recent, open, onOpenChange, onPick, onBrowse }: {
+export function ProjectPicker({ workspace, recent, open, onOpenChange, onPick, onBrowse, onOpenFile }: {
   workspace: string
   recent: string[]
   open: boolean
   onOpenChange: (open: boolean) => void
   onPick: (folder: string) => void
   onBrowse: () => void
+  onOpenFile: () => void
 }) {
   const renderer = useGpuixRequired()
   const m = useM()
@@ -46,6 +47,7 @@ export function ProjectPicker({ workspace, recent, open, onOpenChange, onPick, o
       ...(!matches(workspace) && !folders.length ? [{ kind: 'label', label: 'No matching projects' } as MenuItem] : []),
       { kind: 'separator' },
       { label: 'Open folder…', icon: 'folderPlus', shortcut: '⌘O', testId: 'project-open-folder', onSelect: onBrowse },
+      { label: 'Open note…', hint: '.vel or any file', icon: 'file', testId: 'project-open-file', onSelect: onOpenFile },
     ]} />
   </div>
 }
