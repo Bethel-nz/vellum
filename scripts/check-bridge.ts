@@ -62,9 +62,12 @@ try {
   expect(JSON.parse(pending.result.content[0].text)[0].id).toBe('queued')
   const compact = await call('note-one', 'vellum_get_capture', { id: 'queued' })
   expect(compact.result.content).toHaveLength(1)
-  expect(compact.result.content[0].text.includes('"compact":true')).toBeTruthy()
-  expect(compact.result.content[0].text.includes('"ref"')).toBeFalsy()
-  expect(compact.result.content[0].text.includes(path.join(home, 'captures'))).toBeTruthy()
+  const compactJson = compact.result.content[0].text.match(/```json\r?\n([\s\S]*?)\r?\n```/)?.[1]
+  expect(compactJson).toBeDefined()
+  const compactData = JSON.parse(compactJson!)
+  expect(compactData.capture.compact).toBe(true)
+  expect(JSON.stringify(compactData)).not.toContain('"ref"')
+  expect(compactData.directory).toBe(path.join(paths.captures, 'note-one', 'queued'))
   const full = await call('note-one', 'vellum_get_capture', { id: 'queued', full: true, images: true })
   expect(full.result.content[1].type).toBe('image')
   expect(full.result.content[0].text.includes('"css":{"color":"red"}')).toBeTruthy()
@@ -94,6 +97,7 @@ try {
   expect(JSON.parse(stdio).result.tools.map((tool: { name: string }) => tool.name)).toEqual([
     'vellum_pending', 'vellum_get_capture', 'vellum_watch', 'vellum_resolve', 'vellum_dismiss', 'vellum_reply',
     ...(mobileSupported ? ['mobile_snapshot', 'mobile_screenshot', 'mobile_tap', 'mobile_steps', 'mobile_apps', 'mobile_configure', 'mobile_notify', 'mobile_reset', 'mobile_connection', 'mobile_input', 'mobile_inspect'] : []),
+    'browser', 'browser_session',
   ])
   ok('stdio MCP adapter round trip')
   const events = await request('/events')
