@@ -30,7 +30,9 @@ const until = async (ok: () => Promise<boolean> | boolean, ms = 8000) => {
   while (!(await ok()) && Date.now() - start < ms) await wait(150)
   return ok()
 }
-const sent = async () => (await Bun.file(log).text()).trim().split('\n').filter(Boolean).map((l) => JSON.parse(l).in).filter(Boolean)
+const sent = async () => (await Bun.file(log).text()).split('\n').filter(Boolean).flatMap((line) => {
+  try { return [JSON.parse(line).in].filter(Boolean) } catch { return [] }
+})
 const settings = async () => {
   const file = Bun.file(path.join(home, 'settings.json'))
   let raw = ''
