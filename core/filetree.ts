@@ -185,8 +185,9 @@ export async function gitStatus(workspace: string): Promise<Map<string, GitMark>
     const out = await new Response(proc.stdout).text()
     return (await proc.exited) === 0 ? out : undefined
   }
-  const gitRoot = (await git('rev-parse', '--show-toplevel'))?.trim()
-  const root = gitRoot ? realPath(gitRoot) : undefined
+  const location = (await git('rev-parse', '--show-toplevel', '--show-prefix'))?.trim().split(/\r?\n/)
+  const root = location?.[0] ? realPath(location[0]) : undefined
+  const prefix = location?.[1] ?? ''
   // Not into submodules: each has its own config, with filters of its own.
   const out = root ? await git(...(await noFilters(root)), 'status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignore-submodules=all') : undefined
   if (!root || out === undefined) return undefined
@@ -195,11 +196,11 @@ export async function gitStatus(workspace: string): Promise<Map<string, GitMark>
   try {
     base = realPath(workspace)
   } catch {}
-  return parseStatus(out, root, base)
+  return parseStatus(out, root, base, prefix)
 }
 
 /** `git status --porcelain -z`, whose paths are from the repo's top, as paths from the note's folder. */
-export function parseStatus(out: string, root: string, workspace: string): Map<string, GitMark> {
+export function parseStatus(out: string, root: string, workspace: string, prefix?: string): Map<string, GitMark> {
   const marks = new Map<string, GitMark>()
   const parts = out.split('\0')
   for (let i = 0; i < parts.length; i++) {
@@ -208,7 +209,9 @@ export function parseStatus(out: string, root: string, workspace: string): Map<s
     const xy = entry.slice(0, 2)
     // A rename or copy names the old path next.
     if (xy[0] === 'R' || xy[0] === 'C') i++
-    const rel = path.relative(workspace, path.join(root, entry.slice(3))).split(path.sep).join('/')
+    const file = entry.slice(3).replaceAll('\\', '/')
+    const fromWorkspace = prefix === undefined ? path.relative(workspace, path.join(root, file)).split(path.sep).join('/') : prefix && file.startsWith(prefix) ? file.slice(prefix.length) : file
+    const rel = fromWorkspace
     if (!rel || rel === '..' || rel.startsWith('../')) continue
     const mark: GitMark = xy === '??' ? 'U' : xy[0] === 'A' ? 'A' : xy[0] === 'R' ? 'R' : xy.includes('D') ? 'D' : 'M'
     marks.set(rel.split(path.sep).join('/'), mark)
