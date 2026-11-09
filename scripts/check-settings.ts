@@ -1,8 +1,8 @@
 // Self-check for the Settings page (ui/Settings.tsx): ⌘, opens it over the note, under the tab
 // strip; sidebar items switch pages; esc, Done and a tab each go back to the note. Then, against
 // scripts/fake-acp.ts: a new note starts in the mode and effort set under New notes, its session
-// carries your Instructions, a finished turn notifies (to $VELLUM_NOTIFY_LOG, never the desktop)
-// while Vellum is in the background, and "At launch: New note" opens the New note dialog.
+// carries your Instructions, its reply reaches the notification inbox (and desktop delivery is
+// logged on macOS), and "At launch: New note" opens the New note dialog.
 //   bun scripts/check-settings.ts
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
@@ -80,9 +80,8 @@ try {
   await open()
   const tabs = (await app.getByType('div').all()).map((n) => n.testId ?? '').filter((t) => /^tab-/.test(t))
   if (tabs[0]) {
-    await app.getByTestId(tabs[0]).click()
-    await wait(400)
-    expect('a tab goes back to the note', (await count('settings')) === 0, tabs[0])
+    await app.mouse.click(await app.getByTestId(tabs[0]).center())
+    expect('a tab goes back to the note', await until(async () => (await count('settings')) === 0), tabs[0])
   } else expect('a tab goes back to the note', false, 'no tab found')
 
   // New notes, Instructions, Notifications.
@@ -131,8 +130,13 @@ try {
   const configs = async () => (await sent()).filter((m) => m.method === 'session/set_config_option').map((m) => m.params.value)
   expect('…starts in Plan', await until(async () => (await configs()).includes('plan')), (await configs()).join(','))
   expect('…at Max effort', (await configs()).includes('max'), (await configs()).join(','))
-  const notes = async () => (await present(notified) ? (await Bun.file(notified).text()).trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [])
-  expect('a finished turn notifies while Vellum is behind', await until(async () => (await notes()).some((n) => n.kind === 'done' && n.body === 'Claude replied'), 15_000), JSON.stringify((await notes())))
+  if (windows) {
+    await app.getByTestId('open-notifications').click()
+    expect('a finished turn appears in the notification inbox', await until(async () => (await count(`notice-open-done:${made.id}`)) > 0, 15_000))
+  } else {
+    const notes = async () => (await present(notified) ? (await Bun.file(notified).text()).trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [])
+    expect('a finished turn notifies while Vellum is behind', await until(async () => (await notes()).some((n) => n.kind === 'done' && n.body === 'Claude replied'), 15_000), JSON.stringify((await notes())))
+  }
 
   // At launch: a new note.
   await open()
