@@ -137,7 +137,7 @@ try {
   expect('a new note’s session carries your instructions', await until(async () => /Answer in haiku\./.test(JSON.stringify((await created())?.params?.systemPrompt ?? ''))), JSON.stringify((await created())?.params?.systemPrompt ?? 'none').slice(0, 80))
   const configs = async () => (await sent()).filter((m) => m.method === 'session/set_config_option').map((m) => m.params.value)
   expect('…starts in Plan', await until(async () => (await configs()).includes('plan')), (await configs()).join(','))
-  expect('…at Max effort', (await configs()).includes('max'), (await configs()).join(','))
+  expect('…at Max effort', await until(async () => (await configs()).includes('max')), (await configs()).join(','))
   if (windows) {
     await app.getByTestId('open-notifications').click()
     expect('a finished turn appears in the notification inbox', await until(async () => (await count(`notice-open-done:${made.id}`)) > 0, 15_000))
