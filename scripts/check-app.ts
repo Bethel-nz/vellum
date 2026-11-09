@@ -55,14 +55,16 @@ try {
     const secondExit = await Promise.race([second.exited, wait(15_000).then(() => undefined)])
     if (secondExit === undefined) second.kill()
     expect('a second launch hands its file to the existing app', secondExit === 0)
-    // Draft chips appear after the composer blurs; Tab leaves the draft intact.
-    await c.press('tab')
+    // Draft chips appear after the composer blurs; clicking the toolbar leaves the draft intact.
+    await app.mouse.click(await app.getByTestId('open-history').center())
     let received = false
     for (let i = 0; i < 50 && !received; i++) {
       received = (await app.getByTestId('draft-chip-0').count()) === 1
       if (!received) await wait(100)
     }
     const chip = received ? await app.getByTestId('draft-chip-0').textContent() : ''
+    const historyInput = app.getByTestId('history-input')
+    if (await historyInput.count()) await historyInput.press('escape')
     expect('the existing app adds the opened text file to its draft', chip.includes('opened text file.txt'))
   }
 
