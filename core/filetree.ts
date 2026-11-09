@@ -185,7 +185,8 @@ export async function gitStatus(workspace: string): Promise<Map<string, GitMark>
     const out = await new Response(proc.stdout).text()
     return (await proc.exited) === 0 ? out : undefined
   }
-  const root = (await git('rev-parse', '--show-toplevel'))?.trim()
+  const gitRoot = (await git('rev-parse', '--show-toplevel'))?.trim()
+  const root = gitRoot ? realPath(gitRoot) : undefined
   // Not into submodules: each has its own config, with filters of its own.
   const out = root ? await git(...(await noFilters(root)), 'status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignore-submodules=all') : undefined
   if (!root || out === undefined) return undefined

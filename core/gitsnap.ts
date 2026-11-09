@@ -49,7 +49,8 @@ async function git(cwd: string, args: string[], env?: Record<string, string>, li
 export async function snapshot(cwd: string): Promise<Snapshot | undefined> {
   const where = (await git(cwd, ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-path', 'objects', '--show-prefix'])).out
   if (!where) return
-  const [root = '', objects = '', prefix = ''] = where.split('\n')
+  const [gitRoot = '', objects = '', prefix = ''] = where.split('\n')
+  const root = realPath(gitRoot)
   const store = path.join(paths.home, 'git', new Bun.CryptoHasher('sha1').update(root).digest('hex').slice(0, 16))
   mkdirSync(path.join(store, 'objects'), { recursive: true })
   const env = { GIT_INDEX_FILE: path.join(store, 'index'), GIT_OBJECT_DIRECTORY: path.join(store, 'objects'), GIT_ALTERNATE_OBJECT_DIRECTORIES: objects }
