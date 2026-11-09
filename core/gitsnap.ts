@@ -77,8 +77,8 @@ export async function changedFiles(a: Snapshot, b: Snapshot, workspace: string):
   const patch = (await git(a.root, [...b.config, 'diff-tree', '-p', '-M', '--no-color', '--no-ext-diff', '-r', a.tree, b.tree, '--', a.prefix || '.'], a.env)).out
   if (!patch) return []
   // git names the real path (macOS: /private/var for /var), so the workspace has to be too.
-  const ws = realPath(workspace)
-  return splitFiles(patch).map((f) => ({ ...f, path: path.relative(ws, path.join(a.root, f.path)).split(path.sep).join('/') || f.path }))
+  const prefix = a.prefix.replaceAll('\\', '/')
+  return splitFiles(patch).map((f) => ({ ...f, path: prefix && f.path.startsWith(prefix) ? f.path.slice(prefix.length) : f.path }))
 }
 
 /** Current staged, unstaged and untracked changes against HEAD, using the same private index. */
