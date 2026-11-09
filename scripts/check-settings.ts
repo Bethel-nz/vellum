@@ -31,7 +31,15 @@ const until = async (ok: () => Promise<boolean> | boolean, ms = 8000) => {
   return ok()
 }
 const sent = async () => (await Bun.file(log).text()).trim().split('\n').filter(Boolean).map((l) => JSON.parse(l).in).filter(Boolean)
-const settings = async () => JSON.parse(await Bun.file(path.join(home, 'settings.json')).text())
+const settings = async () => {
+  const file = Bun.file(path.join(home, 'settings.json'))
+  let raw = ''
+  for (let attempt = 0; attempt < 20; attempt++) {
+    raw = await file.text()
+    try { return JSON.parse(raw) } catch { await wait(50) }
+  }
+  throw new Error(`Could not read settings.json: ${raw}`)
+}
 const open = async () => {
   await c.click()
   await c.press(windows ? 'ctrl-,' : 'cmd-,')
