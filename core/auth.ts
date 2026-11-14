@@ -35,7 +35,7 @@ export async function accountStatus(profile: Profile): Promise<AccountStatus | u
   if (agent === 'opencode') return opencodeStatus(profile)
   if (agent !== 'claude') return
   try {
-    const proc = Bun.spawn([claudeBin(), 'auth', 'status', '--json'], { env: agentEnv(profile), cwd: homedir(), stdout: 'pipe', stderr: 'ignore', stdin: 'ignore' })
+    const proc = Bun.spawn([claudeBin(), 'auth', 'status', '--json'], { env: agentEnv(profile), cwd: homedir(), stdout: 'pipe', stderr: 'ignore', stdin: 'ignore', windowsHide: true })
     const timer = setTimeout(() => proc.kill(), 15_000)
     const text = await new Response(proc.stdout).text()
     clearTimeout(timer)
@@ -56,7 +56,7 @@ async function opencodeStatus(profile: Profile): Promise<AccountStatus> {
   if (!opencode) return {}
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
-    const proc = Bun.spawn([opencode, 'auth', 'list', '--format', 'json'], { env: profileEnv(profile), cwd: homedir(), stdout: 'pipe', stderr: 'ignore', stdin: 'ignore' })
+    const proc = Bun.spawn([opencode, 'auth', 'list', '--format', 'json'], { env: profileEnv(profile), cwd: homedir(), stdout: 'pipe', stderr: 'ignore', stdin: 'ignore', windowsHide: true })
     timer = setTimeout(() => proc.kill(), 15_000)
     const text = await new Response(proc.stdout).text()
     if ((await proc.exited) !== 0) return {}
@@ -84,7 +84,7 @@ async function codexStatus(profile: Profile): Promise<AccountStatus | undefined>
   const codex = tool('codex')
   if (!codex) return
   try {
-    const proc = Bun.spawn([codex, 'login', 'status'], { env: profileEnv(profile), cwd: homedir(), stdout: 'pipe', stderr: 'pipe', stdin: 'ignore' })
+    const proc = Bun.spawn([codex, 'login', 'status'], { env: profileEnv(profile), cwd: homedir(), stdout: 'pipe', stderr: 'pipe', stdin: 'ignore', windowsHide: true })
     const timer = setTimeout(() => proc.kill(), 15_000)
     // It says who's in on stdout or stderr, depending on the version.
     const [out, err] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
@@ -169,9 +169,9 @@ export async function logout(profile: Profile): Promise<boolean> {
   if (agent === 'codex') {
     const codex = tool('codex')
     if (!codex) return false
-    return (await Bun.spawn([codex, 'logout'], { env: profileEnv(profile), cwd: homedir(), stdout: 'ignore', stderr: 'ignore', stdin: 'ignore' }).exited) === 0
+    return (await Bun.spawn([codex, 'logout'], { env: profileEnv(profile), cwd: homedir(), stdout: 'ignore', stderr: 'ignore', stdin: 'ignore', windowsHide: true }).exited) === 0
   }
   if (agent !== 'claude') return false
-  const proc = Bun.spawn([...agentArgv(profile), '--cli', 'auth', 'logout'], { env: agentEnv(profile), cwd: homedir(), stdout: 'ignore', stderr: 'ignore', stdin: 'ignore' })
+  const proc = Bun.spawn([...agentArgv(profile), '--cli', 'auth', 'logout'], { env: agentEnv(profile), cwd: homedir(), stdout: 'ignore', stderr: 'ignore', stdin: 'ignore', windowsHide: true })
   return (await proc.exited) === 0
 }

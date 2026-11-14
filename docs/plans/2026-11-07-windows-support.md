@@ -31,6 +31,8 @@ The local run found and fixed three portability defects: the native build's Ghos
 
 Follow-up: launching from the installer exposed a console window because the executable used the Windows console subsystem. Windows builds now set Bun's `compile.windows.hideConsole`, and the compiled-app check verifies the actual PE GUI subsystem before launch. The assertion failed against the old binary; the rebuilt GUI binary passed the full agent, file-handoff, and ConPTY smoke check.
 
+Agent-picker follow-up: background account status/logout commands and ACP discovery now use `windowsHide`. `scripts/check-agent-consoles.ts` runs a GUI host with console-subsystem fake Claude, Codex, and OpenCode executables, then checks Win32 console allocation and successful status/ACP responses across seven child processes. It failed before the fix and also failed when only the ACP change was temporarily removed; the complete fix passes. The login UI check still passes for interactive sign-in in Vellum's own terminal. Windows CI runs the new regression check.
+
 ## Already in place
 
 These were written for Windows and need testing, not writing:

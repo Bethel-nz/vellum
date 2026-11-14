@@ -20,6 +20,7 @@ jobs:
       - run: bun test ./core
       - run: bun run typecheck
       - run: bun scripts/check-windows.ts
+      - run: bun scripts/check-agent-consoles.ts
       - run: bun scripts/check-bridge.ts
       - run: bun scripts/check-settings.ts
       - run: bun scripts/check-tabs.ts
