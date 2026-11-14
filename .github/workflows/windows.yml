@@ -18,9 +18,11 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: cargo install cargo-packager --locked --version 0.11.8
       - run: bun test ./core
+      - run: bun run typecheck
       - run: bun scripts/check-windows.ts
       - run: bun scripts/check-bridge.ts
       - run: bun scripts/check-settings.ts
+      - run: bun scripts/check-tabs.ts
       - run: bun scripts/check-terminals.ts
       - run: bun run package
       - run: bun scripts/check-app.ts

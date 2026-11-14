@@ -11,4 +11,7 @@ test.skipIf(os === 'mac')('labels use Ctrl, Alt and Shift off macOS', () => {
   expect(keys('⌃N ⌃P to move')).toBe('Ctrl+N Ctrl+P to move')
   expect(keys('running · ⌘Esc to leave')).toBe('running · Ctrl+` to leave')
   expect(keys('Stop ⌘.')).toBe('Stop Ctrl+.')
+  expect(keys('⌃⇥ ⌃⇧⇥')).toBe('Ctrl+Tab Ctrl+Shift+Tab')
+  expect(keys('⇧⇥ changes mode')).toBe('Shift+Tab changes mode')
+  expect(keys('⇧⌘] ⇧⌘[')).toBe('Ctrl+Shift+] Ctrl+Shift+[')
 })

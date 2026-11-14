@@ -215,7 +215,12 @@ export function tokens(text: string, known: Tag[]): Token[] {
     if (plain) out.push({ kind: 'text', text: plain })
     plain = ''
   }
-  for (const part of text.split(/(\s+)/)) {
+  // Picked paths may contain spaces; keep their full names and shortened labels together.
+  const spaced = [...new Set(files.flatMap((file) => file.split('/').map((_, i, parts) => parts.slice(i).join('/'))).filter((file) => /\s/.test(file)))].sort((a, b) => b.length - a.length)
+  const split = spaced.length
+    ? new RegExp(String.raw`((?<!\S)[#@](?:${spaced.map((file) => file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?::\d+(?:-\d+)?)?[.,;:!?)\]]*(?=\s|$)|\s+)`)
+    : /(\s+)/
+  for (const part of text.split(split)) {
     const tail = TRAILING.exec(part)?.[0] ?? ''
     let word = tail ? part.slice(0, -tail.length) : part
     // A tag the text already has comes first: `@simdriver` is the skill even beside a file of that name.

@@ -8,6 +8,7 @@ import { launch } from '@gpuix/react/automation'
 import { names, scratchDir } from './scratch'
 
 const home = await scratchDir('vellum-tabs-')
+const primary = process.platform === 'darwin' ? 'cmd' : 'ctrl'
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 const app = await launch({ command: 'bun', args: ['app.tsx'], env: { GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } })
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -42,6 +43,13 @@ try {
   await wait(1200)
   const shown = await titleY()
 
+  const initialTabs = await tabCount()
+  await c.press(`${primary}-n`)
+  expect('the primary N shortcut creates a note', await until(async () => (await tabCount()) === initialTabs + 1))
+  await c.press(`${primary}-shift-w`)
+  expect('the primary Shift W shortcut closes the new note', await until(async () => (await tabCount()) === initialTabs))
+  await wait(500)
+
   // + creates a blank page in this project.
   const before = await tabCount()
   await app.getByTestId('new-thread').click()
@@ -62,6 +70,16 @@ try {
   await c.press('ctrl-tab')
   await wait(500)
   expect('⌃⇥ goes to the next tab', (await current()) === second)
+  await c.press(`${primary}-1`)
+  expect('the primary 1 shortcut selects the first tab', await until(async () => (await current()) === first))
+  await c.press(`${primary}-9`)
+  expect('the primary 9 shortcut selects the last tab', await until(async () => (await current()) === second))
+  if (process.platform !== 'darwin') {
+    await c.press('ctrl-pageup')
+    expect('Ctrl+PageUp selects the previous tab', await until(async () => (await current()) === first))
+    await c.press('ctrl-pagedown')
+    expect('Ctrl+PageDown selects the next tab', await until(async () => (await current()) === second))
+  }
   const threads = path.join(home, 'threads')
   const modes = (await Promise.all(names(threads, '*.jsonl').map((f) => Bun.file(path.join(threads, f)).text()))).flatMap((t) => t.split('\n')).filter((l) => l.includes('"vellum/mode"'))
   expect('…and the composer’s mode stays (⇧⇥ alone cycles it)', modes.length === 0, `${modes.length} mode records`)
@@ -76,7 +94,7 @@ try {
   expect('⌃click closes a tab', (await tabCount()) === before)
 
   // ⌘Y opens History; ↩ on a past note opens it
-  await c.press('cmd-y')
+  await c.press(`${primary}-y`)
   await app.getByTestId('history-input').waitFor({ timeoutMs: 3000 })
   const rows = (await app.getByType('div').all()).map((n) => n.testId ?? '').filter((id) => id.startsWith('history-') && id !== 'history-input')
   expect('History lists notes', rows.length >= 2, `${rows.length} rows`)
@@ -103,16 +121,16 @@ try {
   await wait(400)
 
   // ⌘⇧T hides the pinned strip and brings it back
-  await c.press('cmd-shift-t')
+  await c.press(`${primary}-shift-t`)
   await until(async () => (await titleY()) < shown - 20)
   const hidden = await titleY()
   expect('⌘⇧T hides the strip', hidden < shown - 20, `title y ${shown} → ${hidden}`)
   await shot('2-hidden')
-  await c.press('cmd-shift-t')
+  await c.press(`${primary}-shift-t`)
   expect('⌘⇧T shows it again', await until(async () => (await titleY()) === shown))
 
   // auto: writing tucks the strip away, the top edge brings it back
-  await c.press('cmd-,')
+  await c.press(`${primary}-,`)
   // Tabs sits below the fold: jump to it first.
   await app.getByTestId('settings-go-appearance').click()
   await wait(400)

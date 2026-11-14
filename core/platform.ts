@@ -50,7 +50,7 @@ export function isTerminalLeave(key: string, mods: Mods): boolean {
 }
 
 const GLYPH: Record<string, string> = { '⌃': 'Ctrl', '⌥': 'Alt', '⇧': 'Shift', '⌘': 'Ctrl' }
-const KEY: Record<string, string> = { '↵': 'Enter', '↩': 'Enter', '⌫': 'Backspace', Esc: 'Esc' }
+const KEY: Record<string, string> = { '↵': 'Enter', '↩': 'Enter', '⇥': 'Tab', '⌫': 'Backspace', Esc: 'Esc' }
 
 /**
  * A shortcut label written the macOS way ("⇧⌘W", "⌘↵", "⌃N ⌃P"), as this platform spells it
@@ -60,7 +60,7 @@ export function keys(label: string): string {
   if (isMac) return label
   return label
     .replace(/⌘Esc/g, 'Ctrl+`')
-    .replace(/([⌃⌥⇧⌘]+)(Esc|↵|↩|⌫|[A-Z0-9.,[\]`/]|↑|↓|←|→)?/g, (_, mods: string, key?: string) => {
+    .replace(/([⌃⌥⇧⌘]+)(Esc|↵|↩|⇥|⌫|[A-Z0-9.,[\]`/]|↑|↓|←|→)?/g, (_, mods: string, key?: string) => {
       const names = [...new Set([...mods].map((g) => GLYPH[g]!))].sort((a, b) => order(a) - order(b))
       return [...names, ...(key ? [KEY[key] ?? key] : [])].join('+')
     })

@@ -1,13 +1,13 @@
 // One-off: restyled Agent Screen against a fake browser stream. Shots: screenshots/agent-screen-*.png
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
-import { present, scratchDir } from '/Users/APPLE/dev/vellum/scripts/scratch'
+import { present, scratchDir } from './scratch'
 
 const home = await scratchDir('vellum-agent-screen-')
-const env = { ...process.env, GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home'), VELLUM_BRIDGE_PORT: '0', VELLUM_AGENT: path.resolve('/Users/APPLE/dev/vellum/scripts', 'fake-acp.ts'), FAKE_ACP_LOG: path.join(home, 'fake-acp.log') }
+const env = { ...process.env, GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home'), VELLUM_BRIDGE_PORT: '0', VELLUM_AGENT: path.resolve(import.meta.dir, 'fake-acp.ts'), FAKE_ACP_LOG: path.join(home, 'fake-acp.log') }
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env, stdout: 'ignore' }).exited
 await Bun.write(env.FAKE_ACP_LOG, '')
-const icon = await Bun.file('/Users/APPLE/dev/vellum/assets/icon.png').bytes()
+const icon = await Bun.file(path.resolve(import.meta.dir, '../assets/icon.png')).bytes()
 const frame = icon.toBase64()
 const fake = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: (request, server) => server.upgrade(request) ? undefined : new Response('stream', { status: 404 }), websocket: {
   open(socket) { socket.send(JSON.stringify({ type: 'url', url: 'https://example.com/agent' })); socket.send(JSON.stringify({ type: 'frame', seq: 1, data: frame, metadata: { deviceWidth: 1280, deviceHeight: 800, timestamp: Date.now() } })) },
@@ -29,17 +29,17 @@ try {
     await app.getByTestId('agent-screen-inline').waitFor({ timeoutMs: 5000 })
   })
   await Bun.sleep(800)
-  await app.screenshot({ path: '/Users/APPLE/dev/vellum/screenshots/agent-screen-card.png' })
+  await app.screenshot({ path: 'screenshots/agent-screen-card.png' })
   // The strip's Agent Screen button reopens the pane; the resting card's Open expands.
   await app.getByTestId('agent-screen-inline').getByTestId('browser-open').click()
   await app.getByTestId('browser-viewer').waitFor({ timeoutMs: 5000 })
   await Bun.sleep(600)
-  await app.screenshot({ path: '/Users/APPLE/dev/vellum/screenshots/agent-screen-expanded.png' })
+  await app.screenshot({ path: 'screenshots/agent-screen-expanded.png' })
   await app.getByTestId('browser-viewer-close').click()
   await Bun.sleep(400)
   await app.getByTestId('open-browser').click().catch(() => {})
   await app.getByTestId('agent-screen-side').waitFor({ timeoutMs: 5000 }).catch(e => console.log('side pane:', String(e).slice(0, 80)))
   await Bun.sleep(600)
-  await app.screenshot({ path: '/Users/APPLE/dev/vellum/screenshots/agent-screen-side.png' })
+  await app.screenshot({ path: 'screenshots/agent-screen-side.png' })
   console.log('SHOT-DONE')
 } finally { await app.close() }
