@@ -109,11 +109,11 @@ export function watchInbox(onPaths: (files: string[]) => void): () => void {
   }
   drain()
   const watcher = watch(inbox(), () => setTimeout(drain, 50))
-  // Windows can miss directory notifications for newly created inbox files.
-  const poll = os === 'windows' ? setInterval(drain, 250) : undefined
+  // Directory notifications can be delayed or missed, including handoffs just after startup.
+  const poll = setInterval(drain, 250)
   return () => {
     clearInterval(beat)
-    if (poll) clearInterval(poll)
+    clearInterval(poll)
     watcher.close()
   }
 }

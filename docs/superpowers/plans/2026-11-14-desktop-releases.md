@@ -42,3 +42,5 @@ Validation: actionlint passes; stable/prerelease version guards accept matching 
 Hosted verification: run 43596124485 passed both desktop jobs and uploaded the Windows installer and macOS ARM64 ZIP.
 
 Follow-up request: prepare v1.0.0 and add a Chrome extension ZIP to the same release. A separate Ubuntu job installs the extension's locked dependencies, builds and validates its Manifest V3 output, and checks the extracted ZIP. Publication requires all three downloads. The extension's fixed key/ID must remain unchanged for pairing.
+
+The first v1 release run passed the Chrome job but exposed an intermittent macOS inbox-watcher failure in `core/opener.test.ts`. The polling fallback now covers every platform, so early file handoffs do not depend solely on filesystem notifications. The failed run was canceled before publication; rerun against the corrected `core` commit.
