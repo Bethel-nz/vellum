@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Version tag matching package.json (for example v0.1.0)
+        description: Version tag matching package.json (for example v1.0.0)
         required: true
         type: string
 
@@ -46,6 +46,11 @@ jobs:
           bun -e '
             const version = (await Bun.file("package.json").json()).version;
             if (process.env.RELEASE_TAG !== `v${version}`) throw new Error(`Release tag must be v${version}`);
+            for (const file of ["packager.json", "packager.windows.json", "extension/package.json"]) {
+              if ((await Bun.file(file).json()).version !== version) throw new Error(`Version mismatch in ${file}`);
+            }
+            const manifest = await Bun.file("extension/manifest.json").json();
+            if (manifest.version !== version.split(/[-+]/)[0]) throw new Error("Extension manifest version mismatch");
           '
           git merge-base --is-ancestor HEAD origin/core
           commit=$(git rev-parse HEAD)
@@ -74,14 +79,16 @@ jobs:
           pattern: vellum-*
           merge-multiple: true
           path: release
-      - name: Publish both desktop downloads
+      - name: Publish desktop and Chrome extension downloads
         run: |
           set -euo pipefail
           version=${RELEASE_TAG#v}
           windows="release/Vellum_${version}_x64-setup.exe"
           macos="release/Vellum_${version}_macos-arm64.zip"
+          extension="release/Vellum_Snapshot_${version}_chrome.zip"
           test -s "$windows"
           test -s "$macos"
+          test -s "$extension"
           if gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' > release-state.txt 2>/dev/null; then
             if [ "$(cat release-state.txt)" != true ]; then
               echo "Release already published; leaving its assets unchanged."
@@ -98,5 +105,5 @@ jobs:
             if [[ "$release_version" == *-* ]]; then flags+=(--prerelease); fi
             gh release create "$RELEASE_TAG" --target "$RELEASE_COMMIT" --title "Vellum $RELEASE_TAG" --generate-notes --draft "${flags[@]}"
           fi
-          gh release upload "$RELEASE_TAG" "$windows" "$macos" --clobber
+          gh release upload "$RELEASE_TAG" "$windows" "$macos" "$extension" --clobber
           gh release edit "$RELEASE_TAG" --draft=false

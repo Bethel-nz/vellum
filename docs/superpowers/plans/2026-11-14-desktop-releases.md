@@ -23,7 +23,7 @@
 
 - [x] Replace Windows-only CI with a reusable two-platform build; include the native addon in the macOS bundle.
 - [x] Add version-gated release publication with read-only build permissions and write permission confined to publishing.
-- [ ] Update README, lint workflows, run relevant local checks, review, commit, push, and inspect the resulting CI run.
+- [x] Update README, lint workflows, run relevant local checks, review, commit, push, and inspect the resulting CI run.
 
 ## Review focus
 
@@ -38,3 +38,7 @@
 Ruling: Preserve the rewritten local `core` tip on `backup/core-before-sync-133c513` and recreate `core` from origin — the user requested the latest branch, and there were no local edits.
 
 Validation: actionlint passes; stable/prerelease version guards accept matching versions and reject malformed or mismatched inputs; local typecheck passes; Windows core suite passes 138 tests with one macOS-only skip. Review caught a prerelease classification edge for hyphens inside build metadata; classification now ignores metadata after `+`.
+
+Hosted verification: run 43596124485 passed both desktop jobs and uploaded the Windows installer and macOS ARM64 ZIP.
+
+Follow-up request: prepare v1.0.0 and add a Chrome extension ZIP to the same release. A separate Ubuntu job installs the extension's locked dependencies, builds and validates its Manifest V3 output, and checks the extracted ZIP. Publication requires all three downloads. The extension's fixed key/ID must remain unchanged for pairing.

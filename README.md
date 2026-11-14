@@ -41,12 +41,16 @@ Published versions are available on [GitHub Releases](https://github.com/Bethel-
 - **macOS Apple Silicon:** `Vellum_<version>_macos-arm64.zip`. Extract the ZIP and
   move `Vellum.app` to Applications. The app is ad hoc signed, without Apple
   notarization.
+- **Chrome extension:** `Vellum_Snapshot_<version>_chrome.zip`. Extract it, open
+  `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and
+  select the extracted folder. Run Vellum on the same computer to connect it.
 
 For the latest development build, open [Desktop builds](https://github.com/Bethel-nz/vellum/actions/workflows/desktop.yml),
 choose a successful run for `core`, and download `vellum-windows-x64-installer`
-or `vellum-macos-arm64`. GitHub may require you to sign in to download artifacts.
+or `vellum-macos-arm64`, or the `vellum-chrome-extension` artifact. GitHub may
+require you to sign in to download artifacts.
 
-Extract the archive and run `Vellum_0.1.0_x64-setup.exe`. The installer installs
+Extract the archive and run `Vellum_1.0.0_x64-setup.exe`. The installer installs
 for your Windows account. Vellum registers itself in **Open with** and
 **Default Apps**; you choose any default file associations in Windows Settings.
 
@@ -103,7 +107,7 @@ bun run package
 
 - **Windows x64:** install the Visual Studio C++ build tools and a Windows SDK.
   Packaging produces `dist/Vellum.exe`, `dist/helpers/`, and
-  `dist/bundle/Vellum_0.1.0_x64-setup.exe`.
+  `dist/bundle/Vellum_1.0.0_x64-setup.exe`.
 - **macOS on Apple Silicon:** install Xcode and its command-line tools. Packaging
   produces `dist/bundle/Vellum.app` with an ad hoc signature.
 
@@ -112,15 +116,17 @@ and other runtime files. The installer and app bundle arrange those files for yo
 
 ## Publish a release
 
-Desktop CI builds Windows x64 and macOS ARM64 on pushes to `core`, pull requests,
-and manual runs. Release builds use the same workflow.
+Desktop CI builds Windows x64, macOS ARM64, and the Chrome extension on pushes to
+`core`, pull requests, and manual runs. Release builds use the same workflow.
 
 Set the same version in `package.json`, `packager.json`, and
-`packager.windows.json`, commit it to `core`, then push a matching version tag:
+`packager.windows.json`, plus `extension/package.json`. Set the numeric version
+in `extension/manifest.json` too (omit any prerelease suffix there). Commit to
+`core`, then push a matching version tag:
 
 ```sh
-git tag v0.1.0
-git push origin v0.1.0
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
 You can also run the [Release workflow](https://github.com/Bethel-nz/vellum/actions/workflows/release.yml)
@@ -128,9 +134,14 @@ manually and enter the version tag. An existing tag builds that tagged commit;
 a new tag builds the latest `core` and is created when the release is published.
 The tag must match the package version and belong to `core` history.
 
-Both builds must pass before the workflow publishes the installer and macOS ZIP
-to one GitHub Release. Tags with a prerelease suffix, such as `v0.2.0-beta.1`,
+All builds must pass before the workflow publishes the installer, macOS ZIP,
+and Chrome extension ZIP to one GitHub Release. Tags with a prerelease suffix, such as `v1.1.0-beta.1`,
 produce prereleases. An already published release is left unchanged on reruns.
+
+To build the extension locally, install its separate dependencies with
+`bun install --frozen-lockfile` from `extension/`, then run
+`bun run build:extension` and `bun scripts/check-extension-build.ts` from the
+repository root. The output is `extension/dist/`, ready to load unpacked.
 
 ## Development checks
 

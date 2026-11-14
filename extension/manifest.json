@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Vellum Snapshot",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Select a page, leave a note, and send it to Vellum.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzqj2kLL2hDWm0kMZ5lJiQFviv3lsUiaX/mMdizwV+WpetWgH6QmLwlH9e1Q43sLbJ0s/2N7pG9IkN7Exex7NHxTSU5RBxOWYPfgBUDBc0vJDlQiad/7SsKADQyY48NG4SGzkmTQMn2w7LQMbHN1EEVBpQQPGiVvom2Bg2MEYd+HhuUgUxqSwEoM5mXoRYPKtTNGuw31c1MCfJUV5KKfAaTsW6En6YGrLBY6kqt+4aqWYUmfwGgArOffYUJLE3iwzQj4rpGCwLirCu4LYaUt6Csh50vse+FGQmtZBoWbt205bOnHrkhwSjAc9xhOAvu0m03JdpLwIG9k6kasEnaQnVQIDAQAB",
   "permissions": [
