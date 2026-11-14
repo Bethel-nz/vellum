@@ -29,6 +29,8 @@ Local prerequisites: Bun 1.4.4, Rust/Cargo 1.100.0, MSVC x64 tools, Windows SDK 
 
 The local run found and fixed three portability defects: the native build's Ghostty Wasm plugin only matched POSIX paths, picked file names containing spaces did not become context tokens, and the screenshot helper used absolute developer-machine paths. Windows shortcut labels now spell Tab correctly; tab checks use the host's primary modifier and cover new/close note, numbered tabs, and Ctrl+PageUp/PageDown. Terminal checks cover Ctrl+Shift+K and Ctrl+backtick. The compiled smoke check opens its text fixture inside the active workspace, so it verifies draft context without accidentally switching projects.
 
+Follow-up: launching from the installer exposed a console window because the executable used the Windows console subsystem. Windows builds now set Bun's `compile.windows.hideConsole`, and the compiled-app check verifies the actual PE GUI subsystem before launch. The assertion failed against the old binary; the rebuilt GUI binary passed the full agent, file-handoff, and ConPTY smoke check.
+
 ## Already in place
 
 These were written for Windows and need testing, not writing:

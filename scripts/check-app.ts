@@ -10,6 +10,12 @@ const binary = process.env.VELLUM_APP_BINARY
   ? path.resolve(process.env.VELLUM_APP_BINARY)
   : path.resolve(import.meta.dir, windows ? '../dist/Vellum.exe' : '../dist/bundle/Vellum.app/Contents/MacOS/Vellum')
 if (!await present(binary)) throw new Error('no compiled Vellum: run bun run package first')
+if (windows) {
+  const header = Buffer.from(await Bun.file(binary).slice(0, 4096).arrayBuffer())
+  const subsystem = header.readUInt16LE(header.readUInt32LE(0x3c) + 24 + 68)
+  if (subsystem !== 2) throw new Error(`Vellum must use the Windows GUI subsystem (2), got ${subsystem}; a console window would open`)
+  console.log('ok   the Windows executable opens without a console window')
+}
 const home = await scratchDir('vellum-app-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
 const contextFile = path.resolve(import.meta.dir, '../screenshots', path.basename(home), 'opened text file.txt')
