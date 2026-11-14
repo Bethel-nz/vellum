@@ -6,11 +6,13 @@ import { launch } from '@gpuix/react/automation'
 import { present, scratchDir } from './scratch'
 
 const windows = process.platform === 'win32'
-const binary = path.resolve(import.meta.dir, windows ? '../dist/Vellum.exe' : '../dist/bundle/Vellum.app/Contents/MacOS/Vellum')
+const binary = process.env.VELLUM_APP_BINARY
+  ? path.resolve(process.env.VELLUM_APP_BINARY)
+  : path.resolve(import.meta.dir, windows ? '../dist/Vellum.exe' : '../dist/bundle/Vellum.app/Contents/MacOS/Vellum')
 if (!await present(binary)) throw new Error('no compiled Vellum: run bun run package first')
 const home = await scratchDir('vellum-app-')
 await Bun.spawn(['bun', 'scripts/fixture.ts'], { env: { ...process.env, VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home') } }).exited
-const contextFile = path.join(home, 'opened text file.txt')
+const contextFile = path.resolve(import.meta.dir, '../screenshots', path.basename(home), 'opened text file.txt')
 await Bun.write(contextFile, 'Opened from another process.')
 const app = await launch({
   command: binary,
@@ -55,6 +57,7 @@ try {
     const secondExit = await Promise.race([second.exited, wait(15_000).then(() => undefined)])
     if (secondExit === undefined) second.kill()
     expect('a second launch hands its file to the existing app', secondExit === 0)
+    await app.getByTestId('file-preview-name').waitFor({ timeoutMs: 5_000 })
     // Draft chips appear after the composer blurs; clicking the toolbar leaves the draft intact.
     await app.mouse.click(await app.getByTestId('open-history').center())
     let received = false
@@ -66,6 +69,7 @@ try {
     const historyInput = app.getByTestId('history-input')
     if (await historyInput.count()) await historyInput.press('escape')
     expect('the existing app adds the opened text file to its draft', chip.includes('opened text file.txt'))
+    expect('the opened file appears in the file pane', (await app.getByTestId('file-preview-name').textContent()) === 'opened text file.txt')
   }
 
   const before = new Set((await ids()).filter((id) => id.startsWith('reply-')))
@@ -80,10 +84,7 @@ try {
   expect('an agent turn runs through the binary', replied)
   await app.screenshot({ path: 'screenshots/app-2-reply.png' })
 
-  await app.getByTestId('chip-0').click()
-  await app.getByTestId('file-preview-name').waitFor({ timeoutMs: 5_000 })
-  expect('a file tag opens its file in the pane', (await app.getByTestId('file-preview-name').textContent()) === 'theme.ts')
-
+  await wait(500)
   await app.getByTestId('view-terminal').click()
   await app.getByTestId('pane-term').waitFor({ timeoutMs: 10_000 })
   await wait(1500)

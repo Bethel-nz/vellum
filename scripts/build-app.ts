@@ -1,7 +1,5 @@
-// Builds Vellum.app: bin.ts compiled into one executable (dist/Vellum), assets/icon.png turned
-// into an .icns, and cargo-packager wrapping both in a bundle (packager.json), signed ad hoc.
-// macOS only; needs cargo-packager (`cargo install cargo-packager --locked`).
-//   bun scripts/build-app.ts      → dist/bundle/Vellum.app
+// Builds Vellum's executable, helpers, and host bundle: a macOS .app or a Windows NSIS installer.
+// Needs cargo-packager; run bun scripts/build-app.ts.
 import { homedir } from 'node:os'
 import { cpSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
@@ -28,7 +26,7 @@ const run = (argv: string[]) => {
 const ghosttyWasm: import('bun').BunPlugin = {
   name: 'ghostty-wasm',
   setup(build) {
-    build.onLoad({ filter: /libghostty-vt-node\/dist\/module\.js$/ }, async ({ path: file }) => {
+    build.onLoad({ filter: /libghostty-vt-node[/\\]dist[/\\]module\.js$/ }, async ({ path: file }) => {
       const source = await Bun.file(file).text()
       const out = source.replace('new URL("../wasm/ghostty-vt.wasm", import.meta.url)', 'wasmFile')
       if (out === source) throw new Error('libghostty-vt-node no longer loads its wasm the way this expects')

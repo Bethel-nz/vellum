@@ -9,6 +9,18 @@ import type { Tag } from './threads'
 const dir = mkdtempSync(path.join(tmpdir(), 'vellum-tags-'))
 writeFileSync(path.join(dir, 'a.ts'), ['one', 'two', 'three', 'four', 'five'].join('\n'))
 
+test('picked file paths with spaces remain context tokens', () => {
+  const file: Tag = { type: 'file', value: 'notes/opened text file.txt' }
+  const found = tokens('Read #opened text file.txt:2-4, then reply.', [file])
+  expect(found.filter((token) => token.kind === 'tag')).toEqual([
+    { kind: 'tag', tag: { ...file, line: 2, endLine: 4 }, text: '#opened text file.txt:2-4' },
+  ])
+  expect(found.map((token) => token.text).join('')).toBe('Read #opened text file.txt:2-4, then reply.')
+  expect(relabel('#notes/opened text file.txt ', [file])).toBe('#opened text file.txt ')
+  expect(tokens('#opened text file.txt.extra', [file]).some((token) => token.kind === 'tag')).toBe(false)
+  expect(tokens('email#opened text file.txt', [file]).some((token) => token.kind === 'tag')).toBe(false)
+})
+
 test('a range reads, writes and parses as #path:12-18', () => {
   const range: Tag = { type: 'file', value: 'a.ts', line: 2, endLine: 4 }
   expect(tagText(range)).toBe('#a.ts:2-4')

@@ -43,6 +43,13 @@ try {
   await shot('2-terminal')
 
   if (windows) {
+    await term.press('ctrl-shift-k')
+    await app.getByTestId('history-input').waitFor({ timeoutMs: 5_000 })
+    expect('Ctrl+Shift+K opens Library from a terminal', (await count('history-input')) === 1)
+    await app.getByTestId('history-input').press('escape')
+    await term.click()
+    await term.press('ctrl-`')
+    expect('Ctrl+backtick returns from the terminal to the note', await until(async () => (await count('composer')) === 1))
     await app.close()
     app = await start()
     await app.getByTestId('composer').waitFor({ timeoutMs: 60_000 })
