@@ -33,12 +33,18 @@ ConPTY. Their sessions end when Vellum exits. The iOS simulator and desktop
 notification delivery are currently macOS-only; Windows keeps the in-app
 notification inbox.
 
-## Try the Windows build
+## Download a build
 
-Open the [Windows workflow](https://github.com/Bethel-nz/vellum/actions/workflows/windows.yml),
-choose a successful run for `feat/windows-support`, and download the
-`vellum-windows-x64-installer` artifact. GitHub may require you to sign in to
-download artifacts.
+Published versions are available on [GitHub Releases](https://github.com/Bethel-nz/vellum/releases):
+
+- **Windows x64:** `Vellum_<version>_x64-setup.exe`.
+- **macOS Apple Silicon:** `Vellum_<version>_macos-arm64.zip`. Extract the ZIP and
+  move `Vellum.app` to Applications. The app is ad hoc signed, without Apple
+  notarization.
+
+For the latest development build, open [Desktop builds](https://github.com/Bethel-nz/vellum/actions/workflows/desktop.yml),
+choose a successful run for `core`, and download `vellum-windows-x64-installer`
+or `vellum-macos-arm64`. GitHub may require you to sign in to download artifacts.
 
 Extract the archive and run `Vellum_0.1.0_x64-setup.exe`. The installer installs
 for your Windows account. Vellum registers itself in **Open with** and
@@ -51,7 +57,7 @@ account and provider settings determine model access.
 
 ## Run from source
 
-Use **Bun 1.4.4**, the version pinned in Windows CI, and Git. Install your chosen
+Use **Bun 1.4.4**, the version pinned in CI, and Git. Install your chosen
 agent CLI and make it available on `PATH`.
 
 ```sh
@@ -104,6 +110,28 @@ bun run package
 Keep `helpers/` beside the standalone executable. It contains the native renderer
 and other runtime files. The installer and app bundle arrange those files for you.
 
+## Publish a release
+
+Desktop CI builds Windows x64 and macOS ARM64 on pushes to `core`, pull requests,
+and manual runs. Release builds use the same workflow.
+
+Set the same version in `package.json`, `packager.json`, and
+`packager.windows.json`, commit it to `core`, then push a matching version tag:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+You can also run the [Release workflow](https://github.com/Bethel-nz/vellum/actions/workflows/release.yml)
+manually and enter the version tag. An existing tag builds that tagged commit;
+a new tag builds the latest `core` and is created when the release is published.
+The tag must match the package version and belong to `core` history.
+
+Both builds must pass before the workflow publishes the installer and macOS ZIP
+to one GitHub Release. Tags with a prerelease suffix, such as `v0.2.0-beta.1`,
+produce prereleases. An already published release is left unchanged on reruns.
+
 ## Development checks
 
 ```sh
@@ -124,8 +152,9 @@ bun run package
 bun scripts/check-app.ts
 ```
 
-These checks use temporary Vellum homes and fake agents where applicable. The Windows workflow
-runs the same checks before uploading the installer.
+These checks use temporary Vellum homes and fake agents where applicable. Desktop CI
+runs these UI checks on Windows. macOS CI runs core tests, typechecking, and bridge
+checks, then verifies the bundle contents and code signature before archiving it.
 
 ## Local data
 

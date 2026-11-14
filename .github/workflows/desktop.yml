@@ -1,0 +1,108 @@
+name: Desktop builds
+
+on:
+  push:
+    branches: [core]
+  pull_request:
+    branches: [core]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: Exact commit or ref to build
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            platform: windows-x64
+            os: win32
+            arch: x64
+            artifact: vellum-windows-x64-installer
+          - runner: macos-15
+            platform: macos-arm64
+            os: darwin
+            arch: arm64
+            artifact: vellum-macos-arm64
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Verify build host
+        env:
+          EXPECTED_OS: ${{ matrix.os }}
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          bun -e 'if (process.platform !== process.env.EXPECTED_OS || process.arch !== process.env.EXPECTED_ARCH) throw new Error(`Unexpected build host: ${process.platform}-${process.arch}`)'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        id: packager
+        with:
+          path: ~/.cargo/bin/cargo-packager*
+          key: cargo-packager-0.11.8-${{ runner.os }}-${{ runner.arch }}
+      - name: Install packaging tool
+        if: steps.packager.outputs.cache-hit != 'true'
+        run: cargo install cargo-packager --locked --version 0.11.8
+      - run: mkdir -p screenshots dist/release
+      - run: bun install --frozen-lockfile
+      - run: bun test ./core
+      - run: bun run typecheck
+      - name: Windows platform checks
+        if: runner.os == 'Windows'
+        run: |
+          bun scripts/check-windows.ts
+          bun scripts/check-agent-consoles.ts
+      - run: bun scripts/check-bridge.ts
+      - name: Windows UI checks
+        if: runner.os == 'Windows'
+        run: |
+          bun scripts/check-settings.ts
+          bun scripts/check-tabs.ts
+          bun scripts/check-terminals.ts
+      - run: bun run package
+      - name: Windows compiled-app check
+        if: runner.os == 'Windows'
+        run: bun scripts/check-app.ts
+      - name: Stage Windows installer
+        if: runner.os == 'Windows'
+        run: cp dist/bundle/*-setup.exe dist/release/
+      - name: Verify and archive macOS bundle
+        if: runner.os == 'macOS'
+        run: |
+          app=dist/bundle/Vellum.app
+          test -x "$app/Contents/MacOS/Vellum"
+          test -s "$app/Contents/MacOS/helpers/gpuix-native.node"
+          test -s "$app/Contents/MacOS/helpers/simdriver/index.js"
+          test -x "$app/Contents/MacOS/helpers/agent-browser"
+          codesign --verify --deep --strict "$app"
+          version=$(bun -p "require('./package.json').version")
+          ditto -c -k --sequesterRsrc --keepParent "$app" "dist/release/Vellum_${version}_macos-arm64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/release/*
+          if-no-files-found: error
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-${{ matrix.platform }}
+          path: screenshots/
+          if-no-files-found: ignore
