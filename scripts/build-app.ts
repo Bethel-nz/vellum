@@ -93,7 +93,7 @@ run(['cargo', 'packager', '--release', '--config', 'packager.json'])
 const bundledHelpers = path.join(dist, 'bundle/Vellum.app/Contents/MacOS/helpers')
 cpSync(path.join(helpers, 'Vellum Notifications.app'), path.join(bundledHelpers, 'Vellum Notifications.app'), { recursive: true })
 cpSync(path.join(helpers, 'Vellum Opener.app'), path.join(bundledHelpers, 'Vellum Opener.app'), { recursive: true })
-for (const file of ['browser', 'vellum-mcp.ts', 'agent-browser', 'agent-browser.manifest.json', 'agent-browser.LICENSE']) await Bun.write(path.join(bundledHelpers, file), Bun.file(path.join(helpers, file)))
+for (const file of ['gpuix-native.node', 'browser', 'vellum-mcp.ts', 'agent-browser', 'agent-browser.manifest.json', 'agent-browser.LICENSE']) await Bun.write(path.join(bundledHelpers, file), Bun.file(path.join(helpers, file)))
 cpSync(path.join(helpers, 'simdriver'), path.join(bundledHelpers, 'simdriver'), { recursive: true })
 await Bun.$`chmod 755 ${path.join(bundledHelpers, 'browser')} ${path.join(bundledHelpers, 'agent-browser')}`.quiet()
 // Ad hoc: enough to open on this Mac. Handing it to someone else needs a Developer ID and notarizing.
