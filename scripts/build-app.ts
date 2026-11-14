@@ -39,7 +39,7 @@ const executable = path.join(dist, process.platform === 'win32' ? 'Vellum.exe' :
 console.log(`compiling ${path.relative(root, executable)}`)
 const built = await Bun.build({
   entrypoints: [path.join(root, 'bin.ts')],
-  compile: { outfile: executable },
+  compile: { outfile: executable, ...(process.platform === 'win32' ? { windows: { hideConsole: true } } : {}) },
   define: { 'process.env.NODE_ENV': '"production"' },
   plugins: [ghosttyWasm],
 })
