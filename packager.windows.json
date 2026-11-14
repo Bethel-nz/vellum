@@ -1,7 +1,7 @@
 {
   "name": "vellum",
   "productName": "Vellum",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "identifier": "dev.vellum.app",
   "description": "A markdown note you can talk to",
   "binariesDir": "dist",

@@ -17,6 +17,42 @@ permissions:
   contents: read
 
 jobs:
+  extension:
+    name: chrome-extension
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install extension dependencies
+        working-directory: extension
+        run: bun install --frozen-lockfile
+      - run: bun run build:extension
+      - run: bun scripts/check-extension-build.ts
+      - name: Archive Chrome extension
+        run: |
+          version=$(bun -p "require('./package.json').version")
+          mkdir -p dist/release
+          cd extension/dist
+          zip -r "../../dist/release/Vellum_Snapshot_${version}_chrome.zip" .
+      - name: Verify extension ZIP contents
+        run: |
+          version=$(bun -p "require('./package.json').version")
+          unzip -q "dist/release/Vellum_Snapshot_${version}_chrome.zip" -d dist/extension-check
+          bun scripts/check-extension-build.ts dist/extension-check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vellum-chrome-extension
+          path: dist/release/Vellum_Snapshot_*_chrome.zip
+          if-no-files-found: error
+
   build:
     name: ${{ matrix.platform }}
     runs-on: ${{ matrix.runner }}
