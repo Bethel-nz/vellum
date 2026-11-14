@@ -34,7 +34,7 @@ export class AcpConnection {
 
   constructor(argv: string[], opts: { cwd: string; env: Record<string, string | undefined> }, handlers: Handlers) {
     this.#handlers = handlers
-    this.proc = Bun.spawn(argv, { cwd: opts.cwd, env: opts.env, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' })
+    this.proc = Bun.spawn(argv, { cwd: opts.cwd, env: opts.env, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe', windowsHide: true })
     this.#read()
     this.#readStderr()
     this.exited = this.proc.exited.then((code) => {
