@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync } from 'node:fs'
+import { chmodSync, cpSync, mkdirSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import manifest from '../assets/agent-browser/manifest.json'
 
@@ -19,5 +19,9 @@ export async function prepareAgentBrowser(target: { platform: string; arch: stri
   chmodSync(file, 0o755)
   await Bun.write(`${file}.manifest.json`, JSON.stringify({ version: manifest.version, target: key, ...pin }))
   await Bun.write(`${file}.LICENSE`, Bun.file(path.resolve(import.meta.dir, '../assets/agent-browser/LICENSE')))
+  // The standalone binary finds no skills of its own; ship the ones from the same release.
+  const skills = path.join(path.dirname(file), 'agent-browser-skills')
+  rmSync(skills, { recursive: true, force: true })
+  cpSync(path.resolve(import.meta.dir, '../assets/agent-browser/skill-data'), skills, { recursive: true })
   return { path: file, version: manifest.version, sha256: pin.sha256 }
 }

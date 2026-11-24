@@ -7,7 +7,7 @@
   "binariesDir": "dist",
   "outDir": "dist/bundle",
   "binaries": [{ "path": "Vellum", "main": true }],
-  "resources": [{ "src": "dist/helpers/*", "target": "helpers" }],
+  "resources": [{ "src": "dist/helpers/*.*", "target": "helpers" }, { "src": "dist/helpers/agent-browser-skills", "target": "helpers/agent-browser-skills" }],
   "formats": ["nsis"],
   "nsis": { "installMode": "currentUser" }
 }

@@ -89,7 +89,7 @@ export function agentArgv(profile: Pick<Profile, 'agent'>): string[] {
 /** The agent's environment for an account: its home, its CLI, and Vellum's helpers on PATH. */
 export function agentEnv(profile: Profile, noteId?: string): Record<string, string> {
   const pairing = noteId ? bridgeAgent(noteId) : undefined
-  return { ...profileEnv(profile), PATH: `${helperDir()}${path.delimiter}${process.env.PATH ?? ''}`, VELLUM_EXEC_PATH: process.execPath, VELLUM_COMPILED: compiled ? '1' : '0', VELLUM_BROWSER_SCRIPT: path.resolve(import.meta.dir, '../scripts/browser.ts'), ...(pairing ? { VELLUM_NOTE_ID: noteId!, VELLUM_BRIDGE: pairing.endpoint, VELLUM_TOKEN: pairing.token } : {}) }
+  return { ...profileEnv(profile), PATH: `${helperDir()}${path.delimiter}${process.env.PATH ?? ''}`, VELLUM_EXEC_PATH: process.execPath, VELLUM_COMPILED: compiled ? '1' : '0', VELLUM_BROWSER_SCRIPT: path.resolve(import.meta.dir, '../scripts/browser.ts'), ...(compiled ? { AGENT_BROWSER_SKILLS_DIR: path.join(helperDir(), 'agent-browser-skills') } : {}), ...(pairing ? { VELLUM_NOTE_ID: noteId!, VELLUM_BRIDGE: pairing.endpoint, VELLUM_TOKEN: pairing.token } : {}) }
 }
 
 const sentence = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s)
