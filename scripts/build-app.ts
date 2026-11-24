@@ -35,12 +35,17 @@ const ghosttyWasm: import('bun').BunPlugin = {
   },
 }
 
+// The updater's public key: VELLUM_UPDATE_PUBKEY (a repo variable in CI), else your local key's.
+const localPubkey = Bun.file(path.join(homedir(), '.config/vellum/updater.key.pub'))
+const updatePubkey = process.env.VELLUM_UPDATE_PUBKEY?.trim() || (await localPubkey.exists() ? (await localPubkey.text()).trim() : '')
+if (!updatePubkey) console.log('no VELLUM_UPDATE_PUBKEY: this build will not look for updates')
+
 const executable = path.join(dist, process.platform === 'win32' ? 'Vellum.exe' : 'Vellum')
 console.log(`compiling ${path.relative(root, executable)}`)
 const built = await Bun.build({
   entrypoints: [path.join(root, 'bin.ts')],
   compile: { outfile: executable, ...(process.platform === 'win32' ? { windows: { hideConsole: true } } : {}) },
-  define: { 'process.env.NODE_ENV': '"production"' },
+  define: { 'process.env.NODE_ENV': '"production"', 'process.env.VELLUM_UPDATE_PUBKEY': JSON.stringify(updatePubkey) },
   plugins: [ghosttyWasm],
 })
 if (!built.success) throw new AggregateError(built.logs, 'bun build failed')
@@ -95,7 +100,30 @@ cpSync(path.join(helpers, 'Vellum Notifications.app'), path.join(bundledHelpers,
 cpSync(path.join(helpers, 'Vellum Opener.app'), path.join(bundledHelpers, 'Vellum Opener.app'), { recursive: true })
 for (const file of ['gpuix-native.node', 'browser', 'vellum-mcp.ts', 'agent-browser', 'agent-browser.manifest.json', 'agent-browser.LICENSE']) await Bun.write(path.join(bundledHelpers, file), Bun.file(path.join(helpers, file)))
 cpSync(path.join(helpers, 'simdriver'), path.join(bundledHelpers, 'simdriver'), { recursive: true })
+cpSync(path.join(helpers, 'agent-browser-skills'), path.join(bundledHelpers, 'agent-browser-skills'), { recursive: true })
 await Bun.$`chmod 755 ${path.join(bundledHelpers, 'browser')} ${path.join(bundledHelpers, 'agent-browser')}`.quiet()
 // Ad hoc: enough to open on this Mac. Handing it to someone else needs a Developer ID and notarizing.
 run(['codesign', '--force', '--deep', '--sign', '-', path.join(dist, 'bundle', 'Vellum.app')])
 console.log('dist/bundle/Vellum.app')
+
+// The updater's download: the signed bundle under one top-level Vellum.app/, no AppleDouble files.
+// Packed here, after the helpers and codesign, because cargo-packager's own tarball predates both.
+const tarball = path.join(dist, 'bundle', 'Vellum.app.tar.gz')
+await remove(tarball)
+await remove(`${tarball}.sig`)
+await Bun.$`tar -czf ${tarball} -C ${path.join(dist, 'bundle')} Vellum.app`.env({ ...process.env, COPYFILE_DISABLE: '1' }).quiet()
+if (process.env.CARGO_PACKAGER_SIGN_PRIVATE_KEY) run(['cargo', 'packager', 'signer', 'sign', tarball])
+else console.log('no CARGO_PACKAGER_SIGN_PRIVATE_KEY: the update tarball is unsigned, so installed apps will not take it')
+console.log(path.relative(root, tarball))
+
+// The download people install from: the app beside an Applications link to drag it onto.
+const staging = path.join(dist, 'dmg')
+const dmg = path.join(dist, 'bundle', 'Vellum.dmg')
+await remove(staging)
+await remove(dmg)
+mkdirSync(staging, { recursive: true })
+run(['ditto', path.join(dist, 'bundle', 'Vellum.app'), path.join(staging, 'Vellum.app')])
+await Bun.$`ln -s /Applications ${path.join(staging, 'Applications')}`.quiet()
+run(['hdiutil', 'create', '-volname', 'Vellum', '-srcfolder', staging, '-ov', '-format', 'UDZO', dmg])
+await remove(staging)
+console.log(path.relative(root, dmg))

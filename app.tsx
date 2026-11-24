@@ -9,7 +9,8 @@ import path from 'node:path'
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { render, useGpuixRequired, useWindowSize, type EventPayload, type KeyEvent, type PublicInstance } from '@gpuix/react'
 import { AnimatePresence, motion } from './components/spring'
-import { ApprovalCard, Button, closedByOutsidePress, DockPanel, Field, Menu, stripHeight, TabStrip, useToast, type MenuItem as MenuEntry, type StripTab } from './components'
+import { ApprovalCard, Button, closedByOutsidePress, DockPanel, Field, Label, Menu, stripHeight, TabStrip, useToast, type MenuItem as MenuEntry, type StripTab } from './components'
+import { findUpdate, type PendingUpdate } from './core/updater'
 import { FloatingLayer } from '@gpuix/react/floating'
 import { AgentWorking } from './components/AgentWorking'
 import { ConfirmMorph } from './components/ConfirmMorph'
@@ -583,6 +584,12 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
   // A tab whose Claude is still working waits here for "stop and close?".
   const [confirmClose, setConfirmClose] = useState<string | null>(null)
   const { toast, show: showToast } = useToast()
+  // A newer release, found once a few seconds after launch so startup keeps the network.
+  const [update, setUpdate] = useState<PendingUpdate | null>(null)
+  useEffect(() => {
+    const timer = setTimeout(() => void findUpdate().then(setUpdate), 5000)
+    return () => clearTimeout(timer)
+  }, [])
   const showToastRef = useRef(showToast)
   showToastRef.current = showToast
   const composerRef = useRef<PublicInstance>(null)
@@ -2013,6 +2020,7 @@ function App({ startup: { savedDrafts, savedQueues, savedThreads, fontFaces, mac
               changes={stripChanges ? { summary: stripChanges, onPress: () => setOverlay('changes') } : undefined}
               trailing={
                 <>
+                  {update ? <Button onPress={() => void update.apply().catch((error) => showToast(`Couldn’t update: ${(error as Error).message}`, 'danger'))} testId="update-restart" title={update.ready ? `Vellum ${update.version} is ready` : `Vellum ${update.version} is available`}><Label>Restart to update</Label></Button> : null}
                   {/* At the right end, over the pane it opens. */}
                   {activeBrowser ? <BrowserLauncher browser={activeBrowser} /> : null}
                   <Button onPress={() => setOverlay((current) => current === 'annotations' ? null : 'annotations')} selected={overlay === 'annotations'} testId="open-annotations" title="Annotations across all notes"><Icon name="pencil" size={14} />{annotationOpenCount ? <Meta color={m.textMuted}>{String(annotationOpenCount)}</Meta> : null}</Button>

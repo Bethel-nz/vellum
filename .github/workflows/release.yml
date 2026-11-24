@@ -62,6 +62,8 @@ jobs:
     uses: ./.github/workflows/desktop.yml
     with:
       ref: ${{ needs.prepare.outputs.commit }}
+    # The updater signing key, for the .sig beside each download.
+    secrets: inherit
 
   publish:
     needs: [prepare, build]
@@ -84,11 +86,20 @@ jobs:
           set -euo pipefail
           version=${RELEASE_TAG#v}
           windows="release/Vellum_${version}_x64-setup.exe"
-          macos="release/Vellum_${version}_macos-arm64.zip"
+          macos="release/Vellum_${version}_macos-arm64.dmg"
           extension="release/Vellum_Snapshot_${version}_chrome.zip"
           test -s "$windows"
           test -s "$macos"
           test -s "$extension"
+          # The updater takes an asset only with its sibling .sig, so the pairs go up together or not at all.
+          updates=()
+          for asset in "release/Vellum_${version}_macos-arm64.app.tar.gz" "$windows"; do
+            if [ -s "$asset" ] && [ -s "$asset.sig" ]; then
+              [ "$asset" = "$windows" ] && updates+=("$asset.sig") || updates+=("$asset" "$asset.sig")
+            else
+              echo "::warning::No signed update for $(basename "$asset"); installed apps won't update to this release."
+            fi
+          done
           if gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' > release-state.txt 2>/dev/null; then
             if [ "$(cat release-state.txt)" != true ]; then
               echo "Release already published; leaving its assets unchanged."
@@ -105,5 +116,5 @@ jobs:
             if [[ "$release_version" == *-* ]]; then flags+=(--prerelease); fi
             gh release create "$RELEASE_TAG" --target "$RELEASE_COMMIT" --title "Vellum $RELEASE_TAG" --generate-notes --draft "${flags[@]}"
           fi
-          gh release upload "$RELEASE_TAG" "$windows" "$macos" "$extension" --clobber
+          gh release upload "$RELEASE_TAG" "$windows" "$macos" "$extension" ${updates[@]+"${updates[@]}"} --clobber
           gh release edit "$RELEASE_TAG" --draft=false

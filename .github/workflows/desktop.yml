@@ -113,12 +113,18 @@ jobs:
           bun scripts/check-tabs.ts
           bun scripts/check-terminals.ts
       - run: bun run package
+        env:
+          CARGO_PACKAGER_SIGN_PRIVATE_KEY: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY }}
+          CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD }}
+          VELLUM_UPDATE_PUBKEY: ${{ vars.VELLUM_UPDATE_PUBKEY }}
       - name: Windows compiled-app check
         if: runner.os == 'Windows'
         run: bun scripts/check-app.ts
       - name: Stage Windows installer
         if: runner.os == 'Windows'
-        run: cp dist/bundle/*-setup.exe dist/release/
+        run: |
+          cp dist/bundle/*-setup.exe dist/release/
+          for sig in dist/bundle/*-setup.exe.sig; do [ -f "$sig" ] && cp "$sig" dist/release/; done
       - name: Verify and archive macOS bundle
         if: runner.os == 'macOS'
         run: |
@@ -127,9 +133,13 @@ jobs:
           test -s "$app/Contents/MacOS/helpers/gpuix-native.node"
           test -s "$app/Contents/MacOS/helpers/simdriver/index.js"
           test -x "$app/Contents/MacOS/helpers/agent-browser"
+          test -s "$app/Contents/MacOS/helpers/agent-browser-skills/core/SKILL.md"
           codesign --verify --deep --strict "$app"
           version=$(bun -p "require('./package.json').version")
-          ditto -c -k --sequesterRsrc --keepParent "$app" "dist/release/Vellum_${version}_macos-arm64.zip"
+          hdiutil verify dist/bundle/Vellum.dmg
+          cp dist/bundle/Vellum.dmg "dist/release/Vellum_${version}_macos-arm64.dmg"
+          cp dist/bundle/Vellum.app.tar.gz "dist/release/Vellum_${version}_macos-arm64.app.tar.gz"
+          if [ -f dist/bundle/Vellum.app.tar.gz.sig ]; then cp dist/bundle/Vellum.app.tar.gz.sig "dist/release/Vellum_${version}_macos-arm64.app.tar.gz.sig"; fi
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
