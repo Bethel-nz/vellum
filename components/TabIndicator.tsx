@@ -4,7 +4,7 @@ import { duration, ease, tween, useReducedMotion } from './motion'
 import { controlRadius } from './Button'
 import { useM } from './theme'
 
-export function TabIndicator({ left, width }: { left: number; width: number }) {
+export function TabIndicator({ left, width, snap }: { left: number; width: number; snap?: boolean }) {
   const m = useM()
   useReducedMotion()
   return (
@@ -12,7 +12,7 @@ export function TabIndicator({ left, width }: { left: number; width: number }) {
       <motion.div
         initial={false}
         animate={{ left, width, opacity: width ? 1 : 0 }}
-        transition={tween({ duration: duration.instant, ease: ease.enter })}
+        transition={snap ? { duration: 0 } : tween({ duration: duration.instant, ease: ease.enter })}
         style={{ position: 'absolute', top: 0, height: 24, borderRadius: controlRadius, backgroundColor: m.selected, borderWidth: 1, borderColor: m.borderFocused }}
       />
     </div>

@@ -113,6 +113,11 @@ export function TabStrip({
   const noteWidth = tabs.reduce((sum, tab, i) => sum + (i === noteIndex ? pillWidth(tab, cap) : BOX) + HIT_X * 2, 0)
   const indicatorLeft = noteIndex >= 0 ? 26 + noteIndex * (BOX + HIT_X * 2) + HIT_X : 26 + noteWidth + 26 + 17 + 26 + Math.max(0, termIndex) * (BOX + HIT_X * 2) + HIT_X
   const current = noteIndex >= 0 ? tabs[noteIndex] : termIndex >= 0 ? { ...terms[termIndex]!, time: '' } : undefined
+  // A tab just opened or closed: the strip snaps to its new shape instead of morphing.
+  const ids = [...tabs, ...terms].map((t) => t.id)
+  const lastIds = useRef(ids)
+  const snap = ids.join() !== lastIds.current.join()
+  useEffect(() => { lastIds.current = ids })
   return (
     <div
       onLayout={(event) => setBandWidth(event.width ?? 0)}
@@ -133,7 +138,7 @@ export function TabStrip({
       {/* Centred on the whole band, not on the space between the two sides. */}
       <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
         <div onLayout={(event) => setCentreWidth(event.width ?? 0)} style={{ position: 'relative', display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
-          <TabIndicator left={indicatorLeft} width={current ? pillWidth(current, cap) : 0} />
+          <TabIndicator left={indicatorLeft} width={current ? pillWidth(current, cap) : 0} snap={snap} />
           <ViewButton icon="notes" on={view === 'notes'} onPress={onNotes} testId="view-notes" title="Notes" />
           {tabs.map((t) => (
             <Tab
@@ -148,6 +153,7 @@ export function TabStrip({
               onPick={() => onPick(t.id)}
               onClose={() => onClose(t.id)}
               cap={cap}
+              snap={snap}
             />
           ))}
           <Button onPress={onNew} testId="new-thread" title="New note (⌘N)" style={{ width: 22, paddingLeft: 0, paddingRight: 0, marginLeft: 4 }}>
@@ -164,6 +170,7 @@ export function TabStrip({
               onPick={() => onPickTerm(t.id)}
               onClose={() => onCloseTerm(t.id)}
               cap={cap}
+              snap={snap}
             />
           ))}
           {view === 'terminal' && onNewTerm ? (
@@ -201,6 +208,7 @@ function Tab({
   onClose,
   term,
   cap,
+  snap,
 }: {
   tab: StripTab
   active: boolean
@@ -211,6 +219,7 @@ function Tab({
   /** A terminal: no note menu, so no chevron and no title-menu hook. */
   term?: boolean
   cap?: number
+  snap?: boolean
 }) {
   const m = useM()
   const [hover, setHover] = useState(false)
@@ -229,7 +238,7 @@ function Tab({
       <motion.div
         initial={false}
         animate={{ width: active ? pillWidth(tab, cap ?? 380) : BOX, height: active ? PILL : BOX, borderRadius: active ? controlRadius : 3 }}
-        transition={tween(spring.morph)}
+        transition={snap ? { duration: 0 } : tween(spring.morph)}
         style={{
           // A motion.div keeps presses to itself; let them reach the tab button.
           pointerEvents: 'none',
