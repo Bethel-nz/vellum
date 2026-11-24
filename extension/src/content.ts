@@ -58,7 +58,8 @@ function install() {
   let sendingRef: string | undefined
   const previews = new Map<Element, Map<string, StyleChange>>()
   const ready = new Set<string>()
-  const fittedOutlines = new Set<string>()
+  // Outlines follow the element's own corners; these selections opted back to the plain box.
+  const looseOutlines = new Set<string>()
   const pinPositions = new Map<string, { x: number; y: number }>()
   function anchorFor(selection: Selection) {
     const box = getElementBounds(selection.element)
@@ -197,7 +198,7 @@ function install() {
         continue
       }
       const box = getElementBounds(target.element)
-      const shape = target.selection && fittedOutlines.has(target.selection.ref) ? getComputedStyle(target.element) : undefined
+      const shape = target.selection && looseOutlines.has(target.selection.ref) ? undefined : getComputedStyle(target.element)
       const radii = shape ? [shape.borderTopLeftRadius, shape.borderTopRightRadius, shape.borderBottomRightRadius, shape.borderBottomLeftRadius] : ['8px', '8px', '8px', '8px']
       const geometry = [box.x, box.y, box.width, box.height, ...radii].join(',')
       if (target.geometry === geometry) continue
@@ -261,7 +262,7 @@ function install() {
     const position = sampledProgress ?? (hasRecordedFrames ? sampledPosition / 100 : progress ?? 0)
     const playback = { playing: animation?.playState === 'running', speed: animation?.playbackRate ?? 1, position: Math.round(Number(position) * 100), duration: Number.isFinite(duration) ? duration : 1000, scrubDuration: Number(sampledDuration) || (Number.isFinite(duration) ? duration : 1000), delay: Number(timing?.delay ?? 0), easing: timing?.easing ?? 'linear', iterations: String(timing?.iterations ?? 1) }
     root.render(createElement(MotionConfig, { reducedMotion: 'user' }, createElement(CapturePanel, {
-      open: enabled, selections: selections.map((selection, index) => ({ ref: selection.ref, number: index + 1, anchor: anchorFor(selection), selector: getElementSelector(selection.element), label: labelFor(selection.element), note: selection.note, ready: ready.has(selection.ref) && hasContent(selection), fitOutline: fittedOutlines.has(selection.ref), motion: animations(selection.element).length, sampled: selection.recorded.filter((animation) => animation.origin === 'sampled').length, comments: comments.get(selection.ref) ?? [], snapshots: (snapshots.get(selection.ref) ?? []).map((snapshot) => ({ id: snapshot.id, file: snapshot.image.file, image: snapshot.image.dataUrl, selector: snapshot.node.selector })), styles: readStyles(selection.element), box: getElementBounds(selection.element), changes: (previews.get(selection.element)?.size ?? 0) + (motionChanges.get(selection.ref)?.size ?? 0) })), pageScreenshots,
+      open: enabled, selections: selections.map((selection, index) => ({ ref: selection.ref, number: index + 1, anchor: anchorFor(selection), selector: getElementSelector(selection.element), label: labelFor(selection.element), note: selection.note, ready: ready.has(selection.ref) && hasContent(selection), fitOutline: !looseOutlines.has(selection.ref), motion: animations(selection.element).length, sampled: selection.recorded.filter((animation) => animation.origin === 'sampled').length, comments: comments.get(selection.ref) ?? [], snapshots: (snapshots.get(selection.ref) ?? []).map((snapshot) => ({ id: snapshot.id, file: snapshot.image.file, image: snapshot.image.dataUrl, selector: snapshot.node.selector })), styles: readStyles(selection.element), box: getElementBounds(selection.element), changes: (previews.get(selection.element)?.size ?? 0) + (motionChanges.get(selection.ref)?.size ?? 0) })), pageScreenshots,
       activeRef, toolsOpen, markersHidden, message, error: failed, capturing, recording, options, picking, playback, recordDuration,
       bridge: bridgeConfig,
       onBridgeSettings: async (url, port) => { bridgeConfig = await worker<{ url: string; port: number }>({ type: 'bridge-settings', url, port }); render() },
@@ -313,8 +314,8 @@ function install() {
       onOriginal: viewOriginal,
       onFitOutline: (fit) => {
         if (!activeRef) return
-        if (fit) fittedOutlines.add(activeRef)
-        else fittedOutlines.delete(activeRef)
+        if (fit) looseOutlines.delete(activeRef)
+        else looseOutlines.add(activeRef)
         render(); draw()
       },
       onStyle: editStyle,
@@ -664,7 +665,7 @@ function install() {
         selection.element.removeAttribute('data-vellum-ref')
         restorePreview(selection.element); previews.delete(selection.element)
         selections.splice(selections.indexOf(selection), 1); ready.delete(selection.ref)
-        snapshots.delete(selection.ref); comments.delete(selection.ref); motionChanges.delete(selection.ref); fittedOutlines.delete(selection.ref); pinPositions.delete(selection.ref)
+        snapshots.delete(selection.ref); comments.delete(selection.ref); motionChanges.delete(selection.ref); looseOutlines.delete(selection.ref); pinPositions.delete(selection.ref)
         draw()
       }
       undoSelection = undefined
