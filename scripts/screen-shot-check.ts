@@ -2,6 +2,7 @@
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
 import { present, scratchDir } from './scratch'
+import { bridgeFetch } from '../core/bridge-client'
 
 const home = await scratchDir('vellum-agent-screen-')
 const env = { ...process.env, GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home'), VELLUM_BRIDGE_PORT: '0', VELLUM_AGENT: path.resolve(import.meta.dir, 'fake-acp.ts'), FAKE_ACP_LOG: path.join(home, 'fake-acp.log') }
@@ -19,7 +20,7 @@ try {
   await composer.waitFor({ timeoutMs: 60_000 })
   await (async () => { while (!(await present(path.join(home, 'bridge.json')))) await Bun.sleep(150) })()
   const pairing = JSON.parse(await Bun.file(path.join(home, 'bridge.json')).text())
-  const request = (route: string, init: RequestInit = {}) => fetch(`${pairing.endpoint}${route}`, { ...init, headers: { Authorization: `Bearer ${pairing.token}`, ...init.headers } })
+  const request = (route: string, init: RequestInit = {}) => bridgeFetch(pairing.endpoint, route, { ...init, headers: { Authorization: `Bearer ${pairing.token}`, ...init.headers } })
   const notes = await (await request('/notes')).json() as any[]
   const note = notes.find((item) => item.active)!
   const posted = await request('/browser', { method: 'POST', body: JSON.stringify({ noteId: note.id, session: `vellum-${note.id}`, streamPort: fake.port }) })

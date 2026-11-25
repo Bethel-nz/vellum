@@ -79,7 +79,6 @@ export type Settings = {
   mobileView?: boolean
   mobileDevice?: string
   /** Snapshot bridge port; unset discovers a free port in the default range. Applies at launch. */
-  browserPort?: number
   /** Advanced launch options, read only when starting the next browser generation. */
   browserLaunch?: { proxy?: string; initScripts?: string[]; enable?: string[]; webgpu?: boolean }
   /** Explicit local CDP discovery ports. Never accepted from model arguments. */

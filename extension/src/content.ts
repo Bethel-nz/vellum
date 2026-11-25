@@ -4,7 +4,7 @@ import { MotionConfig } from 'motion/react'
 import { getElementAtPoint, getElementBounds, getElementSelector, isElementGrabbable } from 'react-grab/primitives'
 import type { Capture, CaptureSnapshot, SavedCapture } from '../../core/capture'
 import { animations, assets, downloadAssets, extract, observeAnimations, sample, watchRelated, type Selection } from './extract'
-import { worker, type CaptureSettings, type ContentMessage, type PageScreenshot, type PageScreenshotResult, type SnapshotResult, type SnapshotStateResult, type Upload } from './messages'
+import { worker, type ContentMessage, type PageScreenshot, type PageScreenshotResult, type SnapshotResult, type SnapshotStateResult, type Upload } from './messages'
 import { CapturePanel, type CaptureOptions } from './ui/CapturePanel'
 import { loadFonts, setAppearance, type Appearance } from './ui/appearance'
 import { shadowStyles } from './ui/styles'
@@ -35,8 +35,6 @@ function install() {
   document.documentElement.append(host)
   void loadFonts()
   const root = createRoot(mount)
-  let bridgeConfig = { url: 'http://127.0.0.1', port: 47470 }
-  void worker<CaptureSettings>({ type: 'settings' }).then((saved) => { bridgeConfig = { url: saved.url, port: saved.port }; render() }).catch(() => {})
   const selections: Selection[] = []
   let undoSelection: Selection[] | undefined
   let hovered: Element | null = null
@@ -208,12 +206,10 @@ function install() {
         left: `${box.x}px`, top: `${box.y}px`, width: `${box.width}px`, height: `${box.height}px`,
         borderTopLeftRadius: radii[0], borderTopRightRadius: radii[1], borderBottomRightRadius: radii[2], borderBottomLeftRadius: radii[3],
       })
+      // The pin sits on the outline's top-left corner, clear of the content it marks.
       if (target.pin && target.selection) {
-        const point = pinPositions.get(target.selection.ref) ?? { x: box.x + scrollX, y: box.y + box.height + scrollY }
-        const x = point.x - scrollX
-        const y = point.y - scrollY
-        target.pin.hidden = x < 0 || x > innerWidth || y < 0 || y > innerHeight
-        Object.assign(target.pin.style, { left: `${Math.max(4, Math.min(innerWidth - 32, x - 4))}px`, top: `${Math.max(4, Math.min(innerHeight - 32, y - 24))}px` })
+        target.pin.hidden = box.x + box.width < 0 || box.x > innerWidth || box.y + box.height < 0 || box.y > innerHeight
+        Object.assign(target.pin.style, { left: `${Math.max(4, Math.min(innerWidth - 30, box.x - 13))}px`, top: `${Math.max(4, Math.min(innerHeight - 30, box.y - 13))}px` })
       }
     }
   }
@@ -264,8 +260,6 @@ function install() {
     root.render(createElement(MotionConfig, { reducedMotion: 'user' }, createElement(CapturePanel, {
       open: enabled, selections: selections.map((selection, index) => ({ ref: selection.ref, number: index + 1, anchor: anchorFor(selection), selector: getElementSelector(selection.element), label: labelFor(selection.element), note: selection.note, ready: ready.has(selection.ref) && hasContent(selection), fitOutline: !looseOutlines.has(selection.ref), motion: animations(selection.element).length, sampled: selection.recorded.filter((animation) => animation.origin === 'sampled').length, comments: comments.get(selection.ref) ?? [], snapshots: (snapshots.get(selection.ref) ?? []).map((snapshot) => ({ id: snapshot.id, file: snapshot.image.file, image: snapshot.image.dataUrl, selector: snapshot.node.selector })), styles: readStyles(selection.element), box: getElementBounds(selection.element), changes: (previews.get(selection.element)?.size ?? 0) + (motionChanges.get(selection.ref)?.size ?? 0) })), pageScreenshots,
       activeRef, toolsOpen, markersHidden, message, error: failed, capturing, recording, options, picking, playback, recordDuration,
-      bridge: bridgeConfig,
-      onBridgeSettings: async (url, port) => { bridgeConfig = await worker<{ url: string; port: number }>({ type: 'bridge-settings', url, port }); render() },
       onRecordDuration: (seconds) => { recordDuration = seconds; render() },
       onPicking: () => { picking = true; activeRef = null; toolsOpen = false; hovered = null; render(); draw() },
       onActivate: activate,
@@ -725,6 +719,11 @@ function install() {
       }
     }
     visit(document.documentElement)
+    // Our own surfaces sit in a closed shadow root the walk above can't enter.
+    for (const element of surface.querySelectorAll('.vellum-toolbar, .vellum-annotation-popover, .vellum-page-captures')) {
+      const box = element.getBoundingClientRect()
+      if (box.right > hole.left && box.left < hole.right && box.bottom > hole.top && box.top < hole.bottom) cuts.push({ element, box, clipped: getComputedStyle(element).clipPath !== 'none', scaleX: 1, scaleY: 1 })
+    }
     const far = 100000
     for (const { element, box, clipped, scaleX, scaleY } of cuts) {
       const style = (element as HTMLElement | SVGElement).style

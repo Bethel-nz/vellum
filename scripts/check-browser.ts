@@ -4,6 +4,7 @@ import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
 import { browserPoint } from '../core/browser-stream'
 import { present, remove, scratchDir } from './scratch'
+import { bridgeFetch } from '../core/bridge-client'
 const home = await scratchDir('vellum-browser-')
 const env = { ...process.env, GPUIX_BACKGROUND: '1', VELLUM_HOME: home, VELLUM_CLAUDE_HOME: path.join(home, 'claude-home'), VELLUM_BRIDGE_PORT: '0', VELLUM_AGENT: path.resolve(import.meta.dir, 'fake-acp.ts'), VELLUM_NOTIFY_LOG: path.join(home, 'notifications.log'), VELLUM_BROWSER_EXECUTABLE: path.resolve(import.meta.dir, 'fake-browser.ts'), VELLUM_BROWSER_FIXTURE_PORT: '' }
 expect(await Bun.spawn([process.execPath, 'scripts/fixture.ts'], { env, stdout: 'ignore' }).exited).toBe(0)
@@ -21,7 +22,7 @@ try {
   const composer = app.getByTestId('composer')
   await composer.waitFor({ timeoutMs: 60000 }); await until(() => present(path.join(home, 'bridge.json')))
   const pairing = await Bun.file(path.join(home, 'bridge.json')).json()
-  const request = (route: string, init: RequestInit = {}) => fetch(`${pairing.endpoint}${route}`, { ...init, headers: { Authorization: `Bearer ${pairing.token}`, ...init.headers } })
+  const request = (route: string, init: RequestInit = {}) => bridgeFetch(pairing.endpoint, route, { ...init, headers: { Authorization: `Bearer ${pairing.token}`, ...init.headers } })
   const notes = await (await request('/notes')).json() as { id: string; active?: boolean }[], note = notes.find((item) => item.active)!
   let id = 0
   const call = async (name: string, args: object) => {

@@ -2,8 +2,8 @@
 .vellum-outline { position: fixed; border: 3px solid color-mix(in srgb, var(--focus-outline) 80%, transparent); background: color-mix(in srgb, var(--focus-outline) 3%, transparent); border-radius: 8px; pointer-events: none; }
 .vellum-outline-locked { border-width: 4px; background: color-mix(in srgb, var(--focus-outline) 4%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-outline) 8%, transparent); }
 .vellum-mount { position: fixed; top: 16px; left: 12px; right: 12px; display: flex; justify-content: center; pointer-events: none; }
-.vellum-annotation-pin { position: fixed; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 2px solid var(--surface); border-radius: 50% 50% 50% 5px; background: var(--focus-outline); color: var(--background); box-shadow: 0 2px 5px #0002; font: 600 12px/1 var(--font-body); cursor: pointer; pointer-events: auto; }
-.vellum-annotation-pin[aria-pressed='true'] { box-shadow: 0 0 0 3px var(--selection); }
+.vellum-annotation-pin { position: fixed; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; background: var(--surface); color: var(--foreground); box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 18%, transparent), 0 4px 10px #0005; font: 600 12px/1 var(--font-body); font-variant-numeric: tabular-nums; cursor: pointer; pointer-events: auto; }
+.vellum-annotation-pin[aria-pressed='true'] { background: var(--pin); color: #fff; box-shadow: 0 0 0 2px var(--surface), 0 4px 10px #0005; }
 /* The shimmer over an element while its picture is taken (content.ts scanning). The band is 45%
    of the element's width and travels from just off its left edge to just off its right. */
 .vellum-shimmer { position: fixed; overflow: hidden; border-radius: 8px; pointer-events: none; }

@@ -6,6 +6,7 @@
 //   Vellum --agent codex  the Codex ACP adapter
 //   Vellum --termd SOCK   the terminal holder (core/termd.ts)
 //   Vellum --run FILE     a script from disk: the fake agents checks swap in with VELLUM_AGENT
+//   Vellum chrome-extension://ID/   Chrome's native messaging host for Snapshot (core/native-host.ts)
 //
 // macOS on Apple silicon only, for now.
 
@@ -24,6 +25,7 @@ else if (part === '--agent') await import('@agentclientprotocol/claude-agent-acp
 else if (part === '--termd') await (await import('./core/termd')).serve(arg!)
 else if (part === '--run') await import(arg!)
 else if (part === '--browser') await (await import('./scripts/browser')).runBrowser(process.argv.slice(3))
+else if (part?.startsWith('chrome-extension://')) await (await import('./core/native-host')).serveNativeHost(part)
 else {
   if (!process.env.TERM) process.env.PATH = loginShellPath() ?? process.env.PATH
   await import('./app')

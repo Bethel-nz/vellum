@@ -1,12 +1,13 @@
 // Boundary checks use a scratch home and never start a paid agent or a desktop window.
 import { expect } from 'bun:test'
 import path from 'node:path'
+import { statSync } from 'node:fs'
 import { remove, scratchDir } from './scratch'
+import { bridgeFetch } from '../core/bridge-client'
 
 const home = await scratchDir('vellum-bridge-')
 process.env.VELLUM_HOME = home
 process.env.VELLUM_CLAUDE_HOME = path.join(home, 'claude')
-process.env.VELLUM_BRIDGE_PORT = '0'
 const { createBridge } = await import('../core/bridge')
 const { extensionId } = await import('../core/capture')
 const { appendRecord, newThread, reduce, readThread } = await import('../core/threads')
@@ -20,14 +21,14 @@ const bridge = createBridge({ notes: () => notes.map((note) => ({ ...note, accou
 const pair = bridge.pairing()
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jz1kAAAAASUVORK5CYII=', 'base64')
 const capture = (id: string) => ({ version: 1, id, createdAt: new Date().toISOString(), page: { url: 'https://example.com/', title: 'Fixture', viewport: { w: 800, h: 600, dpr: 1 } }, elements: [{ ref: 'e1', selector: '#card', note: 'Rebuild this card', html: '<div id="card">Page data</div>', css: { color: 'red' }, box: { x: 0, y: 0, w: 100, h: 50 }, animations: [], shots: { element: 'card.png' } }] })
-const request = (route: string, init: RequestInit = {}, token = pair.token) => fetch(`${pair.endpoint}${route}`, { ...init, headers: { Authorization: `Bearer ${token}`, ...init.headers } })
+const request = (route: string, init: RequestInit = {}, token = pair.token) => bridgeFetch(pair.endpoint, route, { ...init, headers: { Authorization: `Bearer ${token}`, ...init.headers } })
 const upload = (id: string, extra: { target?: string; mode?: string; filename?: string } = {}) => {
   const body = new FormData()
   const data = capture(id)
   if (extra.filename) data.elements[0]!.shots.element = extra.filename
   body.set('capture', JSON.stringify(data)); body.set('target', extra.target || 'active'); body.set('mode', extra.mode || 'queue')
   body.set('image', new File([png], extra.filename || 'card.png', { type: 'image/png' }))
-  return request('/captures', { method: 'POST', body, headers: { Origin: `chrome-extension://${extensionId}` } })
+  return request('/captures', { method: 'POST', body })
 }
 const call = async (noteId: string, name: string, args: unknown = {}) => {
   const agent = bridge.agent(noteId)
@@ -36,17 +37,20 @@ const call = async (noteId: string, name: string, args: unknown = {}) => {
 }
 const ok = (name: string) => console.log(`ok  ${name}`)
 try {
-  expect((await fetch(`${pair.endpoint}/health`)).status).toBe(401)
+  if (process.platform !== 'win32') {
+    const socket = pair.endpoint.replace(/^unix:/, '')
+    expect(pair.endpoint.startsWith('unix:')).toBe(true)
+    expect(statSync(socket).mode & 0o777).toBe(0o600)
+    expect(statSync(path.dirname(socket)).mode & 0o777).toBe(0o700)
+    ok('bridge listens on a socket only this user can open')
+  }
+  expect((await bridgeFetch(pair.endpoint, '/health')).status).toBe(401)
   expect((await request('/health', {}, 'wrong')).status).toBe(401)
   expect((await request('/health', { headers: { Origin: 'https://example.com' } })).status).toBe(403)
-  expect((await request('/health', { headers: { Origin: `chrome-extension://${extensionId}` } })).status).toBe(200)
-  expect((await fetch(`${pair.endpoint}/connect`, { method: 'POST' })).status).toBe(403)
-  expect((await fetch(`${pair.endpoint}/connect`, { method: 'POST', headers: { Origin: 'https://example.com', 'X-Vellum-Extension': extensionId } })).status).toBe(403)
-  expect((await fetch(`${pair.endpoint}/connect`, { method: 'POST', headers: { Origin: `chrome-extension://${extensionId}` } })).status).toBe(403)
-  const automatic = await fetch(`${pair.endpoint}/connect`, { method: 'POST', headers: { Origin: `chrome-extension://${extensionId}`, 'X-Vellum-Extension': extensionId } })
-  expect(automatic.status).toBe(200)
-  expect((await automatic.json() as { token: string }).token).toBe(pair.token)
-  ok('authentication and exact extension Origin')
+  expect((await request('/health', { headers: { Origin: `chrome-extension://${extensionId}` } })).status).toBe(403)
+  expect((await request('/health')).status).toBe(200)
+  expect((await request('/connect', { method: 'POST' })).status).toBe(404)
+  ok('bearer authentication; anything carrying an Origin is refused')
   expect((await upload('queued')).status).toBe(201)
   expect(threads.get('note-one')!.blocks[0]?.kind).toBe('capture')
   expect(sent.length).toBe(0)

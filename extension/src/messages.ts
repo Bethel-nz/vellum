@@ -1,6 +1,6 @@
 import type { Capture, CaptureSnapshot, SavedCapture } from '../../core/capture'
 
-export type CaptureSettings = { target: string; mode: 'send' | 'queue'; url: string; port: number }
+export type CaptureSettings = { target: string; mode: 'send' | 'queue' }
 export type Note = { id: string; title: string; workspace: string; account: string; active: boolean }
 export type Upload = { name: string; mime: string; data: string }
 export type SnapshotResult = { snapshot: CaptureSnapshot }
@@ -11,7 +11,6 @@ export type CaptureResult = { capture: Capture; scroll: { x: number; y: number }
 export type WorkerMessage =
   | { type: 'toolbar-presence'; toolbarId: string; open: boolean }
   | { type: 'settings' }
-  | { type: 'bridge-settings'; url: string; port: number }
   | { type: 'notes' }
   | { type: 'appearance' }
   | { type: 'target'; target: string; mode: 'send' | 'queue' }

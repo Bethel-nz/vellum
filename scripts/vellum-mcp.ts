@@ -5,6 +5,8 @@ const token = process.env.VELLUM_TOKEN
 const serverId = process.env.VELLUM_MCP_SERVER
 const pending = new Map<number | string, AbortController>()
 if (!endpoint || !noteId || !token) throw new Error('Vellum MCP needs a note and bridge credentials')
+// Runs standalone from the app's helpers, so it can't import core/bridge-client.ts.
+const bridge = (route: string, init: RequestInit) => endpoint.startsWith('unix:') ? fetch(`http://vellum${route}`, { ...init, unix: endpoint.slice('unix:'.length) }) : fetch(`${endpoint}${route}`, init)
 
 /** One JSON-RPC message from the agent, sent on to the bridge; its answer goes back on stdout. */
 async function forward(line: string) {
@@ -14,7 +16,7 @@ async function forward(line: string) {
     body = JSON.parse(line)
     if (body.method === 'notifications/cancelled') { pending.get(body.params?.requestId)?.abort(); return }
     if (body.id !== undefined) { controller = new AbortController(); pending.set(body.id, controller) }
-    const response = await fetch(`${endpoint}/mcp/${encodeURIComponent(noteId!)}${serverId ? `?server=${encodeURIComponent(serverId)}` : ''}`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: line, signal: controller?.signal })
+    const response = await bridge(`/mcp/${encodeURIComponent(noteId!)}${serverId ? `?server=${encodeURIComponent(serverId)}` : ''}`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: line, signal: controller?.signal })
     if (body.id === undefined) return
     if (!response.ok) throw new Error(`Vellum bridge returned ${response.status}`)
     process.stdout.write(`${await response.text()}\n`)

@@ -4,15 +4,15 @@ import { IconArrowDown } from '@central-icons-react/round-outlined-radius-2-stro
 import { IconArrowLeft } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowLeft'
 import { IconArrowRight } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowRight'
 import { IconArrowUp } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowUp'
+import { IconChevronLeftSmall } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconChevronLeftSmall'
+import { IconChevronRightSmall } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconChevronRightSmall'
 import { IconCheckmark1 } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconCheckmark1'
 import { IconLayoutColumn } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconLayoutColumn'
 import { IconArrowWallDown } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowWallDown'
 import { IconEyeOpen } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconEyeOpen'
 import { IconEyeSlash } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconEyeSlash'
-import { IconDotGrid2x3 } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconDotGrid2x3'
-import { IconCursor1 } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconCursor1'
+import { IconBezierPointer } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconBezierPointer'
 import { IconCamera1 } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconCamera1'
-import { IconSettingsGear2 } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconSettingsGear2'
 import { IconSettingsSliderHor } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconSettingsSliderHor'
 import { IconTrashCan } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconTrashCan'
 import { IconArrowUndoUp } from '@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowUndoUp'
@@ -30,7 +30,6 @@ export type CapturePanelProps = {
   open: boolean; selections: SelectedElement[]; activeRef: string | null; toolsOpen: boolean; markersHidden: boolean
   pageScreenshots: PageScreenshot[]
   message: string; error: boolean; capturing: boolean; recording: boolean; picking: boolean; options: CaptureOptions
-  bridge: { url: string; port: number }; onBridgeSettings: (url: string, port: number) => Promise<void>
   recordDuration: number; onRecordDuration: (seconds: number) => void
   playback: { playing: boolean; speed: number; position: number; duration: number; scrubDuration: number; delay: number; easing: string; iterations: string }
   onUndo?: () => void
@@ -57,17 +56,11 @@ export function CapturePanel(props: CapturePanelProps) {
   const input = useRef<HTMLTextAreaElement>(null)
   const inputMeasure = useRef<HTMLTextAreaElement>(null)
   const settingsButton = useRef<HTMLButtonElement>(null)
-  const connectionSettingsButton = useRef<HTMLButtonElement>(null)
   const controlsId = useId()
-  const connectionControlsId = useId()
   const capturePreviewId = useId()
   const [expandedCaptureId, setExpandedCaptureId] = useState<string | null>(null)
   const [pageGalleryOpen, setPageGalleryOpen] = useState(false)
   const [expandedPageScreenshotId, setExpandedPageScreenshotId] = useState<string | null>(null)
-  const [connectionSettingsOpen, setConnectionSettingsOpen] = useState(false)
-  const [bridgeUrl, setBridgeUrl] = useState(props.bridge.url)
-  const [bridgePort, setBridgePort] = useState(String(props.bridge.port))
-  const [bridgeStatus, setBridgeStatus] = useState('')
   const [multiline, setMultiline] = useState(false)
   const [copyState, setCopyState] = useState<'idle' | 'copying' | 'copied'>('idle')
   useEffect(() => {
@@ -80,11 +73,6 @@ export function CapturePanel(props: CapturePanelProps) {
   const dragOffset = useRef<{ pointerId: number; x: number; y: number; startX: number; startY: number; moved: boolean } | null>(null)
   const reduced = useReducedMotion()
   const panelTransition: Transition = { duration: reduced ? .12 : .2, ease: [...motionTokens.ease.enter] }
-  const menuTransition: Transition = reduced ? { duration: motionTokens.duration.instant } : {
-    default: motionTokens.spring.smooth,
-    opacity: { duration: motionTokens.duration.fast, ease: [...motionTokens.ease.enter] },
-  }
-  const menuExitTransition: Transition = { duration: reduced ? motionTokens.duration.instant : .13, ease: [...motionTokens.ease.standard] }
   const controlsTransition: Transition = reduced ? { duration: 0 } : {
     ...motionTokens.spring.smooth,
     delay: props.toolsOpen ? 0 : .06,
@@ -95,6 +83,7 @@ export function CapturePanel(props: CapturePanelProps) {
   const active = props.selections.find((selection) => selection.ref === props.activeRef)
   const canSave = Boolean(active && (active.note.trim() || active.comments.length || active.snapshots.length || active.changes || active.sampled))
   const count = props.selections.filter((selection) => selection.ready).length
+  const hasWork = props.selections.some((selection) => selection.ready || selection.note.trim() || selection.comments.length || selection.changes || selection.snapshots.length || selection.sampled)
   useEffect(() => {
     if (active && !props.picking) input.current?.focus({ preventScroll: true })
   }, [active?.ref, props.picking])
@@ -113,17 +102,13 @@ export function CapturePanel(props: CapturePanelProps) {
     document.addEventListener('pointerdown', closeOnOutsidePointer)
     return () => document.removeEventListener('pointerdown', closeOnOutsidePointer)
   }, [active?.ref, props.picking, props.recording, props.onActivate])
-  useEffect(() => {
-    setBridgeUrl(props.bridge.url)
-    setBridgePort(String(props.bridge.port))
-  }, [props.bridge.url, props.bridge.port])
   useLayoutEffect(() => {
     const node = input.current
     const measure = inputMeasure.current
     if (!node || !measure) return
     const resize = () => {
-      // Measure wrapping at the compact width, even after the editor expands.
-      // Otherwise the wider text area can collapse and reopen on every resize.
+      // The row keeps its columns when it wraps, so the input's own width is a stable measure.
+      measure.style.width = `${node.clientWidth}px`
       measure.style.height = '0px'
       const style = getComputedStyle(measure)
       const line = Number.parseFloat(style.lineHeight) || 24
@@ -154,7 +139,9 @@ export function CapturePanel(props: CapturePanelProps) {
       if (!anchor) return
       const width = node.getBoundingClientRect().width
       const x = Math.max(12, Math.min(innerWidth - width - 12, dragPosition.current?.ref === active.ref ? dragPosition.current.x : anchor.x + 16))
-      const y = Math.max(76, Math.min(innerHeight - 360, dragPosition.current?.ref === active.ref ? dragPosition.current.y : anchor.y + 16))
+      // With the settings open the card travels with its element; otherwise it stays in view.
+      const wanted = dragPosition.current?.ref === active.ref ? dragPosition.current.y : anchor.y + 16
+      const y = props.toolsOpen ? wanted : Math.max(76, Math.min(innerHeight - 360, wanted))
       const rowHeight = node.querySelector('.vellum-comment-row')?.getBoundingClientRect().height ?? 48
       const next = [x, y, innerHeight, rowHeight].join(',')
       if (next === geometry) return
@@ -166,63 +153,62 @@ export function CapturePanel(props: CapturePanelProps) {
     placeComposer.current = place
     place()
     const observer = new ResizeObserver(place)
-    const row = node.querySelector('.vellum-comment-row')
-    if (row) observer.observe(row)
+    observer.observe(node)
     const resize = () => place()
     window.addEventListener('scroll', resize, true)
     window.addEventListener('resize', resize)
     return () => { placeComposer.current = () => {}; observer.disconnect(); window.removeEventListener('scroll', resize, true); window.removeEventListener('resize', resize) }
-  }, [active?.ref, active?.selector, props.picking, props.recording])
+  }, [active?.ref, active?.selector, props.picking, props.recording, props.toolsOpen])
+  const position = active ? props.selections.findIndex((selection) => selection.ref === active.ref) : -1
+  const step = (by: number) => { const next = props.selections[(position + by + props.selections.length) % props.selections.length]; if (next) props.onActivate(next.ref, props.toolsOpen) }
+  const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`
+  const summary = active ? [active.comments.length ? plural(active.comments.length, 'note') : '', active.changes ? plural(active.changes, 'edit') : ''].filter(Boolean).join(' · ') : ''
   const closeEditor = () => { props.onActivate(null); toolbar.current?.querySelector<HTMLButtonElement>('button')?.focus() }
-  const label = props.capturing ? props.message || 'Sending…' : props.recording ? props.message : props.error ? props.message : count ? `Annotating · ${count}` : props.picking ? 'Pick an element' : 'Annotating'
+  const label = props.capturing ? props.message || 'Sending…' : props.recording ? props.message : props.error ? props.message : ''
   return <AnimatePresence>{props.open ? <div className="vellum-snapshot" onKeyDown={(event) => {
     if (event.key !== 'Escape') return
     event.stopPropagation()
-    if (connectionSettingsOpen) { setConnectionSettingsOpen(false); connectionSettingsButton.current?.focus() }
-    else if (props.toolsOpen) { props.onToolsOpen(false); settingsButton.current?.focus() }
+    if (props.toolsOpen) { props.onToolsOpen(false); settingsButton.current?.focus() }
     else if (active) closeEditor()
     else props.onClose()
   }}>
     <div className="vellum-toolbar-cluster">
     <motion.div ref={toolbar} className="vellum-toolbar" role="toolbar" aria-label="Annotation tools" initial={{ opacity: 0, y: reduced ? 0 : -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={panelTransition}>
-      <IconDotGrid2x3 size={15} className="vellum-toolbar-grip" aria-hidden="true" />
-      <span className="vellum-pick-label" role="status" title={props.message || undefined}>{label}</span>
-      <button type="button" className="vellum-tool-button" aria-label="Select an element" title="Select an element" aria-pressed={props.picking} disabled={props.capturing || props.recording} onClick={props.onPicking}><IconCursor1 size={18} /></button>
+      <span className="vellum-pick-label" role="status" title={props.message || undefined} hidden={!label}>{label}</span>
+      <button type="button" className="vellum-tool-button" aria-label="Select an element" title="Select an element" aria-pressed={props.picking} disabled={props.capturing || props.recording} onClick={props.onPicking}><IconBezierPointer size={18} /></button>
       <button type="button" className="vellum-tool-button" aria-label="Capture page screenshot" title="Capture page screenshot" disabled={props.capturing || props.recording} aria-expanded={pageGalleryOpen} onClick={() => { setPageGalleryOpen(true); props.onPageScreenshot() }}><IconCamera1 size={18} /></button>
       <button type="button" className="vellum-tool-button" aria-label={props.markersHidden ? 'Show markers' : 'Hide markers'} title={props.markersHidden ? 'Show markers' : 'Hide markers'} aria-pressed={props.markersHidden} onClick={props.onMarkers}>{props.markersHidden ? <IconEyeOpen size={18} /> : <IconEyeSlash size={18} />}</button>
-      <button type="button" className="vellum-tool-button" aria-label="Hold to view original" title="Hold to view original" disabled={!props.selections.some((selection) => selection.changes)} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); props.onOriginal(true) }} onPointerUp={() => props.onOriginal(false)} onPointerCancel={() => props.onOriginal(false)} onLostPointerCapture={() => props.onOriginal(false)} onKeyDown={(event) => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); props.onOriginal(true) } }} onKeyUp={() => props.onOriginal(false)} onBlur={() => props.onOriginal(false)}><IconLayoutColumn size={18} /></button>
-      <button type="button" className="vellum-tool-button" aria-label="Discard annotations" title="Discard annotations" disabled={!props.selections.length || props.capturing || props.recording} onClick={props.onDiscard}><IconTrashCan size={18} /></button>
+      {props.selections.some((selection) => selection.changes) ? <button type="button" className="vellum-tool-button" aria-label="Hold to view original" title="Hold to view original" disabled={!props.selections.some((selection) => selection.changes)} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); props.onOriginal(true) }} onPointerUp={() => props.onOriginal(false)} onPointerCancel={() => props.onOriginal(false)} onLostPointerCapture={() => props.onOriginal(false)} onKeyDown={(event) => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); props.onOriginal(true) } }} onKeyUp={() => props.onOriginal(false)} onBlur={() => props.onOriginal(false)}><IconLayoutColumn size={18} /></button> : null}
+      {props.selections.length ? <button type="button" className="vellum-tool-button" aria-label="Discard annotations" title="Discard annotations" disabled={!props.selections.length || props.capturing || props.recording} onClick={props.onDiscard}><IconTrashCan size={18} /></button> : null}
       {props.onUndo ? <button type="button" className="vellum-tool-button" aria-label="Undo removal" title="Undo removal" onClick={props.onUndo}><IconArrowUndoUp size={18} /></button> : null}
-      <div className="vellum-delivery-actions" role="group" aria-label="Annotation actions">
-        <button type="button" className="vellum-tool-button vellum-send" aria-label="Send annotations" title="Send annotations to the queue" disabled={!count || props.capturing || props.recording || copyState === 'copying'} onClick={props.onSend}><IconCheckmark1 size={19} /></button>
+      {hasWork ? <div className="vellum-delivery-actions" role="group" aria-label="Annotation actions">
+        <button type="button" className="vellum-tool-button vellum-send" aria-label="Send annotations" title="Send annotations to the queue" disabled={!count || props.capturing || props.recording || copyState === 'copying'} onClick={props.onSend}><IconCheckmark1 size={16} /></button>
         <button type="button" className="vellum-tool-button vellum-copy" aria-label={copyState === 'copied' ? 'Annotations copied' : 'Copy all annotations'} title={copyState === 'copied' ? 'Copied' : 'Copy all annotations'} disabled={!props.selections.length || props.capturing || props.recording || copyState === 'copying'} onClick={async () => {
           setCopyState('copying')
           try { await props.onCopy(); setCopyState('copied') } catch { setCopyState('idle') }
-        }}>{copyState === 'copied' ? <IconCheckmark1 size={18} /> : <IconSquareBehindSquare2 size={18} />}</button>
+        }}>{copyState === 'copied' ? <IconCheckmark1 size={16} /> : <IconSquareBehindSquare2 size={16} />}</button>
         <span className="vellum-sr-only" role="status">{copyState === 'copied' ? 'All annotations copied' : ''}</span>
-      </div>
-      <button ref={connectionSettingsButton} type="button" className="vellum-tool-button" aria-label="Connection settings" title="Connection settings" aria-expanded={connectionSettingsOpen} aria-controls={connectionControlsId} onClick={() => { setConnectionSettingsOpen(!connectionSettingsOpen); setBridgeStatus('') }}><IconSettingsGear2 size={18} /></button>
+      </div> : null}
       <button type="button" className="vellum-tool-button" aria-label="Close Snapshot" title="Close Snapshot (Esc)" disabled={props.capturing || props.recording} onClick={props.onClose}><IconCrossMedium size={18} /></button>
 
     </motion.div>
-    <AnimatePresence initial={false}>{connectionSettingsOpen ? <motion.div key="connection-settings" id={connectionControlsId} className="vellum-connection-bar" role="group" aria-label="Vellum connection settings" initial={{ opacity: 0, y: reduced ? 0 : -5, scale: reduced ? 1 : .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: reduced ? 0 : -2.5, scale: reduced ? 1 : .98, transition: menuExitTransition }} style={{ transformOrigin: 'calc(100% - 62px) top' }} transition={menuTransition}>
-      <label>URL<input type="url" value={bridgeUrl} placeholder="http://127.0.0.1" onChange={(event) => { setBridgeUrl(event.target.value); setBridgeStatus('') }} /></label>
-      <label>Port<input type="number" min={1} max={65535} step={1} value={bridgePort} onChange={(event) => { setBridgePort(event.target.value); setBridgeStatus('') }} /></label>
-      <button type="button" className="vellum-tool-button vellum-connection-save" aria-label="Save connection settings" title="Save" onClick={() => { void props.onBridgeSettings(bridgeUrl, Number(bridgePort)).then(() => setBridgeStatus('Saved')).catch((error) => setBridgeStatus((error as Error).message)) }}><IconCheckmark1 size={17} /></button>
-      {bridgeStatus ? <span role="status">{bridgeStatus}</span> : null}
-    </motion.div> : null}</AnimatePresence>
     </div>
     {props.error ? <span className="vellum-sr-only" role="alert">{props.message}</span> : null}
     <AnimatePresence>{active && !props.picking && !props.recording ? <motion.div key={active.ref} ref={composer} className="vellum-annotation-popover" role="dialog" aria-label={`Annotation ${active.number} on ${active.label}`} initial={{ opacity: 0, y: reduced ? 0 : 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={panelTransition}>
-      <motion.div layout="size" className="vellum-comment-row" data-multiline={multiline} transition={reduced ? { duration: 0 } : motionTokens.spring.morph}>
-        <motion.button layout="position" transition={reduced ? { duration: 0 } : motionTokens.spring.morph} ref={settingsButton} type="button" className="vellum-tool-button" aria-label={props.toolsOpen ? 'Hide element controls' : 'Show element controls'} title="Styles and animation" aria-expanded={props.toolsOpen} aria-controls={controlsId} disabled={props.capturing} onClick={() => props.onToolsOpen(!props.toolsOpen)}><IconSettingsSliderHor size={18} /></motion.button>
-        <motion.textarea layout="position" transition={reduced ? { duration: 0 } : motionTokens.spring.morph} ref={input} className="vellum-comment-input" aria-label="Comment" placeholder="Add a comment…" value={active.note} rows={1} disabled={props.capturing} onChange={(event) => props.onNote(active.ref, event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); props.onSave() } }} />
-        <textarea ref={inputMeasure} className="vellum-comment-measure" aria-hidden="true" inert tabIndex={-1} value={active.note} rows={1} readOnly />
-        <motion.button layout="position" transition={reduced ? { duration: 0 } : motionTokens.spring.morph} type="button" className="vellum-tool-button vellum-comment-save" aria-label="Save annotation" title="Save annotation" disabled={props.capturing || !canSave} onClick={props.onSave}>
-          <IconCheckmark1 size={18} />
-        </motion.button>
-      </motion.div>
-      <motion.div id={controlsId} className="vellum-controls-reveal" inert={!props.toolsOpen || props.capturing} aria-hidden={!props.toolsOpen} initial={false} animate={{ height: props.toolsOpen ? 'auto' : 0, marginTop: props.toolsOpen ? 10 : 0 }} style={{ pointerEvents: props.toolsOpen ? 'auto' : 'none' }} transition={controlsTransition}>
+      <div className="vellum-annotation-header">
+        <div className="vellum-annotation-heading" title={active.selector}>
+          <span className="vellum-annotation-title">{active.label}</span>
+          {props.selections.length > 1 ? <span className="vellum-annotation-count">{position + 1} of {props.selections.length}</span> : null}
+        </div>
+        {props.selections.length > 1 ? <>
+          <button type="button" className="vellum-glyph-button" aria-label="Previous annotation" title="Previous annotation" disabled={props.capturing} onClick={() => step(-1)}><IconChevronLeftSmall size={16} /></button>
+          <button type="button" className="vellum-glyph-button" aria-label="Next annotation" title="Next annotation" disabled={props.capturing} onClick={() => step(1)}><IconChevronRightSmall size={16} /></button>
+        </> : null}
+        {props.toolsOpen
+          ? <button ref={settingsButton} type="button" className="vellum-done-button" aria-expanded aria-controls={controlsId} onClick={() => { props.onToolsOpen(false); input.current?.focus() }}>Done</button>
+          : <button ref={settingsButton} type="button" className="vellum-glyph-button" aria-label="Show element controls" title="Styles and animation" aria-expanded={false} aria-controls={controlsId} disabled={props.capturing} onClick={() => props.onToolsOpen(true)}><IconSettingsSliderHor size={16} /></button>}
+      </div>
+      <motion.div id={controlsId} className="vellum-controls-reveal" inert={!props.toolsOpen || props.capturing} aria-hidden={!props.toolsOpen} initial={false} animate={{ height: props.toolsOpen ? 'auto' : 0, marginTop: props.toolsOpen ? 6 : 0 }} style={{ pointerEvents: props.toolsOpen ? 'auto' : 'none' }} transition={controlsTransition}>
         <motion.div className="vellum-settings-popover" initial={false} animate={{ opacity: props.toolsOpen ? 1 : 0 }} transition={controlsContentTransition}>
           <nav className="vellum-inspector-navigation" aria-label="Select related element" onPointerDown={(event) => {
       if (event.button !== 0 || props.capturing || (event.target as Element).closest('button')) return
@@ -239,23 +225,31 @@ export function CapturePanel(props: CapturePanelProps) {
       // Move the whole surface directly, without triggering child layout springs.
       dragPosition.current = { ref: active.ref, x: event.clientX - offset.x, y: event.clientY - offset.y }
       placeComposer.current()
-    }} onPointerUp={() => { dragOffset.current = null }} onPointerCancel={() => { dragOffset.current = null }} onLostPointerCapture={() => { dragOffset.current = null }}><span title={active.selector}>{active.label}</span>{([['parent', IconArrowUp], ['child', IconArrowDown], ['previous', IconArrowLeft], ['next', IconArrowRight]] as const).map(([direction, Icon]) => <button type="button" className="vellum-tool-button" key={direction} aria-label={`Select ${direction} element`} title={`Select ${direction} element`} disabled={props.capturing} onClick={() => props.onNavigate(direction)}><Icon size={15} /></button>)}</nav>
+    }} onPointerUp={() => { dragOffset.current = null }} onPointerCancel={() => { dragOffset.current = null }} onLostPointerCapture={() => { dragOffset.current = null }}><span>Nearby elements</span>{([['parent', IconArrowUp], ['child', IconArrowDown], ['previous', IconArrowLeft], ['next', IconArrowRight]] as const).map(([direction, Icon]) => <button type="button" className="vellum-tool-button" key={direction} aria-label={`Select ${direction} element`} title={`Select ${direction} element`} disabled={props.capturing} onClick={() => props.onNavigate(direction)}><Icon size={15} /></button>)}</nav>
           <div className="vellum-inspector-scroll"><CaptureDials key={`${active.ref}:${active.selector}:${props.playback.scrubDuration}`} {...props} selection={active} /></div>
           <div className="vellum-inspector-footer"><button type="button" className="vellum-text-button" disabled={!active.changes || props.capturing} onClick={props.onReset}>Reset</button><span>{active.changes ? `${active.changes} changes` : ''}</span><button type="button" className="vellum-tool-button" aria-label="Capture selected element" title="Capture selected element" disabled={props.capturing} onClick={props.onCapture}><IconCamera1 size={17} /></button></div>
         </motion.div>
       </motion.div>
-      {active.comments.length ? <div className="vellum-comment-stack" aria-label="Saved comments">{active.comments.map((comment) => <div className="vellum-comment-actions" key={comment.id}>
-        <div className="vellum-saved-comment"><p>{comment.text}</p></div>
-        <button type="button" className="vellum-tool-button" aria-label="Remove saved comment" title="Remove saved comment" disabled={props.capturing} onClick={() => props.onRemoveComment(comment.id)}><IconTrashCan size={14} /></button>
-      </div>)}</div> : null}
+      {!props.toolsOpen && active.comments.length ? <ul className="vellum-note-list" aria-label="Notes">{active.comments.map((comment, index) => <li key={comment.id}>
+        <p>{comment.text}</p>
+        <button type="button" aria-label={`Remove note ${index + 1}`} title="Remove note" disabled={props.capturing} onClick={() => props.onRemoveComment(comment.id)}><IconCrossMedium size={10} /></button>
+      </li>)}</ul> : null}
+      <motion.div layout="size" className="vellum-comment-row" data-multiline={multiline} hidden={props.toolsOpen} transition={reduced ? { duration: 0 } : motionTokens.spring.morph}>
+        <motion.textarea layout="position" transition={reduced ? { duration: 0 } : motionTokens.spring.morph} ref={input} className="vellum-comment-input" aria-label={`Add a note on ${active.label}`} placeholder="Add a note" value={active.note} rows={1} disabled={props.capturing} onChange={(event) => props.onNote(active.ref, event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); props.onSave() } }} />
+        <textarea ref={inputMeasure} className="vellum-comment-measure" aria-hidden="true" inert tabIndex={-1} value={active.note} rows={1} readOnly />
+        {active.note.trim() || !summary ? null : <button type="button" className="vellum-note-meta" aria-label="Open element controls" aria-expanded={props.toolsOpen} aria-controls={controlsId} disabled={props.capturing} onClick={() => props.onToolsOpen(true)}>{summary}</button>}
+        <motion.button layout="position" transition={reduced ? { duration: 0 } : motionTokens.spring.morph} type="button" className="vellum-tool-button vellum-comment-save" data-send={Boolean(active.note.trim())} aria-label={active.note.trim() ? 'Add note' : 'Save annotation'} title={active.note.trim() ? 'Add note (↵)' : 'Save annotation (↵)'} disabled={props.capturing || !canSave} onClick={props.onSave}>
+          {active.note.trim() ? <IconArrowUp size={14} /> : <IconCheckmark1 size={14} />}
+        </motion.button>
+      </motion.div>
       {active.snapshots.length ? <>
         <AnimatePresence initial={false}>{active.snapshots.filter((snapshot) => snapshot.id === expandedCaptureId).map((snapshot) => <motion.div key={snapshot.id} id={`${capturePreviewId}-${snapshot.id}`} className="vellum-expanded-capture" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={reduced ? { duration: 0 } : motionTokens.spring.smooth}>
           <div className="vellum-expanded-capture-inner"><img src={snapshot.image} alt={`Expanded capture ${active.snapshots.findIndex((item) => item.id === snapshot.id) + 1}: ${snapshot.selector}`} /><a className="vellum-capture-download" href={snapshot.image} download={snapshot.file} aria-label="IconArrowWallDown annotated element screenshot" title="IconArrowWallDown screenshot"><IconArrowWallDown size={15} /></a></div>
         </motion.div>)}</AnimatePresence>
-        <div className="vellum-capture-stack" aria-label="Saved captures">{active.snapshots.map((snapshot, index) => <figure className="vellum-capture-item" key={snapshot.id}>
+        <ul className="vellum-capture-stack" aria-label="Captures">{active.snapshots.map((snapshot, index) => <li className="vellum-capture-item" key={snapshot.id}>
           <button type="button" className="vellum-capture-thumbnail" aria-label={`${expandedCaptureId === snapshot.id ? 'Collapse' : 'Expand'} capture ${index + 1}`} aria-expanded={expandedCaptureId === snapshot.id} aria-controls={`${capturePreviewId}-${snapshot.id}`} onClick={() => setExpandedCaptureId((current) => current === snapshot.id ? null : snapshot.id)}><img src={snapshot.image} alt={`Capture ${index + 1}: ${snapshot.selector}`} /></button>
-          <figcaption><span>Capture {index + 1}</span><button type="button" className="vellum-tool-button" aria-label={`Remove capture ${index + 1}`} title={`Remove capture ${index + 1}`} disabled={props.capturing} onClick={() => { props.onRemoveCapture(snapshot.id); if (expandedCaptureId === snapshot.id) setExpandedCaptureId(null) }}><IconCrossMedium size={13} /></button></figcaption>
-        </figure>)}</div>
+          <button type="button" className="vellum-capture-remove" aria-label={`Remove capture ${index + 1}`} title="Remove capture" disabled={props.capturing} onClick={() => { props.onRemoveCapture(snapshot.id); if (expandedCaptureId === snapshot.id) setExpandedCaptureId(null) }}><IconCrossMedium size={10} /></button>
+        </li>)}</ul>
       </> : null}
     </motion.div> : null}</AnimatePresence>
     <AnimatePresence initial={false}>{pageGalleryOpen ? <motion.section className="vellum-page-captures" aria-label="Page screenshots" initial={{ opacity: 0, y: reduced ? 0 : 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: reduced ? 0 : 12 }} transition={reduced ? { duration: 0 } : motionTokens.spring.smooth}>

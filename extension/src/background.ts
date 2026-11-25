@@ -1,5 +1,5 @@
 import type { Capture, SavedCapture } from '../../core/capture'
-import { bridge, saveBridgeSettings, settings, uploadCapture } from './bridge'
+import { bridge, settings, uploadCapture } from './bridge'
 import type { CaptureResult, ContentMessage, PageScreenshotResult, SnapshotResult, SnapshotStateResult, Upload, WorkerMessage } from './messages'
 
 const busy = new Set<number>()
@@ -195,14 +195,13 @@ async function handle(message: WorkerMessage, sender: chrome.runtime.MessageSend
   if (sender.id !== chrome.runtime.id) throw new Error('This request did not come from Vellum Snapshot.')
   // Page-side scripts can request capture operations, but cannot read connection credentials.
   const popup = sender.url === chrome.runtime.getURL('popup.html')
-  if (sender.tab && !popup && message.type !== 'toolbar-presence' && message.type !== 'capture' && message.type !== 'snapshot' && message.type !== 'related-shots' && message.type !== 'page-screenshot' && message.type !== 'capture-status' && message.type !== 'appearance' && message.type !== 'notes' && message.type !== 'settings' && message.type !== 'target' && message.type !== 'bridge-settings') throw new Error('This action is only available in the extension popup.')
+  if (sender.tab && !popup && message.type !== 'toolbar-presence' && message.type !== 'capture' && message.type !== 'snapshot' && message.type !== 'related-shots' && message.type !== 'page-screenshot' && message.type !== 'capture-status' && message.type !== 'appearance' && message.type !== 'notes' && message.type !== 'settings' && message.type !== 'target') throw new Error('This action is only available in the extension popup.')
   switch (message.type) {
     case 'toolbar-presence': {
       if (!sender.tab || sender.frameId !== 0) throw new Error('Toolbar presence requires the top-frame extension sender')
       return toolbarPresence(sender.tab, message.toolbarId, message.open)
     }
     case 'settings': return settings()
-    case 'bridge-settings': return saveBridgeSettings(message.url, message.port)
     case 'notes': return bridge('/notes')
     case 'appearance': return bridge('/health')
     case 'target': return chrome.storage.local.set({ target: message.target, mode: message.mode === 'queue' ? 'queue' : 'send' })

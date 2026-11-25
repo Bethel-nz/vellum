@@ -1,8 +1,9 @@
 import { agentCapture } from './capture-compact'
-// Only the extension and note-scoped MCP clients can reach this loopback server.
-import { chmodSync, existsSync, rmSync, writeFileSync } from 'node:fs'
+// A Unix socket only you can open (a loopback port on Windows): the extension reaches it through
+// Chrome's native messaging host (core/native-host.ts), agents through note-scoped tokens.
+import { chmodSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { bridgePort, bridgePortCount, capturePrompt, extensionId, type BrowserSession, type CaptureStatus, type SavedCapture } from './capture'
+import { bridgePort, bridgePortCount, capturePrompt, type BrowserSession, type CaptureStatus, type SavedCapture } from './capture'
 import { captureDir, captureImageContent, captureImages, changeCapture, listCaptures, plainName, readCapture, saveCapture, validateCapture } from './captures'
 import { paths, readJson, readSettings } from './store'
 import { record } from './tool-display'
@@ -13,6 +14,7 @@ import { acquireBrowserCapture, browserCommand, browserRun, releaseBrowserCaptur
 import { recordToolbarPresence, listToolbarTargets } from './browser-targets'
 import { mobileCall, mobileTools } from './mobile-tools'
 import { mcp as mcpServers, type McpApproval } from './mcp'
+import { installNativeHost } from './native-host-install'
 
 type Note = { id: string; title: string; workspace: string; account: string; active: boolean }
 type Callbacks = {
@@ -27,11 +29,15 @@ type Pairing = { endpoint: string; token: string }
 const listeners = new Set<(event: Event) => void>()
 const emit = (event: Event) => { for (const listener of listeners) listener(event) }
 export const onBridgeEvent = (listener: (event: Event) => void) => { listeners.add(listener); return () => { listeners.delete(listener) } }
+const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch (error) { return (error as { code?: string }).code === 'EPERM' } }
 const secret = () => crypto.getRandomValues(new Uint8Array(32)).toBase64({ alphabet: 'base64url', omitPadding: true })
 const equal = (a: string, b: string) => { const x = Buffer.from(a); const y = Buffer.from(b); return x.length === y.length && crypto.timingSafeEqual(x, y) }
 let active: ReturnType<typeof createBridge> | undefined
+let registered: string[] = []
 
 export function bridgePairing(): Pairing | undefined { return active?.pairing() }
+/** Browsers where Snapshot can reach this app. */
+export const snapshotBrowsers = () => registered
 export function rotateBridgeToken() { return active?.rotate() }
 export function bridgeAgent(noteId: string) { return active?.agent(noteId) }
 export function recoverCaptureDeliveries() { active?.recover() }
@@ -50,6 +56,7 @@ export function startBridge(callbacks: Callbacks) {
   if (active) return active
   active = createBridge(callbacks)
   active.recover()
+  try { registered = installNativeHost() } catch (error) { console.error('Could not register the Snapshot native host:', error) }
   return active
 }
 
@@ -59,7 +66,6 @@ export function createBridge(callbacks: Callbacks) {
   const agentTokens = new Map<string, string>()
   let stopped = false
   const stopBrowserEvents = subscribeBrowserEvents(event => callbacks.record(event.key.noteId, { type: 'vellum/browser-event', event, at: event.at }))
-  const origin = `chrome-extension://${extensionId}`
   const notify = (saved: SavedCapture) => {
     callbacks.record(saved.noteId, { type: 'vellum/capture', ...saved, at: new Date().toISOString() })
     emit({ type: 'capture', saved })
@@ -166,20 +172,9 @@ export function createBridge(callbacks: Callbacks) {
   const fetchRequest = async (request: Request): Promise<Response> => {
     const url = new URL(request.url)
     const headers = new Headers({ 'Cache-Control': 'no-store' })
-    if (request.headers.get('Origin') === origin) { headers.set('Access-Control-Allow-Origin', origin); headers.set('Vary', 'Origin') }
     const json = (value: unknown, status = 200) => Response.json(value, { status, headers })
-    if (url.hostname !== '127.0.0.1' || request.headers.get('Origin') && request.headers.get('Origin') !== origin) return json({ error: 'Origin refused' }, 403)
-    if (request.method === 'OPTIONS') {
-      headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Vellum-Extension')
-      headers.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS')
-      return new Response(null, { status: 204, headers })
-    }
-    // Only our installed extension can obtain its credentials automatically. Web pages and
-    // note-scoped agent clients still need their existing bearer token.
-    if (url.pathname === '/connect' && request.method === 'POST') {
-      if (request.headers.get('Origin') !== origin || request.headers.get('X-Vellum-Extension') !== extensionId) return json({ error: 'Extension access refused' }, 403)
-      return json({ endpoint, token, version: 1 })
-    }
+    // Browsers never reach the bridge directly: anything with an Origin is a web page.
+    if (tcp && url.hostname !== '127.0.0.1' || request.headers.get('Origin')) return json({ error: 'Origin refused' }, 403)
     const bearer = request.headers.get('Authorization')?.replace(/^Bearer /, '') ?? ''
     const owner = equal(bearer, token)
     const scoped = owner ? undefined : [...agentTokens].find(([, value]) => equal(bearer, value))?.[0]
@@ -282,16 +277,35 @@ export function createBridge(callbacks: Callbacks) {
       return json({ error: 'Not found' }, 404)
     } catch (error) { return json({ error: String((error as Error).message) }, 400) }
   }
-  const configured = process.env.VELLUM_BRIDGE_PORT ?? readSettings().browserPort
-  const requested = Number(configured ?? bridgePort)
-  if (!Number.isInteger(requested) || requested < 0 || requested > 65535 || (requested === 0 && process.env.VELLUM_BRIDGE_PORT === undefined)) throw new Error('Invalid browser connection port')
-  const attempts = configured === undefined ? bridgePortCount : 1
+  const tcp = process.platform === 'win32'
+  // idleTimeout 0 keeps vellum_watch's long waits open; Bun honours it on sockets though its types omit it there.
+  const options = { maxRequestBodySize: 50000000, fetch: fetchRequest, ...({ idleTimeout: 0 } as {}) }
   let server: ReturnType<typeof Bun.serve> | undefined
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    try { server = Bun.serve({ hostname: '127.0.0.1', port: requested === 0 ? 0 : requested + attempt, maxRequestBodySize: 50000000, idleTimeout: 0, fetch: fetchRequest }); break }
-    catch (error) { if ((error as { code?: string }).code !== 'EADDRINUSE' || attempt === attempts - 1) throw error }
+  let socket: string | undefined
+  if (!tcp) {
+    // One socket per process, so a second Vellum on this home takes over without unlinking the first.
+    const run = path.join(paths.home, 'run')
+    mkdirSync(run, { recursive: true, mode: 0o700 })
+    chmodSync(run, 0o700)
+    for (const name of readdirSync(run)) {
+      const pid = Number(/^bridge-(\d+)\.sock$/.exec(name)?.[1])
+      if (pid && pid !== process.pid && !alive(pid)) rmSync(path.join(run, name), { force: true })
+    }
+    socket = path.join(run, `bridge-${process.pid}.sock`)
+    rmSync(socket, { force: true })
+    server = Bun.serve({ unix: socket, ...options })
+    chmodSync(socket, 0o600)
+  } else {
+    const configured = process.env.VELLUM_BRIDGE_PORT
+    const requested = Number(configured ?? bridgePort)
+    if (!Number.isInteger(requested) || requested < 0 || requested > 65535 || (requested === 0 && process.env.VELLUM_BRIDGE_PORT === undefined)) throw new Error('Invalid browser connection port')
+    const attempts = configured === undefined ? bridgePortCount : 1
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      try { server = Bun.serve({ hostname: '127.0.0.1', port: requested === 0 ? 0 : requested + attempt, idleTimeout: 0, ...options }); break }
+      catch (error) { if ((error as { code?: string }).code !== 'EADDRINUSE' || attempt === attempts - 1) throw error }
+    }
   }
-  const endpoint = `http://127.0.0.1:${server!.port}`
+  const endpoint = socket ? `unix:${socket}` : `http://127.0.0.1:${server!.port}`
   const persist = () => { writeFileSync(paths.bridge, JSON.stringify({ endpoint, token }), { mode: 0o600 }); chmodSync(paths.bridge, 0o600) }
   persist()
   return {
@@ -304,6 +318,7 @@ export function createBridge(callbacks: Callbacks) {
       stopBrowserEvents()
       for (const done of [...waiters]) done()
       server!.stop(true)
+      if (socket) rmSync(socket, { force: true })
       if (existsSync(paths.bridge) && readJson<Pairing | undefined>(paths.bridge, undefined)?.endpoint === endpoint) rmSync(paths.bridge, { force: true })
       if (active?.pairing().endpoint === endpoint) active = undefined
     },

@@ -7,6 +7,7 @@
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
 import { remove, scratchDir } from './scratch'
+import { bridgeFetch } from '../core/bridge-client'
 
 const udid = process.env.VELLUM_MOBILE_UDID
 if (!udid) {
@@ -49,7 +50,7 @@ try {
 
   // The agent's tools, as the note's MCP client calls them (the owner token reaches any note).
   const { endpoint, token } = await Bun.file(path.join(home, 'bridge.json')).json()
-  const rpc = async (method: string, params: unknown) => (await (await fetch(`${endpoint}/mcp/check`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) })).json()) as any
+  const rpc = async (method: string, params: unknown) => (await (await bridgeFetch(endpoint, '/mcp/check', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) })).json()) as any
   const names = (await rpc('tools/list', {})).result.tools.map((tool: { name: string }) => tool.name)
   expect('agents get the mobile tools', ['mobile_snapshot', 'mobile_screenshot', 'mobile_tap', 'mobile_steps', 'mobile_apps', 'mobile_configure', 'mobile_notify', 'mobile_reset', 'mobile_connection', 'mobile_input', 'mobile_inspect'].every((name) => names.includes(name)), names.join(' '))
   const press = await rpc('tools/call', { name: 'mobile_steps', arguments: { steps: [{ action: 'press', button: 'home' }, { action: 'waitFor', text: 'Settings', timeoutMs: 10_000 }] } })

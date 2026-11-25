@@ -32,25 +32,29 @@ export function CaptureDials(props: CapturePanelProps & { selection: SelectedEle
     const px = (key: StyleField, max = 200): [number, number, number, number] => [number(key), key.startsWith('margin') ? -200 : 0, Math.max(max, number(key) * 2), 1]
     const kit = createDialKit(props.selection.label, {
       design: {
-        outline: { fitOutlineToShape: props.selection.fitOutline },
+        _collapsed: true,
+        outline: { _collapsed: true, fitOutlineToShape: props.selection.fitOutline },
         colors: {
+          _collapsed: true,
           color: { type: 'color', default: styles.color }, background: { type: 'color', default: styles.background }, opacity: [number('opacity'), 0, 1, .01],
         },
-        shape: { borderColor: { type: 'color', default: styles.borderColor }, borderWidth: px('borderWidth', 24), borderRadius: px('borderRadius') },
+        shape: { _collapsed: true, borderColor: { type: 'color', default: styles.borderColor }, borderWidth: px('borderWidth', 24), borderRadius: px('borderRadius') },
         typography: { _collapsed: true, font: { type: 'text', default: styles.font }, fontSize: px('fontSize', 120), fontWeight: { type: 'select', default: styles.fontWeight, options: ['100', '200', '300', '400', '500', '600', '700', '800', '900'] } },
-        size: { width: px('width', 1600), height: px('height', 1200) },
+        size: { _collapsed: true, width: px('width', 1600), height: px('height', 1200) },
         spacing: { _collapsed: true, paddingTop: px('paddingTop'), paddingRight: px('paddingRight'), paddingBottom: px('paddingBottom'), paddingLeft: px('paddingLeft'), marginTop: px('marginTop'), marginRight: px('marginRight'), marginBottom: px('marginBottom'), marginLeft: px('marginLeft') },
       },
       animation: {
-        playback: { playing: props.playback.playing, speed: [props.playback.speed, .1, 3, .1] },
+        _collapsed: true,
+        playback: { _collapsed: true, playing: props.playback.playing, speed: [props.playback.speed, .1, 3, .1] },
         timing: {
+          _collapsed: true,
           easing: easing(props.playback.easing, props.playback.duration),
           delay: [props.playback.delay, -2000, Math.max(5000, props.playback.delay * 2), 10],
           iterations: { type: 'select', default: props.playback.iterations, options: ['1', '2', '3', '5', '10', { value: 'Infinity', label: 'Loop' }] },
         },
-        frames: { progress: [scrubSeconds * props.playback.position / 100, 0, scrubSeconds, .01] },
-        recording: { seconds: [props.recordDuration, 1, 60, 1] },
-        restart: { type: 'action', label: 'Replay animation' }, record: { type: 'action', label: 'Record next interaction' },
+        frames: { _collapsed: true, progress: [scrubSeconds * props.playback.position / 100, 0, scrubSeconds, .01] },
+        recording: { _collapsed: true, seconds: [props.recordDuration, 1, 60, 1] },
+        restart: { type: 'action', label: 'Replay' }, record: { type: 'action', label: 'Record' },
       },
       capture: { _collapsed: true, hoverAndFocus: props.options.triggers, animationFrames: props.options.frames, eventHandlers: props.options.listeners, relatedElements: props.options.related },
     }, { onAction: (action) => {
