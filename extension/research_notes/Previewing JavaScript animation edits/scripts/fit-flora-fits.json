@@ -11,40 +11,40 @@
     "to": -576,
     "observedMs": 583,
     "choice": "spring",
-    "deltaBIC": 136.4,
+    "deltaBIC": 40.1,
     "extrema": 1,
     "spring": {
      "motion": {
-      "duration": 0.5486,
-      "bounce": 0.1592,
-      "visualDuration": 0.3287,
+      "duration": 0.5477,
+      "bounce": 0.1583,
+      "visualDuration": 0.3283,
       "velocity": 0
      },
      "physics": {
-      "stiffness": 253.81,
-      "damping": 26.79,
+      "stiffness": 254.313,
+      "damping": 26.845,
       "mass": 1,
-      "dampingRatio": 0.841,
-      "undampedFreq": 15.931
+      "dampingRatio": 0.842,
+      "undampedFreq": 15.947
      },
-     "overshootPercent": 0.76,
+     "overshootPercent": 0.747,
      "settle2PercentMs": 257,
      "fit": {
-      "rmse": 0.246,
-      "maxError": 0.943,
-      "r2": 0.999996,
-      "bic": -128.7,
+      "rmse": 0.725,
+      "maxError": 4.858,
+      "r2": 0.999961,
+      "bic": -20.4,
       "n": 50
      }
     },
     "bezier": {
-     "css": "cubic-bezier(0.256, 0.3, 0.265, 1.095)",
-     "duration": 362,
+     "css": "cubic-bezier(0.264, 0.332, 0.237, 1.101)",
+     "duration": 378,
      "fit": {
-      "rmse": 0.854,
-      "maxError": 2.177,
-      "r2": 0.999946,
-      "bic": 7.7
+      "rmse": 0.963,
+      "maxError": 2.785,
+      "r2": 0.999931,
+      "bic": 19.7
      }
     }
    },
@@ -53,40 +53,40 @@
     "to": -864,
     "observedMs": 583,
     "choice": "spring",
-    "deltaBIC": 125.8,
+    "deltaBIC": 145.6,
     "extrema": 1,
     "spring": {
      "motion": {
-      "duration": 0.5494,
-      "bounce": 0.1595,
-      "visualDuration": 0.3291,
+      "duration": 0.5534,
+      "bounce": 0.1618,
+      "visualDuration": 0.331,
       "velocity": 0
      },
      "physics": {
-      "stiffness": 253.081,
-      "damping": 26.743,
+      "stiffness": 250.188,
+      "damping": 26.517,
       "mass": 1,
-      "dampingRatio": 0.841,
-      "undampedFreq": 15.909
+      "dampingRatio": 0.838,
+      "undampedFreq": 15.817
      },
-     "overshootPercent": 0.764,
+     "overshootPercent": 0.8,
      "settle2PercentMs": 257,
      "fit": {
-      "rmse": 0.267,
-      "maxError": 0.981,
-      "r2": 0.999995,
-      "bic": -120.5,
+      "rmse": 0.22,
+      "maxError": 0.698,
+      "r2": 0.999996,
+      "bic": -139.9,
       "n": 50
      }
     },
     "bezier": {
-     "css": "cubic-bezier(0.25, 0.264, 0.262, 1.096)",
+     "css": "cubic-bezier(0.259, 0.302, 0.27, 1.094)",
      "duration": 361,
      "fit": {
-      "rmse": 0.834,
+      "rmse": 0.837,
       "maxError": 2.189,
-      "r2": 0.999949,
-      "bic": 5.3
+      "r2": 0.999948,
+      "bic": 5.7
      }
     }
    }
@@ -97,40 +97,40 @@
     "to": -576,
     "observedMs": 582,
     "choice": "spring",
-    "deltaBIC": 131.5,
+    "deltaBIC": 27.8,
     "extrema": 1,
     "spring": {
      "motion": {
-      "duration": 0.5489,
-      "bounce": 0.1594,
-      "visualDuration": 0.3288,
+      "duration": 0.5495,
+      "bounce": 0.1596,
+      "visualDuration": 0.3291,
       "velocity": 0
      },
      "physics": {
-      "stiffness": 253.577,
-      "damping": 26.771,
+      "stiffness": 253.116,
+      "damping": 26.74,
       "mass": 1,
-      "dampingRatio": 0.841,
-      "undampedFreq": 15.924
+      "dampingRatio": 0.84,
+      "undampedFreq": 15.91
      },
-     "overshootPercent": 0.764,
+     "overshootPercent": 0.767,
      "settle2PercentMs": 257,
      "fit": {
-      "rmse": 0.262,
-      "maxError": 0.927,
-      "r2": 0.999995,
-      "bic": -122.4,
+      "rmse": 1.056,
+      "maxError": 5.356,
+      "r2": 0.999917,
+      "bic": 17.2,
       "n": 50
      }
     },
     "bezier": {
-     "css": "cubic-bezier(0.257, 0.306, 0.266, 1.094)",
-     "duration": 362,
+     "css": "cubic-bezier(0.326, 0.82, 0.285, 1.065)",
+     "duration": 435,
      "fit": {
-      "rmse": 0.867,
-      "maxError": 2.177,
-      "r2": 0.999944,
-      "bic": 9.2
+      "rmse": 1.24,
+      "maxError": 5.072,
+      "r2": 0.999886,
+      "bic": 45
      }
     }
    },
@@ -139,40 +139,40 @@
     "to": -864,
     "observedMs": 582,
     "choice": "spring",
-    "deltaBIC": 108.9,
+    "deltaBIC": 143.4,
     "extrema": 1,
     "spring": {
      "motion": {
-      "duration": 0.5507,
-      "bounce": 0.1605,
-      "visualDuration": 0.3297,
+      "duration": 0.5534,
+      "bounce": 0.1616,
+      "visualDuration": 0.331,
       "velocity": 0
      },
      "physics": {
-      "stiffness": 252.268,
-      "damping": 26.668,
+      "stiffness": 250.204,
+      "damping": 26.522,
       "mass": 1,
-      "dampingRatio": 0.84,
-      "undampedFreq": 15.883
+      "dampingRatio": 0.838,
+      "undampedFreq": 15.818
      },
-     "overshootPercent": 0.779,
-     "settle2PercentMs": 257,
+     "overshootPercent": 0.797,
+     "settle2PercentMs": 258,
      "fit": {
-      "rmse": 0.311,
-      "maxError": 1.541,
-      "r2": 0.999993,
-      "bic": -104.9,
+      "rmse": 0.222,
+      "maxError": 0.631,
+      "r2": 0.999996,
+      "bic": -138.7,
       "n": 50
      }
     },
     "bezier": {
-     "css": "cubic-bezier(0.256, 0.278, 0.261, 1.095)",
+     "css": "cubic-bezier(0.26, 0.307, 0.27, 1.094)",
      "duration": 362,
      "fit": {
-      "rmse": 0.823,
+      "rmse": 0.829,
       "maxError": 2.189,
-      "r2": 0.99995,
-      "bic": 4
+      "r2": 0.999949,
+      "bic": 4.7
      }
     }
    }
@@ -183,40 +183,40 @@
     "to": -576,
     "observedMs": 583,
     "choice": "spring",
-    "deltaBIC": 99.7,
+    "deltaBIC": 32.1,
     "extrema": 1,
     "spring": {
      "motion": {
-      "duration": 0.5485,
-      "bounce": 0.1592,
-      "visualDuration": 0.3286,
+      "duration": 0.5476,
+      "bounce": 0.1582,
+      "visualDuration": 0.3283,
       "velocity": 0
      },
      "physics": {
-      "stiffness": 253.858,
-      "damping": 26.793,
+      "stiffness": 254.404,
+      "damping": 26.852,
       "mass": 1,
-      "dampingRatio": 0.841,
-      "undampedFreq": 15.933
+      "dampingRatio": 0.842,
+      "undampedFreq": 15.95
      },
-     "overshootPercent": 0.76,
+     "overshootPercent": 0.746,
      "settle2PercentMs": 257,
      "fit": {
-      "rmse": 0.294,
-      "maxError": 0.973,
-      "r2": 0.99999,
-      "bic": -77.3,
+      "rmse": 0.839,
+      "maxError": 4.754,
+      "r2": 0.999918,
+      "bic": -1.9,
       "n": 36
      }
     },
     "bezier": {
-     "css": "cubic-bezier(0.263, 0.34, 0.251, 1.103)",
-     "duration": 375,
+     "css": "cubic-bezier(0.293, 0.619, 0.263, 1.086)",
+     "duration": 404,
      "fit": {
-      "rmse": 1.012,
-      "maxError": 2.327,
-      "r2": 0.99988,
-      "bic": 22.3
+      "rmse": 1.128,
+      "maxError": 3.992,
+      "r2": 0.999852,
+      "bic": 30.2
      }
     }
    },
@@ -225,40 +225,40 @@
     "to": -864,
     "observedMs": 583,
     "choice": "spring",
-    "deltaBIC": 95.7,
+    "deltaBIC": 104.8,
     "extrema": 1,
     "spring": {
      "motion": {
-      "duration": 0.5494,
-      "bounce": 0.1595,
-      "visualDuration": 0.3291,
+      "duration": 0.5535,
+      "bounce": 0.1618,
+      "visualDuration": 0.331,
       "velocity": 0
      },
      "physics": {
-      "stiffness": 253.128,
-      "damping": 26.745,
+      "stiffness": 250.159,
+      "damping": 26.513,
       "mass": 1,
-      "dampingRatio": 0.841,
-      "undampedFreq": 15.91
+      "dampingRatio": 0.838,
+      "undampedFreq": 15.816
      },
-     "overshootPercent": 0.764,
+     "overshootPercent": 0.8,
      "settle2PercentMs": 257,
      "fit": {
-      "rmse": 0.3,
-      "maxError": 1.011,
-      "r2": 0.99999,
-      "bic": -75.9,
+      "rmse": 0.265,
+      "maxError": 0.811,
+      "r2": 0.999992,
+      "bic": -85,
       "n": 36
      }
     },
     "bezier": {
-     "css": "cubic-bezier(0.251, 0.263, 0.261, 1.096)",
-     "duration": 361,
+     "css": "cubic-bezier(0.26, 0.302, 0.269, 1.094)",
+     "duration": 362,
      "fit": {
-      "rmse": 0.976,
+      "rmse": 0.977,
       "maxError": 2.189,
-      "r2": 0.99989,
-      "bic": 19.7
+      "r2": 0.999889,
+      "bic": 19.8
      }
     }
    }
@@ -269,40 +269,40 @@
     "to": -576,
     "observedMs": 600,
     "choice": "spring",
-    "deltaBIC": 54.2,
+    "deltaBIC": 2.3,
     "extrema": 1,
     "spring": {
      "motion": {
-      "duration": 0.5447,
-      "bounce": 0.1569,
-      "visualDuration": 0.3268,
+      "duration": 0.542,
+      "bounce": 0.1551,
+      "visualDuration": 0.3256,
       "velocity": 0
      },
      "physics": {
-      "stiffness": 256.676,
-      "damping": 27.016,
+      "stiffness": 258.619,
+      "damping": 27.175,
       "mass": 1,
-      "dampingRatio": 0.843,
-      "undampedFreq": 16.021
+      "dampingRatio": 0.845,
+      "undampedFreq": 16.082
      },
-     "overshootPercent": 0.726,
+     "overshootPercent": 0.7,
      "settle2PercentMs": 257,
      "fit": {
-      "rmse": 0.197,
-      "maxError": 0.479,
-      "r2": 0.999997,
-      "bic": -71.6,
+      "rmse": 0.888,
+      "maxError": 4.318,
+      "r2": 0.99994,
+      "bic": 3.7,
       "n": 25
      }
     },
     "bezier": {
-     "css": "cubic-bezier(0.32, 0.79, 0.291, 1.069)",
-     "duration": 426,
+     "css": "cubic-bezier(0.293, 0.64, 0.237, 1.088)",
+     "duration": 422,
      "fit": {
-      "rmse": 0.48,
-      "maxError": 1.111,
-      "r2": 0.999982,
-      "bic": -17.3
+      "rmse": 0.767,
+      "maxError": 2.076,
+      "r2": 0.999955,
+      "bic": 6
      }
     }
    },
@@ -311,40 +311,40 @@
     "to": -864,
     "observedMs": 600,
     "choice": "spring",
-    "deltaBIC": 73,
+    "deltaBIC": 69.4,
     "extrema": 1,
     "spring": {
      "motion": {
-      "duration": 0.5481,
-      "bounce": 0.159,
-      "visualDuration": 0.3284,
+      "duration": 0.5553,
+      "bounce": 0.1625,
+      "visualDuration": 0.332,
       "velocity": 0
      },
      "physics": {
-      "stiffness": 254.206,
-      "damping": 26.817,
+      "stiffness": 248.734,
+      "damping": 26.417,
       "mass": 1,
-      "dampingRatio": 0.841,
-      "undampedFreq": 15.944
+      "dampingRatio": 0.837,
+      "undampedFreq": 15.771
      },
-     "overshootPercent": 0.758,
-     "settle2PercentMs": 257,
+     "overshootPercent": 0.811,
+     "settle2PercentMs": 258,
      "fit": {
-      "rmse": 0.191,
-      "maxError": 0.64,
-      "r2": 0.999997,
-      "bic": -73.2,
+      "rmse": 0.158,
+      "maxError": 0.478,
+      "r2": 0.999998,
+      "bic": -82.7,
       "n": 25
      }
     },
     "bezier": {
-     "css": "cubic-bezier(0.301, 0.624, 0.287, 1.084)",
-     "duration": 395,
+     "css": "cubic-bezier(0.33, 0.803, 0.294, 1.067)",
+     "duration": 428,
      "fit": {
-      "rmse": 0.677,
-      "maxError": 1.606,
-      "r2": 0.999965,
-      "bic": -0.2
+      "rmse": 0.521,
+      "maxError": 1.153,
+      "r2": 0.999979,
+      "bic": -13.2
      }
     }
    }
@@ -355,40 +355,40 @@
     "to": -576,
     "observedMs": 750,
     "choice": "spring",
-    "deltaBIC": 74.4,
+    "deltaBIC": 74.6,
     "extrema": 1,
     "spring": {
      "motion": {
-      "duration": 0.553,
-      "bounce": 0.1595,
+      "duration": 0.5528,
+      "bounce": 0.1594,
       "visualDuration": 0.3312,
-      "velocity": 719.3
+      "velocity": 698.3
      },
      "physics": {
-      "stiffness": 249.87,
-      "damping": 26.573,
+      "stiffness": 249.99,
+      "damping": 26.582,
       "mass": 1,
       "dampingRatio": 0.841,
-      "undampedFreq": 15.807
+      "undampedFreq": 15.811
      },
-     "overshootPercent": 0.764,
+     "overshootPercent": 0.763,
      "settle2PercentMs": 268,
      "fit": {
       "rmse": 0.023,
-      "maxError": 0.071,
+      "maxError": 0.073,
       "r2": 1,
-      "bic": -81.1,
+      "bic": -80.9,
       "n": 12
      }
     },
     "bezier": {
-     "css": "cubic-bezier(0.437, -0.065, 0.144, 1.123)",
-     "duration": 446,
+     "css": "cubic-bezier(0.406, -0.029, 0.139, 1.121)",
+     "duration": 432,
      "fit": {
-      "rmse": 0.407,
-      "maxError": 1.345,
+      "rmse": 0.412,
+      "maxError": 1.36,
       "r2": 0.999988,
-      "bic": -6.6
+      "bic": -6.4
      }
     }
    },
@@ -397,35 +397,35 @@
     "to": -864,
     "observedMs": 750,
     "choice": "spring",
-    "deltaBIC": 72.3,
+    "deltaBIC": 78,
     "extrema": 1,
     "spring": {
      "motion": {
-      "duration": 0.5539,
-      "bounce": 0.1595,
-      "visualDuration": 0.3318,
-      "velocity": 778.2
+      "duration": 0.552,
+      "bounce": 0.16,
+      "visualDuration": 0.3305,
+      "velocity": 0
      },
      "physics": {
-      "stiffness": 249.006,
-      "damping": 26.526,
+      "stiffness": 250.942,
+      "damping": 26.614,
       "mass": 1,
-      "dampingRatio": 0.841,
-      "undampedFreq": 15.78
+      "dampingRatio": 0.84,
+      "undampedFreq": 15.841
      },
-     "overshootPercent": 0.765,
-     "settle2PercentMs": 269,
+     "overshootPercent": 0.772,
+     "settle2PercentMs": 258,
      "fit": {
-      "rmse": 0.025,
-      "maxError": 0.074,
+      "rmse": 0.022,
+      "maxError": 0.071,
       "r2": 1,
-      "bic": -78.6,
+      "bic": -84.4,
       "n": 12
      }
     },
     "bezier": {
-     "css": "cubic-bezier(0.406, -0.034, 0.14, 1.121)",
-     "duration": 433,
+     "css": "cubic-bezier(0.376, 0.042, 0.141, 1.117)",
+     "duration": 420,
      "fit": {
       "rmse": 0.412,
       "maxError": 1.36,
@@ -439,42 +439,42 @@
    {
     "from": -288,
     "to": -576,
-    "observedMs": 583,
+    "observedMs": 584,
     "choice": "spring",
-    "deltaBIC": 81.8,
+    "deltaBIC": 52.8,
     "extrema": 1,
     "spring": {
      "motion": {
-      "duration": 0.5506,
-      "bounce": 0.1594,
-      "visualDuration": 0.3298,
+      "duration": 0.5472,
+      "bounce": 0.1571,
+      "visualDuration": 0.3283,
       "velocity": 0
      },
      "physics": {
-      "stiffness": 252.021,
-      "damping": 26.69,
+      "stiffness": 254.387,
+      "damping": 26.887,
       "mass": 1,
-      "dampingRatio": 0.841,
-      "undampedFreq": 15.875
+      "dampingRatio": 0.843,
+      "undampedFreq": 15.95
      },
-     "overshootPercent": 0.763,
+     "overshootPercent": 0.729,
      "settle2PercentMs": 258,
      "fit": {
-      "rmse": 0.438,
-      "maxError": 2.234,
-      "r2": 0.999986,
-      "bic": -70.8,
+      "rmse": 0.618,
+      "maxError": 3.234,
+      "r2": 0.999972,
+      "bic": -36.3,
       "n": 50
      }
     },
     "bezier": {
-     "css": "cubic-bezier(0.226, 0, 0.309, 1)",
-     "duration": 309,
+     "css": "cubic-bezier(0.233, 0.195, 0.247, 1.102)",
+     "duration": 362,
      "fit": {
-      "rmse": 0.883,
-      "maxError": 2.221,
-      "r2": 0.999942,
-      "bic": 11
+      "rmse": 0.932,
+      "maxError": 2.189,
+      "r2": 0.999936,
+      "bic": 16.5
      }
     }
    },
@@ -483,40 +483,40 @@
     "to": -864,
     "observedMs": 583,
     "choice": "spring",
-    "deltaBIC": 56.6,
+    "deltaBIC": 50.7,
     "extrema": 1,
     "spring": {
      "motion": {
-      "duration": 0.5525,
-      "bounce": 0.1624,
-      "visualDuration": 0.3303,
+      "duration": 0.5539,
+      "bounce": 0.163,
+      "visualDuration": 0.331,
       "velocity": 0
      },
      "physics": {
-      "stiffness": 251.253,
-      "damping": 26.554,
+      "stiffness": 250.193,
+      "damping": 26.478,
       "mass": 1,
-      "dampingRatio": 0.838,
-      "undampedFreq": 15.851
+      "dampingRatio": 0.837,
+      "undampedFreq": 15.817
      },
-     "overshootPercent": 0.809,
+     "overshootPercent": 0.819,
      "settle2PercentMs": 257,
      "fit": {
-      "rmse": 0.56,
-      "maxError": 2.431,
-      "r2": 0.999977,
-      "bic": -46.2,
+      "rmse": 0.614,
+      "maxError": 2.087,
+      "r2": 0.999972,
+      "bic": -37.1,
       "n": 50
      }
     },
     "bezier": {
-     "css": "cubic-bezier(0.272, 0.321, 0.243, 1.102)",
-     "duration": 377,
+     "css": "cubic-bezier(0.281, 0.36, 0.25, 1.099)",
+     "duration": 378,
      "fit": {
-      "rmse": 0.877,
-      "maxError": 2.735,
-      "r2": 0.999943,
-      "bic": 10.4
+      "rmse": 0.906,
+      "maxError": 2.775,
+      "r2": 0.999939,
+      "bic": 13.6
      }
     }
    }
@@ -528,9 +528,9 @@
    "target": -576,
    "writes": 34,
    "writeSpanMs": 550,
-   "impliedElapsedAtFirstWriteMs": 12,
-   "offsetSpreadMs": 1.7,
-   "driftPercent": -0.14,
+   "impliedElapsedAtFirstWriteMs": 11,
+   "offsetSpreadMs": 4.3,
+   "driftPercent": -0.32,
    "checked": 18
   },
   {
@@ -539,8 +539,8 @@
    "writes": 34,
    "writeSpanMs": 550,
    "impliedElapsedAtFirstWriteMs": 11,
-   "offsetSpreadMs": 2,
-   "driftPercent": -0.19,
+   "offsetSpreadMs": 1.7,
+   "driftPercent": -0.22,
    "checked": 18
   }
  ],
@@ -566,5 +566,20 @@
    4316.5,
    9316.3
   ]
- }
+ },
+ "snap": [
+  {
+   "t0AfterLastStillMs": 7.1,
+   "snapAfterT0Ms": 559.6,
+   "lastStepPx": 0.322,
+   "fittedDurationMs": 547.7
+  },
+  {
+   "t0AfterLastStillMs": 6.6,
+   "snapAfterT0Ms": 560.1,
+   "lastStepPx": 0.322,
+   "fittedDurationMs": 553.4
+  }
+ ],
+ "animationsWhileMoving": 0
 }

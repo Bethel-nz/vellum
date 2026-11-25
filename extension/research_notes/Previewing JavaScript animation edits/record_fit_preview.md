@@ -40,7 +40,7 @@ so a fitted (ω0, ζ) converts exactly back to `{duration, bounce}`. Since 13.x,
 and end exactly at `duration` with a sub-pixel snap. That snap is a usable fingerprint, and flora's recording
 shows it. For WAAPI, Motion turns any spring into a 0..100 generator, steps its duration in 50 ms increments and
 samples a `linear()` string every 10 ms. `fit-motion-spring.mjs` reproduces all of this. Against flora's own
-per-frame writes, its curve has no measurable time drift (−0.19% to −0.02%).
+per-frame writes, its curve shows no meaningful time drift: −0.32% to +0.34% across four runs.
 
 ### Cited Findings
 - **[Source]** Defaults in motion-dom 14.14.0: stiffness 100, damping 10, mass 1, duration 800 ms, bounce 0.3,
@@ -103,8 +103,8 @@ per-frame writes, its curve has no measurable time drift (−0.19% to −0.02%).
   is present or `linear()` is unsupported
   ([TransformAnimation.mjs](https://unpkg.com/motion-dom@14.14.0/dist/es/animation/waapi/transforms/TransformAnimation.mjs)).
   Flora's track is still driven on the JS thread: its inline `transform` changes every frame and
-  `card.getAnimations({subtree:true}).length` is 0 **[Verified]** (`fit-flora-preview.json` →
-  `recording.cardAnimations`).
+  `card.getAnimations({subtree:true}).length` is 0 in every moving frame **[Verified]** (`fit-flora-fits.json` →
+  `animationsWhileMoving`; `fit-flora-preview.json` → `recording.cardAnimations`).
 - **[Source]** Flora's production chunk (`/_next/static/immutable/chunks/43t38g6et1zz8.js`, read only) contains the
   13.x/14.x spring code: the same negative-bounce `i0=e=>e<0?1/Math.max(1+e,.05):Math.max(1-e,.05)`, the
   `done = t >= duration` branch and the memoised `{A, sinC, cosC}` coefficients. It also bundles DialKit, which has
@@ -116,16 +116,21 @@ per-frame writes, its curve has no measurable time drift (−0.19% to −0.02%).
   - visualDuration 0.55 with bounce 0.16 gives a different spring: stiffness 90.63, damping 15.99. Duration and
     visualDuration are not interchangeable.
   - Predicted flora overshoot is −2.22 px on a 288 px move, and the value at 549 ms is −576.287, after which it
-    snaps to −576. Observed: a peak of −578.22, and a last pre-snap frame of −576.32 that snaps to −576
-    (`fit-flora-samples.json`).
+    snaps to −576. Observed: a peak 2.22 px past the target (−866.219 on the −576 → −864 move), and last
+    pre-snap frames of −576.322 and −864.322 that snap to −576 and −864 (`fit-flora-samples.json`).
   - As WAAPI: flora's spring is 550 ms with a 427-character `linear()`; the edited spring is 1000 ms with
     793 characters.
 - **[Verified]** Port check against Motion itself on flora (`fit-flora-sample.mjs` → `fit-flora-fits.json` →
   `portCheck`). I inverted the port's curve at each of Motion's 18 monotonic per-frame style writes per move to
-  recover Motion's elapsed time. Its offset from the frame time stays within a 1.7–2.0 ms band, with a drift slope
-  of −0.14% and −0.19%. An earlier run showed a ±0.4 ms band repeating every three frames, which is the
-  100 µs-rounded frame timestamps alternating 16.6 and 16.7 ms. Motion's first write in each move is already
-  11–12 ms into the animation, and its last write lands 550 ms after its first.
+  recover Motion's elapsed time. In the saved run, its offset from the frame time stays within a 1.7–4.3 ms band,
+  with drift slopes of −0.32% and −0.22%. Earlier runs gave −0.14% / −0.19% and −0.05% / +0.34%. A scratch run
+  showed a ±0.4 ms band repeating every three frames, which is the 100 µs-rounded frame timestamps alternating
+  16.6 and 16.7 ms.
+  - The wider band comes from Motion's own clock. Motion reads `performance.now()` when its frame runs, and in the
+    saved run's move 1 its consecutive writes stepped −29.2, −16.4 and then −18.3 px. Step sizes that rise again
+    mean a late or early frame on the page side.
+  - Motion's first write in each move is already 11–12 ms into the animation, and its last write lands 550 ms after
+    its first.
 - **[Documented]** Settling time for an underdamped second-order system: Ts = −ln(tol·√(1−ζ²))/(ζωn), or about
   3.9/(ζωn) for 2% ([Wikipedia: Settling time](https://en.wikipedia.org/wiki/Settling_time)). Percent overshoot is
   PO = 100·exp(−ζπ/√(1−ζ²)), with inverse ζ = −ln(PO/100)/√(π² + ln²(PO/100))
@@ -137,10 +142,10 @@ per-frame writes, its curve has no measurable time drift (−0.19% to −0.02%).
   closed form for ζ < 1, and by bisection for ζ ≥ 1.
 - Two quick consistency checks for any fit:
   - Overshoot from ζ: bounce .16 → ζ .84 → 0.77% of 288 px = 2.2 px, which matches the observed 2.22 px.
-  - The end snap: Motion duration springs snap within one frame after t0 + duration. Measured snap times were
-    557.8–559.7 ms after the fitted t0, with a last step of 0.32 px (`snap` check in scratch, consistent across
-    four moves). A spring that ends on rest thresholds instead settles when it is within 0.5 px of the target and
-    slower than 2 px/s.
+  - The end snap: Motion duration springs snap within one frame after t0 + duration. In the saved run the snaps
+    came 559.6 and 560.1 ms after the fitted t0, each with a last step of 0.322 px (`fit-flora-fits.json` →
+    `snap`). Scratch runs gave 557.8–559.7 ms over four more moves. A spring that ends on rest thresholds instead
+    settles when it is within 0.5 px of the target and slower than 2 px/s.
 - When converting a fit, keep the form the source uses (`duration`, `visualDuration` or physics). The three are not
   equivalent: they differ in end condition and in how they treat inherited velocity.
 - For previews, 10 ms `linear()` sampling is good to about 0.4–0.8 px on these curves (see Q4 errors). Motion's
@@ -165,10 +170,14 @@ t0:
 - a damped oscillator, from rest or with initial velocity, using Huber loss;
 - a cubic-bezier with its duration.
 
-Pick by BIC and report RMSE, max error and R². On flora, 16 fits across four recordings and six sampling variants
-recovered duration 0.545–0.554 s and bounce 0.157–0.162, against the truth of 0.55 / 0.16. Spring RMSE was
-0.2–0.3 px at 60 Hz, and the spring beat the best bezier by ΔBIC 54–154. Real CSS bezier transitions and a JS
-power3.out were classified as bezier, with parameters recovered.
+Pick by BIC and report RMSE, max error and R². On flora, 16 fits came from two saved recordings: the saved
+sampler run in six sampling variants, plus four moves in the preview run. They recovered duration 0.542–0.555 s
+and bounce 0.155–0.163, against the truth of 0.55 / 0.16.
+- Spring RMSE was 0.16–0.31 px on clean moves, and up to 1.06 px on a move with a page-side clock glitch.
+- The spring beat the best bezier on BIC every time, by ΔBIC 28–147. The one exception was a 30 Hz case at 2.3,
+  which counts as a tie and is broken toward spring by the overshoot.
+
+Real CSS bezier transitions and a JS power3.out were classified as bezier, with parameters recovered.
 
 ### Cited Findings
 - **[Verified]** Segmenter and fitters are in `scripts/fit-core.mjs`:
@@ -189,12 +198,17 @@ power3.out were classified as bezier, with parameters recovered.
 
   | Sampling variant | Duration / bounce (move 1; move 2) | Spring RMSE / max (px) | Best bezier RMSE / max (px) | ΔBIC (bezier − spring) |
   | --- | --- | --- | --- | --- |
-  | rAF frame time, 60 Hz | 0.5486 / 0.1592; 0.5494 / 0.1595 | 0.25 / 0.94; 0.27 / 0.98 | 0.85 / 2.18; 0.83 / 2.19 | 136; 126 |
-  | performance.now() in rAF | 0.5489 / 0.1594; 0.5507 / 0.1605 | 0.26 / 0.93; 0.31 / 1.54 | 0.87; 0.82 | 132; 109 |
-  | style writes only (MutationObserver) | 0.5485 / 0.1592; 0.5494 / 0.1595 | 0.29; 0.30 | 1.01; 0.98 | 100; 96 |
-  | 30 Hz | 0.5447 / 0.1569; 0.5481 / 0.1590 | 0.20; 0.19 | 0.48; 0.68 | 54; 73 |
-  | 12 Hz (what `sample()` records in 60 s) | 0.5530 / 0.1595; 0.5539 / 0.1595 (fitted v0 ≈ 720–780 px/s) | 0.02; 0.03 | 0.41; 0.41 | 74; 72 |
-  | 60 Hz + 0–2 ms timestamp jitter | 0.5506 / 0.1594; 0.5525 / 0.1624 | 0.44 / 2.23; 0.56 / 2.43 | 0.88; 0.88 | 82; 57 |
+  | rAF frame time, 60 Hz | 0.5477 / 0.1583; 0.5534 / 0.1618 | 0.73 / 4.86; 0.22 / 0.70 | 0.96 / 2.79; 0.84 / 2.19 | 40; 146 |
+  | performance.now() in rAF | 0.5495 / 0.1596; 0.5534 / 0.1616 | 1.06 / 5.36; 0.22 / 0.63 | 1.24 / 5.07; 0.83 / 2.19 | 28; 143 |
+  | style writes only (MutationObserver) | 0.5476 / 0.1582; 0.5535 / 0.1618 | 0.84 / 4.75; 0.27 / 0.81 | 1.13 / 3.99; 0.98 / 2.19 | 32; 105 |
+  | 30 Hz | 0.5420 / 0.1551; 0.5553 / 0.1625 | 0.89 / 4.32; 0.16 / 0.48 | 0.77 / 2.08; 0.52 / 1.15 | 2.3; 69 |
+  | 12 Hz (what `sample()` records in 60 s) | 0.5528 / 0.1594; 0.5520 / 0.1600 (fitted v0 nonzero) | 0.02 / 0.07; 0.02 / 0.07 | 0.41 / 1.36; 0.41 / 1.36 | 75; 78 |
+  | 60 Hz + 0–2 ms timestamp jitter | 0.5472 / 0.1571; 0.5539 / 0.1630 | 0.62 / 3.23; 0.61 / 2.09 | 0.93 / 2.19; 0.91 / 2.78 | 53; 51 |
+
+  Move 1 of the saved run contains the page-side clock glitch described in Q1. It shows in the writes-only stream
+  too, so it is in Motion's own values, not the sampler's. An earlier recording without such a frame gave 60 Hz
+  fits of 0.5486 / 0.1592 and 0.5494 / 0.1595, with RMSE 0.25 / 0.27 px and ΔBIC 136 / 126 (overwritten run,
+  same scripts).
 
   The `fit-flora-preview.mjs` run fitted four more moves: 0.5500 / 0.1604, 0.5531 / 0.1617, then
   0.5506 / 0.1604 and 0.5513 / 0.1608 after all the preview tests. Their RMSE was 0.22–0.25 px, max error
@@ -203,8 +217,9 @@ power3.out were classified as bezier, with parameters recovered.
 - **[Verified]** Where the residual comes from:
   - The rAF timestamps are rounded to 0.1 ms, giving the 16.6/16.7 ms alternation, which is up to 0.6 px at peak
     speed.
-  - Motion's own clock is `performance.now()` when its frame runs, not the rAF timestamp. One logged frame stepped
-    26.7 px and then 12.9 px, which pushed max error to 4.6 px before the Huber loss went in (scratch run).
+  - Motion's own clock is `performance.now()` when its frame runs, not the rAF timestamp. One logged frame in a
+    scratch run stepped 26.7 px and then 12.9 px, which pushed max error to 4.6 px before the Huber loss went in.
+    The saved run's move 1 has the same kind of frame (max error 4.86 px, with the parameters still within 0.5%).
   - An earlier scratch run on the 12 Hz variant picked cubic-bezier with ΔBIC −24.8 on one move. With about 12
     points, the six-parameter bezier can overfit. The spring parameters were still right (0.5534 / 0.1647).
 - **[Verified]** Model choice on motion of known origin (`fit-local-models.mjs` → `fit-local-models.json`):
@@ -222,7 +237,8 @@ power3.out were classified as bezier, with parameters recovered.
 - **[Verified]** The holds and the first frame:
   - Each move's first visible frame has already moved 4 px (−288 → −291.99), because Motion starts its clock
     11–12 ms before its first write.
-  - The fitted t0 lands 7–9 ms after the last still frame's timestamp.
+  - The fitted t0 lands 6.6–7.1 ms after the last still frame's timestamp in the saved run
+    (`fit-flora-fits.json` → `snap`), and up to 8.8 ms in scratch runs.
   - With the hold value as `from`, t0 is well determined.
 
 ### Inferences
@@ -331,8 +347,10 @@ Children inherit the owner's transform. The element a person selects is often no
   - A slide's box x minus the track's translateX was constant at 596, then 884, then 1172 px. It stepped +288 px
     16.7 ms before each track move began (moves at 4316.5 and 9316.3 ms; steps at 4299.8 and 9299.6 ms). React
     recycles the slides and rewrites their `left` (`fit-flora-fits.json` → `owner`).
-  - An earlier 12 s run with no recycle in the window showed the slide's x = track x + 596 exactly, over all 721
-    frames.
+  - An earlier 12 s scratch run, whose window had no recycle, showed the slide's x = track x + 596 exactly over
+    all 721 frames. That data was not kept; the saved run shows the same within each move.
+  - In every moving frame, `getAnimations({subtree: true})` on the card returned 0 (`fit-flora-fits.json` →
+    `animationsWhileMoving`).
 
 ### Inferences
 - **Motion owner.** The slide a person clicks has no transform: it moves because an ancestor's does, and its own
@@ -577,7 +595,7 @@ Code change shapes by library, all in the source's own form:
 
 ### Takeaway
 The whole loop ran on the production site. It recorded two or more slides every frame and fitted
-0.545–0.554 s / bounce 0.157–0.162 (truth 0.55 / 0.16). The edited spring (1.0 s, bounce .4) previewed as a WAAPI
+0.542–0.555 s / bounce 0.155–0.163 (truth 0.55 / 0.16). The edited spring (1.0 s, bounce .4) previewed as a WAAPI
 `linear()` animation that overrode Motion from the first frame, played in slow motion, scrubbed, compared against
 a ghost and handed back with no jump. The page then carried on with its own unchanged Motion spring, without a
 reload.
@@ -602,8 +620,10 @@ reload.
 
   | Check | Result | File / section |
   | --- | --- | --- |
-  | Fit vs ground truth | 16 moves: duration 0.545–0.554, bounce 0.157–0.162; ΔBIC 54–154 over bezier | `fit-flora-fits.json`, `fit-flora-preview.json` → `fits`, `afterFits` |
-  | Port vs Motion writes | time drift −0.14% / −0.19%, band 1.7–2.0 ms | `fit-flora-fits.json` → `portCheck` |
+  | Fit vs ground truth | 16 fits: duration 0.542–0.555, bounce 0.155–0.163; spring preferred on BIC in all (ΔBIC 2.3–147) | `fit-flora-fits.json` → `fits`; `fit-flora-preview.json` → `fits`, `afterFits` |
+  | Port vs Motion writes | time drift −0.32% / −0.22%, band 1.7–4.3 ms | `fit-flora-fits.json` → `portCheck` |
+  | Duration-spring fingerprint | snap 559.6 / 560.1 ms after fitted t0, last step 0.322 px | `fit-flora-fits.json` → `snap` |
+  | Motion owner | slide box x − track translateX constant within each move; steps +288 px one frame before each move | `fit-flora-fits.json` → `owner` |
   | Preview overrides Motion | same frame; 0.33 px from edited curve over 79 frames; Motion differs underneath in 53 | `intercept.checks` |
   | Cancel at same target | 0 px jump; computed = inline afterwards | `intercept.checks` |
   | `!important` as preview | priority dropped by Motion's next write | `important` |
