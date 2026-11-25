@@ -1,0 +1,547 @@
+{
+ "groundTruth": {
+  "type": "spring",
+  "duration": 0.55,
+  "bounce": 0.16
+ },
+ "fits": {
+  "rAF frame time (60 Hz)": [
+   {
+    "from": -288,
+    "to": -576,
+    "observedMs": 583,
+    "choice": "spring",
+    "deltaBIC": 141.4,
+    "extrema": 1,
+    "spring": {
+     "motion": {
+      "duration": 0.5522,
+      "bounce": 0.1609,
+      "visualDuration": 0.3304,
+      "velocity": 0
+     },
+     "physics": {
+      "stiffness": 251.065,
+      "damping": 26.59,
+      "mass": 1,
+      "dampingRatio": 0.839,
+      "undampedFreq": 15.845
+     },
+     "overshootPercent": 0.787,
+     "settle2PercentMs": 257,
+     "fit": {
+      "rmse": 0.24,
+      "maxError": 0.833,
+      "r2": 0.999996,
+      "bic": -130.8,
+      "n": 50
+     }
+    },
+    "bezier": {
+     "css": "cubic-bezier(0.244, 0.245, 0.286, 1.083)",
+     "duration": 346,
+     "fit": {
+      "rmse": 0.879,
+      "maxError": 2.221,
+      "r2": 0.999943,
+      "bic": 10.6
+     }
+    }
+   },
+   {
+    "from": -576,
+    "to": -864,
+    "observedMs": 583,
+    "choice": "spring",
+    "deltaBIC": 151.4,
+    "extrema": 1,
+    "spring": {
+     "motion": {
+      "duration": 0.5514,
+      "bounce": 0.161,
+      "visualDuration": 0.33,
+      "velocity": 0
+     },
+     "physics": {
+      "stiffness": 251.784,
+      "damping": 26.625,
+      "mass": 1,
+      "dampingRatio": 0.839,
+      "undampedFreq": 15.868
+     },
+     "overshootPercent": 0.788,
+     "settle2PercentMs": 257,
+     "fit": {
+      "rmse": 0.205,
+      "maxError": 0.696,
+      "r2": 0.999997,
+      "bic": -146.9,
+      "n": 50
+     }
+    },
+    "bezier": {
+     "css": "cubic-bezier(0.327, 0.843, 0.3, 1.062)",
+     "duration": 435,
+     "fit": {
+      "rmse": 0.827,
+      "maxError": 3.992,
+      "r2": 0.999949,
+      "bic": 4.5
+     }
+    }
+   }
+  ],
+  "performance.now() in rAF": [
+   {
+    "from": -288,
+    "to": -576,
+    "observedMs": 582,
+    "choice": "spring",
+    "deltaBIC": 130.3,
+    "extrema": 1,
+    "spring": {
+     "motion": {
+      "duration": 0.5512,
+      "bounce": 0.1602,
+      "visualDuration": 0.33,
+      "velocity": 0
+     },
+     "physics": {
+      "stiffness": 251.726,
+      "damping": 26.648,
+      "mass": 1,
+      "dampingRatio": 0.84,
+      "undampedFreq": 15.866
+     },
+     "overshootPercent": 0.776,
+     "settle2PercentMs": 258,
+     "fit": {
+      "rmse": 0.265,
+      "maxError": 0.863,
+      "r2": 0.999995,
+      "bic": -121.2,
+      "n": 50
+     }
+    },
+    "bezier": {
+     "css": "cubic-bezier(0.244, 0.246, 0.284, 1.084)",
+     "duration": 347,
+     "fit": {
+      "rmse": 0.866,
+      "maxError": 2.221,
+      "r2": 0.999944,
+      "bic": 9.1
+     }
+    }
+   },
+   {
+    "from": -576,
+    "to": -864,
+    "observedMs": 582,
+    "choice": "spring",
+    "deltaBIC": 154.3,
+    "extrema": 1,
+    "spring": {
+     "motion": {
+      "duration": 0.5513,
+      "bounce": 0.1608,
+      "visualDuration": 0.33,
+      "velocity": 0
+     },
+     "physics": {
+      "stiffness": 251.787,
+      "damping": 26.632,
+      "mass": 1,
+      "dampingRatio": 0.839,
+      "undampedFreq": 15.868
+     },
+     "overshootPercent": 0.785,
+     "settle2PercentMs": 257,
+     "fit": {
+      "rmse": 0.2,
+      "maxError": 0.718,
+      "r2": 0.999997,
+      "bic": -149.3,
+      "n": 50
+     }
+    },
+    "bezier": {
+     "css": "cubic-bezier(0.326, 0.833, 0.297, 1.064)",
+     "duration": 434,
+     "fit": {
+      "rmse": 0.831,
+      "maxError": 3.992,
+      "r2": 0.999949,
+      "bic": 5
+     }
+    }
+   }
+  ],
+  "style writes only (MutationObserver)": [
+   {
+    "from": -288,
+    "to": -576,
+    "observedMs": 583,
+    "choice": "spring",
+    "deltaBIC": 105.1,
+    "extrema": 1,
+    "spring": {
+     "motion": {
+      "duration": 0.5522,
+      "bounce": 0.1609,
+      "visualDuration": 0.3305,
+      "velocity": 0
+     },
+     "physics": {
+      "stiffness": 251.051,
+      "damping": 26.59,
+      "mass": 1,
+      "dampingRatio": 0.839,
+      "undampedFreq": 15.845
+     },
+     "overshootPercent": 0.786,
+     "settle2PercentMs": 257,
+     "fit": {
+      "rmse": 0.28,
+      "maxError": 0.85,
+      "r2": 0.999991,
+      "bic": -81,
+      "n": 36
+     }
+    },
+    "bezier": {
+     "css": "cubic-bezier(0.243, 0.241, 0.286, 1.084)",
+     "duration": 346,
+     "fit": {
+      "rmse": 1.036,
+      "maxError": 2.221,
+      "r2": 0.999874,
+      "bic": 24
+     }
+    }
+   },
+   {
+    "from": -576,
+    "to": -864,
+    "observedMs": 583,
+    "choice": "spring",
+    "deltaBIC": 118.6,
+    "extrema": 1,
+    "spring": {
+     "motion": {
+      "duration": 0.5513,
+      "bounce": 0.161,
+      "visualDuration": 0.3299,
+      "velocity": 0
+     },
+     "physics": {
+      "stiffness": 251.893,
+      "damping": 26.633,
+      "mass": 1,
+      "dampingRatio": 0.839,
+      "undampedFreq": 15.871
+     },
+     "overshootPercent": 0.787,
+     "settle2PercentMs": 257,
+     "fit": {
+      "rmse": 0.218,
+      "maxError": 0.628,
+      "r2": 0.999994,
+      "bic": -98.9,
+      "n": 36
+     }
+    },
+    "bezier": {
+     "css": "cubic-bezier(0.327, 0.84, 0.299, 1.063)",
+     "duration": 434,
+     "fit": {
+      "rmse": 0.975,
+      "maxError": 3.992,
+      "r2": 0.999889,
+      "bic": 19.7
+     }
+    }
+   }
+  ],
+  "30 Hz (every 2nd frame)": [
+   {
+    "from": -288,
+    "to": -576,
+    "observedMs": 600,
+    "choice": "spring",
+    "deltaBIC": 65.6,
+    "extrema": 1,
+    "spring": {
+     "motion": {
+      "duration": 0.5601,
+      "bounce": 0.163,
+      "visualDuration": 0.3348,
+      "velocity": -638.9
+     },
+     "physics": {
+      "stiffness": 244.612,
+      "damping": 26.182,
+      "mass": 1,
+      "dampingRatio": 0.837,
+      "undampedFreq": 15.64
+     },
+     "overshootPercent": 0.818,
+     "settle2PercentMs": 250,
+     "fit": {
+      "rmse": 0.152,
+      "maxError": 0.33,
+      "r2": 0.999998,
+      "bic": -81.3,
+      "n": 25
+     }
+    },
+    "bezier": {
+     "css": "cubic-bezier(0.336, 0.941, 0.314, 1.048)",
+     "duration": 457,
+     "fit": {
+      "rmse": 0.497,
+      "maxError": 1.361,
+      "r2": 0.999981,
+      "bic": -15.6
+     }
+    }
+   },
+   {
+    "from": -576,
+    "to": -864,
+    "observedMs": 600,
+    "choice": "spring",
+    "deltaBIC": 70.9,
+    "extrema": 1,
+    "spring": {
+     "motion": {
+      "duration": 0.5483,
+      "bounce": 0.1591,
+      "visualDuration": 0.3285,
+      "velocity": 0
+     },
+     "physics": {
+      "stiffness": 254.017,
+      "damping": 26.804,
+      "mass": 1,
+      "dampingRatio": 0.841,
+      "undampedFreq": 15.938
+     },
+     "overshootPercent": 0.759,
+     "settle2PercentMs": 257,
+     "fit": {
+      "rmse": 0.197,
+      "maxError": 0.655,
+      "r2": 0.999997,
+      "bic": -71.6,
+      "n": 25
+     }
+    },
+    "bezier": {
+     "css": "cubic-bezier(0.303, 0.64, 0.29, 1.083)",
+     "duration": 396,
+     "fit": {
+      "rmse": 0.67,
+      "maxError": 1.591,
+      "r2": 0.999966,
+      "bic": -0.7
+     }
+    }
+   }
+  ],
+  "12 Hz (sample() at 60 s records every 83 ms)": [
+   {
+    "from": -288,
+    "to": -576,
+    "observedMs": 750,
+    "choice": "spring",
+    "deltaBIC": 32.4,
+    "extrema": 1,
+    "spring": {
+     "motion": {
+      "duration": 0.5539,
+      "bounce": 0.1596,
+      "visualDuration": 0.3318,
+      "velocity": -639.2
+     },
+     "physics": {
+      "stiffness": 249.077,
+      "damping": 26.527,
+      "mass": 1,
+      "dampingRatio": 0.84,
+      "undampedFreq": 15.782
+     },
+     "overshootPercent": 0.766,
+     "settle2PercentMs": 250,
+     "fit": {
+      "rmse": 0.028,
+      "maxError": 0.072,
+      "r2": 1,
+      "bic": -76.3,
+      "n": 12
+     }
+    },
+    "bezier": {
+     "css": "cubic-bezier(0.316, 1.166, 0.334, 1)",
+     "duration": 548,
+     "fit": {
+      "rmse": 0.086,
+      "maxError": 0.251,
+      "r2": 0.999999,
+      "bic": -43.9
+     }
+    }
+   },
+   {
+    "from": -576,
+    "to": -864,
+    "observedMs": 750,
+    "choice": "spring",
+    "deltaBIC": 38.1,
+    "extrema": 1,
+    "spring": {
+     "motion": {
+      "duration": 0.5529,
+      "bounce": 0.1627,
+      "visualDuration": 0.3305,
+      "velocity": 0
+     },
+     "physics": {
+      "stiffness": 250.954,
+      "damping": 26.53,
+      "mass": 1,
+      "dampingRatio": 0.837,
+      "undampedFreq": 15.842
+     },
+     "overshootPercent": 0.813,
+     "settle2PercentMs": 257,
+     "fit": {
+      "rmse": 0.112,
+      "maxError": 0.258,
+      "r2": 0.999999,
+      "bic": -45,
+      "n": 12
+     }
+    },
+    "bezier": {
+     "css": "cubic-bezier(0.427, -0.018, 0.138, 1.12)",
+     "duration": 437,
+     "fit": {
+      "rmse": 0.404,
+      "maxError": 1.331,
+      "r2": 0.999989,
+      "bic": -6.9
+     }
+    }
+   }
+  ],
+  "60 Hz + 0-2 ms timestamp jitter": [
+   {
+    "from": -288,
+    "to": -576,
+    "observedMs": 584,
+    "choice": "spring",
+    "deltaBIC": 69.9,
+    "extrema": 1,
+    "spring": {
+     "motion": {
+      "duration": 0.5531,
+      "bounce": 0.1606,
+      "visualDuration": 0.3311,
+      "velocity": 0
+     },
+     "physics": {
+      "stiffness": 250.104,
+      "damping": 26.551,
+      "mass": 1,
+      "dampingRatio": 0.839,
+      "undampedFreq": 15.815
+     },
+     "overshootPercent": 0.781,
+     "settle2PercentMs": 258,
+     "fit": {
+      "rmse": 0.509,
+      "maxError": 2.211,
+      "r2": 0.999981,
+      "bic": -55.7,
+      "n": 50
+     }
+    },
+    "bezier": {
+     "css": "cubic-bezier(0.22, 0, 0.316, 1)",
+     "duration": 307,
+     "fit": {
+      "rmse": 0.911,
+      "maxError": 2.221,
+      "r2": 0.999938,
+      "bic": 14.2
+     }
+    }
+   },
+   {
+    "from": -576,
+    "to": -864,
+    "observedMs": 583,
+    "choice": "spring",
+    "deltaBIC": 81.1,
+    "extrema": 1,
+    "spring": {
+     "motion": {
+      "duration": 0.5537,
+      "bounce": 0.1633,
+      "visualDuration": 0.3309,
+      "velocity": 0
+     },
+     "physics": {
+      "stiffness": 250.431,
+      "damping": 26.481,
+      "mass": 1,
+      "dampingRatio": 0.837,
+      "undampedFreq": 15.825
+     },
+     "overshootPercent": 0.824,
+     "settle2PercentMs": 256,
+     "fit": {
+      "rmse": 0.411,
+      "maxError": 1.289,
+      "r2": 0.999987,
+      "bic": -77.3,
+      "n": 50
+     }
+    },
+    "bezier": {
+     "css": "cubic-bezier(0.281, 0.375, 0.252, 1.098)",
+     "duration": 377,
+     "fit": {
+      "rmse": 0.822,
+      "maxError": 2.287,
+      "r2": 0.99995,
+      "bic": 3.8
+     }
+    }
+   }
+  ]
+ },
+ "portCheck": [
+  {
+   "from": -288,
+   "target": -576,
+   "writes": 34,
+   "writeSpanMs": 550,
+   "impliedElapsedAtFirstWriteMs": 12,
+   "offsetSpreadMs": 2.1,
+   "driftPercent": -0.12,
+   "checked": 18
+  },
+  {
+   "from": -576,
+   "target": -864,
+   "writes": 34,
+   "writeSpanMs": 549.9,
+   "impliedElapsedAtFirstWriteMs": 11,
+   "offsetSpreadMs": 1.1,
+   "driftPercent": -0.02,
+   "checked": 18
+  }
+ ]
+}

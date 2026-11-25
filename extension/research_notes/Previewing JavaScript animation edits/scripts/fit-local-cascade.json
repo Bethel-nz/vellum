@@ -1,0 +1,30 @@
+{
+ "a_inlineVsPreview": {
+  "computed": 500,
+  "inline": "translateX(20px)"
+ },
+ "a_afterCancel": 20,
+ "b_importantVsPreview": 30,
+ "c_transitionVsPreview": {
+  "computed": 500,
+  "running": [
+   "CSSTransition"
+  ]
+ },
+ "c2_afterTransitionNone": {
+  "computed": 500,
+  "running": [
+   "Animation"
+  ]
+ },
+ "d_pageBeforePreview": 500,
+ "d_pageRecreatedAfterPreview": 100,
+ "e_commitStyles": {
+  "inline": "translateX(100px)",
+  "computed": 500
+ },
+ "f_addOverInline": {
+  "computed": 47,
+  "computedString": "matrix(1, 0, 0, 1, 47, 0)"
+ }
+}

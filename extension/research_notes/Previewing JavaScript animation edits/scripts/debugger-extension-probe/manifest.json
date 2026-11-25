@@ -1,0 +1,2 @@
+{ "manifest_version": 3, "name": "Vellum debugger probe", "version": "0.0.1",
+  "permissions": ["debugger"], "background": { "service_worker": "sw.js" } }
