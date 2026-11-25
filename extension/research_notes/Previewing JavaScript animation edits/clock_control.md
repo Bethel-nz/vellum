@@ -18,7 +18,7 @@ Flora also ships Next.js 16.4.0. Tests used Playwright 1.63.0, Chromium 158.0.81
 headless-shell build; one test repeated on the full `chromium` channel) and devtools-protocol 0.0.1752859.
 The proof scripts are `scripts/clock-vclock.mjs` (the clock), `scripts/clock-lib.mjs` (harness and
 per-real-frame sampler), and `clock-late`, `clock-docstart`, `clock-waapi`, `clock-cdp-knobs`,
-`clock-cdp-inject` and `clock-release` (all `.mjs`).
+`clock-cdp-inject`, `clock-release` and `clock-channel` (all `.mjs`).
 
 ## Which time sources Motion's frame loop and spring use, which version flora ships, and whether late injection can work
 
@@ -124,8 +124,8 @@ animations jump straight to their end.
   — `scripts/clock-waapi.mjs`
 - **[executed]** The startTime hazard, reproduced Motion-style (`a = el.animate(...2000 ms); a.startTime = performance.now()`)
   under a virtual clock lagging 4.59 s behind real time:
-  - Without translation, `currentTime` was **4578 ms** two frames later and opacity was 1, so the animation
-    finished instantly.
+  - Without translation, `currentTime` was **4578–4591 ms** two frames later (two runs) and opacity was 1, so the
+    animation finished instantly.
   - With the `Animation.prototype.startTime` setter translated to `currentTime = (vnow - v) * pageRate`, it
     was **4 ms** in (opacity 0.002), as expected.
 
@@ -210,7 +210,7 @@ coming from MAIN as untrusted data and never give it privileges.
   - MAIN → isolated status events arrive the same way.
   - Neither world sees the other's globals.
 
-  — `scratchpad exp-channel.mjs` (see Gaps; not copied as a proof script)
+  — `scripts/clock-channel.mjs`
 
 ### Inferences
 - `executeScript` with `func` and `files` runs code that ships in the package, so it is not remote code
@@ -227,7 +227,7 @@ coming from MAIN as untrusted data and never give it privileges.
 
 ### Gaps
 - I did not run the cross-world channel test inside a real extension; a CDP isolated world was the
-  stand-in. Its script is in the scratchpad (`clock/exp-channel.mjs`), not in `scripts/`.
+  stand-in (`scripts/clock-channel.mjs`).
 - Whether activeTab survives a CDP-initiated `Page.reload` of the same URL is not stated in the docs. The
   example suggests same-site navigation keeps it ([inference]), but I did not test it in a real extension.
 - I did not test Edge or Dia. Both are Chromium-based. Dia's `chrome.debugger` support is assumed because
@@ -247,7 +247,7 @@ captured at load. The one thing that can make restore jump is uninstalling while
 ### Cited Findings
 - **[executed]** Rate changes mid-animation do not jump. Re-anchoring (`anchorV = vnow(); anchorR = realNow()`)
   before changing the rate kept the largest per-frame step during a 0.5x → 1x change mid-spring at
-  16.83 px. The 1x reference's largest step is 31.89 px. — `scripts/clock-release.mjs`
+  16.8–16.9 px across three runs. The 1x reference's largest step is 31.8–31.9 px. — `scripts/clock-release.mjs`
 - **[executed]** The patched time sources agree with each other under 0.25x:
   - `event.timeStamp - performance.now()` = −0.05 ms.
   - `Date.now() - performance.now() - timeOrigin` = −1 ms (floor).
@@ -274,8 +274,9 @@ captured at load. The one thing that can make restore jump is uninstalling while
   - `uninstall()` mid-transition at 0.1x **snapped** 62 px in one frame (−1951.8 → −2016), because the 5.1 s
     accumulated lag landed inside the spring.
   - `release({scope:'.journal-carousel'})` mid-transition: switched to 1x at once, finished the spring
-    (783 ms total, overshoot 2.22 px), uninstalled 580 ms later once the carousel was quiet, and the next
-    autoplay ran at 567 ms.
+    (783 ms total, overshoot 2.20–2.22 px), and uninstalled 580–605 ms later once the carousel was quiet.
+    The 4.4 s jump landed while idle: the largest step between consecutive frames outside motion was
+    0.00 px. The next autoplay ran at 566–567 ms.
 
   — `scripts/clock-late.mjs`, `scripts/clock-release.mjs`
 - **[executed]** Residue after uninstall: `performance.now` (own property deleted), `Date.now`, `Date`,
@@ -357,27 +358,28 @@ which makes it unusable on a user's live tab.
   domain has no command to turn virtual time off. `Animation.setPlaybackRate` "Sets the playback rate of the
   document timeline" (the Animation domain is experimental). `setCPUThrottlingRate` "Enables CPU
   throttling to emulate slow CPUs". — [devtools-protocol browser_protocol.json](https://github.com/ChromeDevTools/devtools-protocol/blob/master/json/browser_protocol.json); [CDP Emulation](https://chromedevtools.github.io/devtools-protocol/tot/Emulation/#method-setVirtualTimePolicy); [CDP Animation](https://chromedevtools.github.io/devtools-protocol/tot/Animation/#method-setPlaybackRate)
-- **[executed]** `Animation.setPlaybackRate(0.25)`: our CSS probe advanced 2749 ms in 10998 ms of wall time
-  (0.25x). The carousel was unchanged: 564/577 ms on the same 5 s cadence. — `scripts/clock-cdp-knobs.mjs`
-- **[executed]** `Emulation.setCPUThrottlingRate(6)`: the carousel still took 571/605 ms, rAF ran 656 frames
-  per 11 s, and the cadence was unchanged. — `scripts/clock-cdp-knobs.mjs`
+- **[executed]** `Animation.setPlaybackRate(0.25)`: our CSS probe advanced 2745–2749 ms in about 11,000 ms of
+  wall time (0.25x). The carousel was unchanged: 553–577 ms on the same 5 s cadence (two runs). — `scripts/clock-cdp-knobs.mjs`
+- **[executed]** `Emulation.setCPUThrottlingRate(6)`: the carousel still took 571–608 ms, rAF ran 652–656
+  frames per 11 s, and the cadence was unchanged (two runs). — `scripts/clock-cdp-knobs.mjs`
 - **[executed]** `setVirtualTimePolicy({policy:'pause'})` on a normal tab:
   - `performance.now`/`Date.now` advanced 0 ms over 6 s.
-  - rAF kept firing (359 frames).
-  - The CSS animation kept running (5983 ms).
+  - rAF kept firing (359–360 frames).
+  - The CSS animation kept running (5983–5999 ms).
   - `setTimeout(0)` did **not** fire within 6 s.
   - CDP keyboard input was still processed: after `ArrowRight` the carousel's target moved one page,
     visible when time next advanced.
-  - In one run (exp-cdp-inject, after another session had added a `runImmediately` script) `pause` did not
-    freeze time (993 ms/s). On a fresh tab it froze reliably (0 ms over 3 × 1 s). That behaviour is not
-    understood.
+  - `pause` is not reliable. When it was sent on a session that had just added a `runImmediately` script,
+    time kept moving (482, 993 and 1048 ms per wall second in three runs). After detaching it was frozen
+    in one case (0 ms/s) and moving in another (400 ms/s). On a fresh tab, `pause` froze time every time
+    (0 ms/s, 6 checks). I do not understand the cause.
 
   — `scripts/clock-cdp-knobs.mjs`, `scripts/clock-cdp-inject.mjs`
-- **[executed]** `advance` with `budget: 100`: virtual time moved about 50 ms and then stopped, and one
-  `virtualTimeBudgetExpired` arrived. `advance` with no budget: `performance.now` advanced **13,685,000 ms in
-  8 s of wall time**, and the autoplay interval fired thousands of times (track at −789,408 px). After
-  `cdp.detach()` it kept running away (23,680,050 ms in 11 s). A fresh session and even `page.reload()` did not
-  restore real time (1.25–2.5 million ms per wall second). The same happened on the full `chromium` channel
+- **[executed]** `advance` with `budget: 100`: virtual time moved 0–50 ms (two runs) and then stopped, and one
+  `virtualTimeBudgetExpired` arrived. `advance` with no budget: `performance.now` advanced **13.7–18.3 million
+  ms in 8 s of wall time**. The autoplay interval fired thousands of times: the track ran out to −789,408 px
+  and later reset to 0. After `cdp.detach()` it kept running away (23.7–25.8 million ms in 11 s). A fresh
+  session and even `page.reload()` did not restore real time (1.2–2.5 million ms per wall second). The same happened on the full `chromium` channel
   build. — `scripts/clock-cdp-knobs.mjs`, `scripts/clock-cdp-inject.mjs`
 
 ### Inferences
@@ -468,10 +470,10 @@ All measurements are **[executed]**, sampled from `translateX` on every real fra
 | Doc-start clock, 0.25x | 2216 | 133 | 2.22 px | **17,533 ms real** between starts (predicted 0.81 s at 1x + 4.19 s / 0.25 = 17.6 s) | clock-docstart |
 | Doc-start clock, pause 8 s | frozen | — | — | **none** | clock-docstart |
 | Doc-start clock, 45 steps × 16.67 ms | settled at step 33 (= 550 ms virtual) | 33 changes | 2.22 px (peak −866.22 vs target −864) | none | clock-docstart |
-| release() mid-transition at 0.5x | 783 (0.5x then 1x) | 47 | 2.22 px, max step 16.8 px | next one 567 ms | clock-release |
+| release() mid-transition at 0.5x | 783 (0.5x then 1x) | 46–47 | 2.20–2.22 px, max step 16.8–16.9 px; 0.00 px step after uninstall | next one 566–567 ms | clock-release |
 | After uninstall/release | 566–567 | 34 | 2.21–2.22 px | 5 s cadence; page clearInterval honoured | clock-docstart, clock-release |
-| CDP Animation.setPlaybackRate 0.25 | 564/577 | — | 2.21–2.22 px | 5 s (CSS probe at 0.25x) | clock-cdp-knobs |
-| CDP setCPUThrottlingRate 6 | 571/605 | — | 2.22 px | 5 s | clock-cdp-knobs |
+| CDP Animation.setPlaybackRate 0.25 | 553–577 | — | 2.21–2.22 px | 5 s (CSS probe at 0.25x) | clock-cdp-knobs |
+| CDP setCPUThrottlingRate 6 | 571–608 | — | 2.18–2.22 px | 5 s | clock-cdp-knobs |
 | CDP setVirtualTimePolicy pause / advance | frozen / ran thousands of pages | — | — | frozen / thousands of fires | clock-cdp-knobs |
 
 - **[executed]** The 0.25x run proves the spring obeys the virtual clock: the virtual-time durations of
