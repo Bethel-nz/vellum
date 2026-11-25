@@ -545,8 +545,26 @@
   }
  ],
  "owner": {
-  "cardMinusTrackPx": 596,
-  "maxDeviationPx": 576.0004677734375,
-  "frames": 638
+  "slideMinusTrack": [
+   {
+    "offsetPx": 596,
+    "fromMs": 0,
+    "frames": 258
+   },
+   {
+    "offsetPx": 884,
+    "fromMs": 4299.8,
+    "frames": 300
+   },
+   {
+    "offsetPx": 1172,
+    "fromMs": 9299.6,
+    "frames": 80
+   }
+  ],
+  "trackMoveStartsMs": [
+   4316.5,
+   9316.3
+  ]
  }
 }

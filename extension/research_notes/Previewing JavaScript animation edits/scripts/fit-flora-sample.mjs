@@ -8,7 +8,8 @@
 // against Motion's own per-frame writes: inverting the port's curve at each written value gives Motion's
 // elapsed time, which should be a constant offset from the frame time (only timestamp rounding left).
 // And it shows the motion owner problem: the slide a person selects has no transform; its box x is the
-// track's translateX plus a constant, so the preview and the code change belong to the track.
+// track's translateX plus a constant that steps +288 px one frame before each move (React rewrites the
+// recycled slides' `left`), so the preview and the code change belong to the track, not the slide.
 //
 // Run: node fit-flora-sample.mjs [samples.json] [fits.json]      (records, then fits)
 //      node fit-flora-sample.mjs fit-flora-samples.json fits.json reuse   (refits a saved recording offline)
@@ -16,7 +17,7 @@
 import { createRequire } from 'module'
 import fs from 'fs'
 import { spring } from './fit-motion-spring.mjs'
-import { detectSegments, fillHolds, fitSegment, describe } from './fit-core.mjs'
+import { detectSegments, fillHolds, fitSegment, fitSpring, describe } from './fit-core.mjs'
 const { chromium } = createRequire(import.meta.url)('playwright')
 const [samplesFile = 'fit-flora-samples.json', fitsFile = 'fit-flora-fits.json', reuse] = process.argv.slice(2) // reuse: refit an existing samples file offline
 
@@ -47,7 +48,7 @@ data = await page.evaluate(() => new Promise((resolve) => {
       start ??= ts
       const m = getComputedStyle(el).transform
       // card: the box x of a visible slide (what a person would select); it has no transform of its own
-      raf.push({ ts, now: performance.now(), tx: new DOMMatrix(m === 'none' ? undefined : m).e, inline: num(el.style.transform), card: el.children[2].getBoundingClientRect().x })
+      raf.push({ ts, now: performance.now(), tx: new DOMMatrix(m === 'none' ? undefined : m).e, inline: num(el.style.transform), card: el.children[2].getBoundingClientRect().x, animations: el.closest('article').getAnimations({ subtree: true }).length })
       if (ts - start < 10600) requestAnimationFrame(tick); else { mo.disconnect(); resolve({ transition, raf, writes, ua: navigator.userAgent }) }
     }
     requestAnimationFrame(tick)
@@ -105,4 +106,13 @@ for (const r of data.raf) { const o = +(r.card - r.tx).toFixed(3); if (!runs.len
 const moveStarts = data.raf.filter((r, i) => i && r.tx !== data.raf[i - 1].tx && data.raf[i - 1].tx === data.raf[Math.max(0, i - 2)].tx).map((r) => +(r.ts - data.raf[0].ts).toFixed(1))
 const owner = { slideMinusTrack: runs, trackMoveStartsMs: moveStarts }
 console.log('slide box x - track translateX:', JSON.stringify(owner))
-fs.writeFileSync(fitsFile, JSON.stringify({ groundTruth: data.transition, fits, portCheck: port, owner }, null, 1))
+// Duration-spring fingerprint: Motion snaps to the target at the first frame with elapsed >= duration.
+const frames60 = variants['rAF frame time (60 Hz)']
+const snap = detectSegments(frames60).filter((s) => s.settled && !s.jump && s.start > 0).map((seg) => {
+  const f = fitSpring(frames60, seg, { fixVelocity: true })
+  const i = frames60.findIndex((r) => r.t > seg.tFrom && r.v === seg.to)
+  return { t0AfterLastStillMs: +(f.t0 - seg.tFrom).toFixed(1), snapAfterT0Ms: +(frames60[i].t - f.t0).toFixed(1), lastStepPx: +Math.abs(frames60[i].v - frames60[i - 1].v).toFixed(3), fittedDurationMs: +(f.motion.duration * 1000).toFixed(1) }
+})
+const animationsWhileMoving = Math.max(...data.raf.filter((r, i) => i && r.tx !== data.raf[i - 1].tx).map((r) => r.animations))
+console.log('end snap:', JSON.stringify(snap), '| WAAPI/CSS animations in the card while moving:', animationsWhileMoving)
+fs.writeFileSync(fitsFile, JSON.stringify({ groundTruth: data.transition, fits, portCheck: port, owner, snap, animationsWhileMoving }, null, 1))
