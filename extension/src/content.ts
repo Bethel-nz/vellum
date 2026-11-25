@@ -112,6 +112,7 @@ function install() {
     if (edit.form === 'duration') return { type: 'spring', duration: values.duration, bounce: values.bounce }
     if (edit.form === 'visualDuration') return { type: 'spring', visualDuration: values.visualDuration, bounce: values.bounce }
     if (edit.form === 'physics') return { type: 'spring', stiffness: values.stiffness, damping: values.damping, mass: values.mass }
+    if (edit.form === 'gsap') return { duration: values.duration, ease: values.ease }
     return { type: 'tween', duration: values.duration, ...(values.ease ? { ease: values.ease } : {}) }
   }
   function editMotion(next: MotionEdit) {
@@ -119,13 +120,15 @@ function install() {
     const info = selection && scriptMotion.get(selection.ref)
     if (!selection || !info?.editable || info.form !== next.form) return
     const round = (value: number) => Math.round(value * 1000) / 1000
-    const edit: MotionEdit = { form: next.form, values: Object.fromEntries(Object.entries(next.values).map(([key, value]) => [key, Array.isArray(value) ? value.map(round) : round(value)])) }
+    const edit: MotionEdit = { form: next.form, values: Object.fromEntries(Object.entries(next.values).map(([key, value]) => [key, Array.isArray(value) ? value.map(round) : typeof value === 'number' ? round(value) : value])) }
     clearSampledReplay()
     motionEdits.set(selection.ref, edit)
     let changes = motionChanges.get(selection.ref)
     if (!changes) { changes = new Map(); motionChanges.set(selection.ref, changes) }
-    const where = `${info.source === 'per-value' ? ` for ${info.key}` : ''} on ${info.owner}${info.source === 'default' ? ' (none in the source; this was Motion’s default)' : ''}`
-    changes.set(`Motion transition${where}`, { before: motionText(info.original), after: motionText({ ...(info.original ?? {}), ...motionPatch(edit) }) })
+    const where = info.library === 'gsap'
+      ? `GSAP tween${info.keys.length ? ` (${info.keys.join(', ')})` : ''}${info.context === 'timeline' ? ' in a timeline' : info.context === 'scroll' ? ' driven by ScrollTrigger' : ''} on ${info.owner}`
+      : `Motion transition${info.source === 'per-value' ? ` for ${info.key}` : ''} on ${info.owner}${info.source === 'default' ? ' (none in the source; this was Motion’s default)' : ''}`
+    changes.set(where, { before: motionText(info.original), after: motionText({ ...(info.original ?? {}), ...motionPatch(edit) }) })
     if (originalVisible) viewOriginal(false)
     else pushMotion(selection.ref, edit)
     render()
@@ -313,7 +316,7 @@ function install() {
   function scriptView(ref: string) {
     const info = scriptMotion.get(ref)
     if (!info) return undefined
-    return { owner: info.owner, relation: info.relation, form: info.form, source: info.source, editable: info.editable, key: info.key, values: motionEdits.get(ref)?.values ?? info.values }
+    return { library: info.library, context: info.context, owner: info.owner, relation: info.relation, form: info.form, source: info.source, editable: info.editable, key: info.key, keys: info.keys, values: motionEdits.get(ref)?.values ?? info.values }
   }
   /** The recorded gesture, the sampled frames, or the element's own CSS/WAAPI animations, in that order. */
   function replayRecorded(selection: Selection, motionWaiting = false) {

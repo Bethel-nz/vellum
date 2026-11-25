@@ -1,5 +1,8 @@
 /**
- * Live editing of Motion (framer-motion / motion) transitions on the page's own elements.
+ * EXPERIMENTAL. Live editing of Motion (framer-motion / motion) transitions and GSAP tweens on the page's
+ * own elements. Neither library offers a public API for this: it relies on Motion's internal
+ * VisualElement and React's fiber fields, and on GSAP's private `_ease`, which a release of either could
+ * rename or remove. Anything it doesn't recognise is reported as not found, never guessed at.
  *
  * `pageMotion` runs in the page's JavaScript world (`chrome.scripting.executeScript({ world: 'MAIN' })`),
  * where React's `__reactFiber$…` expandos and Motion's objects are visible; Snapshot's content script
@@ -17,17 +20,29 @@
  * - Replay jumps each moved value back to where its last move started, forgets the resolved target and
  *   lets Motion's own `animationState.animateChanges()` run the move again.
  *
+ * GSAP, when no Motion element is found (research_notes/…/scripts/library-gsap-swiper.mjs):
+ * - `window.gsap` is installed even from bundled builds; `gsap.getTweensOf(node)` returns live tweens.
+ * - An edit sets the tween's `duration()` and its parsed ease (`_ease`, no `invalidate()`, so start values
+ *   aren't re-recorded), and while any edit is on, `gsap.to/from/fromTo` are wrapped so tweens the site
+ *   creates later on the same targets (a hover, a click) get it too. Revert restores each tween and
+ *   unwraps the methods.
+ * - Replay restarts the tween, or the top-level timeline it belongs to. Scroll-driven ones can't replay.
+ *
  * Results are page-controlled data: the caller treats them as display values only.
  */
 
-export type MotionForm = 'duration' | 'visualDuration' | 'physics' | 'tween'
-export type MotionEdit = { form: MotionForm; values: Record<string, number | number[]> }
+export type MotionForm = 'duration' | 'visualDuration' | 'physics' | 'tween' | 'gsap'
+export type MotionValue = number | number[] | string
+export type MotionEdit = { form: MotionForm; values: Record<string, MotionValue> }
 export type PageMotionAction = 'read' | 'edit' | 'replay' | 'reset' | 'revert' | 'revert-all'
 export type PageMotionInfo =
   | { found: false; reason: 'gone' | 'no-react' | 'no-motion' | 'error'; message?: string }
   | {
     found: true
-    /** The element Motion animates, e.g. `div.absolute`, and where it sits relative to the selection. */
+    library: 'motion' | 'gsap'
+    /** GSAP only: the tween sits in a timeline, or a ScrollTrigger drives it. */
+    context?: 'timeline' | 'scroll'
+    /** The element that's animated, e.g. `div.absolute`, and where it sits relative to the selection. */
     owner: string; relation: 'self' | 'parent' | 'ancestor' | 'child'
     key: string; keys: string[]
     /** `default`: no transition in the source; Motion's built-in one is shown. `inline`: set in `animate` or a variant. */
@@ -36,20 +51,30 @@ export type PageMotionInfo =
     /** The transition as written in the source (or Motion's default), JSON-safe. */
     original: Record<string, unknown> | null
     /** The dials' starting values, in the source's own form. */
-    values: Record<string, number | number[]>
+    values: Record<string, MotionValue>
     edited: boolean; moved: boolean; replayed?: boolean
   }
 
 export function pageMotion(ref: string, action: PageMotionAction, edit: MotionEdit | null): PageMotionInfo {
+  type Relation = 'self' | 'parent' | 'ancestor' | 'child'
   type Entry = {
-    ve: any; node: Element; relation: 'self' | 'parent' | 'ancestor' | 'child'
+    kind: 'motion'; ve: any; node: Element; relation: Relation
     original: () => unknown; own?: PropertyDescriptor; edit: Record<string, unknown> | null
     path: string | null; from: Record<string, number | string>; stop: Array<() => void>
   }
+  /** `saved` holds each tween's own duration and ease, for every tween an edit has touched. */
+  type GsapEntry = {
+    kind: 'gsap'; node: Element; relation: Relation; tween: any; targets: Set<unknown>
+    edit: { duration: number; ease: string } | null; saved: Map<any, { duration: number; ease: unknown; hadEase: boolean; parsed: unknown }>
+  }
+  type AnyEntry = Entry | GsapEntry
   const w = window as any
   // `owners` outlives a revert: React may replace the selected element (a carousel recycling its slides)
   // while the element Motion animates stays, so a lifted edit can still be put back on reopen.
-  const store: { entries: Map<string, Entry>; owners: Map<string, { node: Element; relation: Entry['relation'] }> } = w[Symbol.for('vellum.snapshot.motion')] ??= { entries: new Map(), owners: new Map() }
+  const store: { entries: Map<string, AnyEntry>; owners: Map<string, { node: Element; relation: Relation }>; gsapWrapped?: Record<string, unknown> } = w[Symbol.for('vellum.snapshot.motion')] ??= { entries: new Map(), owners: new Map() }
+  // EXPERIMENTAL: everything from here to `info()` reads React and Motion internals (fiber `return`,
+  // `memoizedProps`, `memoizedState`, VisualElement `getDefaultTransition`/`animationState`/`latestValues`).
+  // They have held from framer-motion 11 to Motion 14, but none of them are public API.
   const MOTION = Symbol.for('motionComponentSymbol')
   const fiberOf = (node: Element): any => { for (const key of Object.keys(node)) if (key.startsWith('__reactFiber$')) return (node as any)[key]; return null }
   const isVE = (value: any) => Boolean(value && typeof value === 'object' && typeof value.getDefaultTransition === 'function' && typeof value.getValue === 'function' && 'latestValues' in value && value.animationState)
@@ -70,7 +95,7 @@ export function pageMotion(ref: string, action: PageMotionAction, edit: MotionEd
     }
     return null
   }
-  function locate(start: Element): { ve: any; node: Element; relation: Entry['relation'] } | null {
+  function locate(start: Element): { ve: any; node: Element; relation: Relation } | null {
     // Clicking into a card usually selects text or an image well inside the element that moves, so the
     // search climbs; above the selection only a Motion element that animates something counts.
     let node: Element | null = start
@@ -99,10 +124,119 @@ export function pageMotion(ref: string, action: PageMotionAction, edit: MotionEd
     const classes = typeof node.className === 'string' ? node.className.trim().split(/\s+/).filter(Boolean).slice(0, 2) : []
     return node.tagName.toLowerCase() + (node.id ? `#${node.id}` : '') + classes.map((name) => `.${name}`).join('')
   }
-  function teardown(entry: Entry) {
+  function teardown(entry: AnyEntry) {
+    if (entry.kind === 'gsap') { gsapRestore(entry); return }
     for (const stop of entry.stop) { try { stop() } catch { /* The value may be gone. */ } }
     if (entry.own) Object.defineProperty(entry.ve, 'getDefaultTransition', entry.own)
     else delete entry.ve.getDefaultTransition
+  }
+
+  // ---- GSAP
+  const gsap = w.gsap && typeof w.gsap.getTweensOf === 'function' ? w.gsap : null
+  const CONTROL = /^(duration|ease|delay|repeat|repeatDelay|yoyo|yoyoEase|stagger|paused|overwrite|immediateRender|lazy|id|data|callbackScope|inherit|runBackwards|startAt|keyframes|reversed|defaults|scrollTrigger|onComplete.*|onStart.*|onUpdate.*|onRepeat.*|onReverseComplete.*|onInterrupt.*|callbackScope|parent)$/
+  function liveTweens(node: Element): any[] {
+    try { return (gsap.getTweensOf(node) as any[]).filter((tween) => typeof tween.duration === 'function' && tween.duration() > 0) } catch { return [] }
+  }
+  // The tween to edit: a running one, else one that repeats, else the latest.
+  const chooseTween = (tweens: any[]) => tweens.find((tween) => tween.isActive?.()) ?? tweens.find((tween) => tween.repeat?.() !== 0) ?? tweens.at(-1)
+  function gsapLocate(start: Element): { tween: any; node: Element; relation: Relation } | null {
+    if (!gsap) return null
+    let node: Element | null = start
+    for (let hops = 0; node && hops < 12; node = node.parentElement, hops++) {
+      const tweens = liveTweens(node)
+      if (tweens.length) return { tween: chooseTween(tweens), node, relation: hops === 0 ? 'self' : hops === 1 ? 'parent' : 'ancestor' }
+    }
+    const walker = document.createTreeWalker(start, NodeFilter.SHOW_ELEMENT)
+    for (let next = walker.nextNode(), count = 0; next && count < 1500; next = walker.nextNode(), count++) {
+      const tweens = liveTweens(next as Element)
+      if (tweens.length) return { tween: chooseTween(tweens), node: next as Element, relation: 'child' }
+    }
+    return null
+  }
+  const easeName = (tween: any) => {
+    const ease = tween.vars?.ease ?? tween.parent?.vars?.defaults?.ease
+    if (typeof ease === 'string') return ease
+    if (ease === undefined) { const fallback = gsap?.defaults?.().ease; return typeof fallback === 'string' ? fallback : 'power1.out' }
+    return 'custom'
+  }
+  const scrollDriven = (tween: any) => { for (let item = tween; item && item !== gsap.globalTimeline; item = item.parent) if (item.scrollTrigger || item.vars?.scrollTrigger) return true; return false }
+  // EXPERIMENTAL: `_ease` is GSAP's private parsed ease. Setting it changes the curve without
+  // `invalidate()`, which would re-record start values and make a running tween jump.
+  function gsapEdit(entry: GsapEntry, tween: any) {
+    if (!entry.edit) return
+    if (!entry.saved.has(tween)) entry.saved.set(tween, { duration: tween.duration(), ease: tween.vars?.ease, hadEase: Object.hasOwn(tween.vars ?? {}, 'ease'), parsed: tween._ease })
+    tween.duration(entry.edit.duration)
+    if (entry.edit.ease !== 'custom') {
+      const parsed = gsap.parseEase?.(entry.edit.ease)
+      if (typeof parsed === 'function') { tween.vars.ease = entry.edit.ease; if ('_ease' in tween) tween._ease = parsed }
+    }
+  }
+  function gsapRestore(entry: GsapEntry) {
+    for (const [tween, saved] of entry.saved) {
+      try {
+        tween.duration(saved.duration)
+        if (saved.hadEase) tween.vars.ease = saved.ease; else delete tween.vars.ease
+        // A tween edited before its first frame had no parsed ease yet: rebuild it from its own settings
+        // rather than leave a running tween without one.
+        if ('_ease' in tween) {
+          const own = tween.vars.ease ?? tween.parent?.vars?.defaults?.ease ?? gsap.defaults?.().ease ?? 'power1.out'
+          tween._ease = typeof saved.parsed === 'function' ? saved.parsed : typeof own === 'function' ? own : gsap.parseEase(own)
+        }
+      } catch { /* The tween may have been killed. */ }
+    }
+    entry.saved.clear()
+  }
+  // While any GSAP edit is on, tweens the page creates later on an edited element's targets get it too.
+  function gsapWrap() {
+    const editing = [...store.entries.values()].some((entry) => entry.kind === 'gsap' && entry.edit)
+    if (editing && !store.gsapWrapped) {
+      const originals: Record<string, unknown> = {}
+      for (const name of ['to', 'from', 'fromTo']) {
+        const original = gsap[name]
+        if (typeof original !== 'function') continue
+        originals[name] = original
+        gsap[name] = function (this: unknown, ...args: unknown[]) {
+          const tween = original.apply(this, args)
+          try {
+            const targets = typeof tween?.targets === 'function' ? tween.targets() : []
+            for (const entry of (w[Symbol.for('vellum.snapshot.motion')]?.entries ?? new Map()).values()) {
+              if (entry.kind !== 'gsap' || !entry.edit || !targets.some((target: unknown) => entry.targets.has(target))) continue
+              entry.tween = tween
+              if (!entry.saved.has(tween)) entry.saved.set(tween, { duration: tween.duration(), ease: tween.vars?.ease, hadEase: Object.hasOwn(tween.vars ?? {}, 'ease'), parsed: tween._ease })
+              tween.duration(entry.edit.duration)
+              if (entry.edit.ease !== 'custom') { const parsed = w.gsap.parseEase?.(entry.edit.ease); if (typeof parsed === 'function') { tween.vars.ease = entry.edit.ease; if ('_ease' in tween) tween._ease = parsed } }
+            }
+          } catch { /* The page's tween is returned untouched. */ }
+          return tween
+        }
+      }
+      store.gsapWrapped = originals
+    } else if (!editing && store.gsapWrapped) {
+      for (const [name, original] of Object.entries(store.gsapWrapped)) gsap[name] = original
+      store.gsapWrapped = undefined
+    }
+  }
+  function gsapInfo(entry: GsapEntry, extra?: { replayed?: boolean }): PageMotionInfo {
+    const tween = entry.tween
+    const saved = entry.saved.get(tween)
+    const duration = Math.round((saved ? saved.duration : tween.duration()) * 1000) / 1000
+    const ease = saved ? (typeof saved.ease === 'string' ? saved.ease : saved.ease === undefined ? easeName({ vars: {}, parent: tween.parent }) : 'custom') : easeName(tween)
+    const keys = Object.keys(tween.vars ?? {}).filter((key) => !CONTROL.test(key) && !key.startsWith('on')).slice(0, 8)
+    const context = scrollDriven(tween) ? 'scroll' : tween.parent && tween.parent !== gsap.globalTimeline ? 'timeline' : undefined
+    return {
+      found: true, library: 'gsap', ...(context ? { context } : {}), owner: describe(entry.node), relation: entry.relation,
+      key: keys[0] ?? '', keys, source: 'transition', form: 'gsap', editable: true,
+      original: { duration, ease }, values: entry.edit ? { ...entry.edit } : { duration, ease },
+      edited: Boolean(entry.edit), moved: true, ...extra,
+    }
+  }
+  function gsapReplay(entry: GsapEntry): boolean {
+    const tween = entry.tween
+    if (scrollDriven(tween)) return false
+    let top = tween
+    while (top.parent && top.parent !== gsap.globalTimeline) top = top.parent
+    top.restart()
+    return true
   }
   function keysOf(ve: any): string[] {
     const keys = new Set<string>()
@@ -112,18 +246,26 @@ export function pageMotion(ref: string, action: PageMotionAction, edit: MotionEd
     if (resolved) for (const key of Object.keys(resolved)) keys.add(key)
     return [...keys].filter((key) => ve.latestValues?.[key] !== undefined).slice(0, 12)
   }
-  function entryFor(create: boolean): Entry | null {
-    let entry = store.entries.get(ref)
-    if (entry && (!entry.node.isConnected || entry.ve.current !== entry.node)) { teardown(entry); store.entries.delete(ref); entry = undefined }
-    if (entry || !create) return entry ?? null
+  function entryFor(create: boolean): AnyEntry | null {
+    let current = store.entries.get(ref)
+    if (current && (!current.node.isConnected || (current.kind === 'motion' && current.ve.current !== current.node))) { teardown(current); store.entries.delete(ref); current = undefined }
+    if (current || !create) return current ?? null
     const element = document.querySelector(`[data-vellum-ref="${CSS.escape(ref)}"]`)
     const owner = store.owners.get(ref)
     const kept = owner?.node.isConnected ? veFor(owner.node) : null
     const found = element ? locate(element) : kept && owner ? { ve: kept, node: owner.node, relation: owner.relation } : null
-    if (!found) return null
+    if (!found) {
+      const keptTweens = !element && owner?.node.isConnected ? liveTweensOrNone(owner.node) : []
+      const tweened = element ? gsapLocate(element) : keptTweens.length && owner ? { tween: chooseTween(keptTweens), node: owner.node, relation: owner.relation } : null
+      if (!tweened) return null
+      store.owners.set(ref, { node: tweened.node, relation: tweened.relation })
+      const created: GsapEntry = { kind: 'gsap', ...tweened, targets: new Set(tweened.tween.targets?.() ?? [tweened.node]), edit: null, saved: new Map() }
+      store.entries.set(ref, created)
+      return created
+    }
     store.owners.set(ref, { node: found.node, relation: found.relation })
     const ve = found.ve
-    entry = { ...found, original: ve.getDefaultTransition, own: Object.getOwnPropertyDescriptor(ve, 'getDefaultTransition'), edit: null, path: null, from: {}, stop: [] }
+    const entry: Entry = { kind: 'motion', ...found, original: ve.getDefaultTransition, own: Object.getOwnPropertyDescriptor(ve, 'getDefaultTransition'), edit: null, path: null, from: {}, stop: [] }
     for (const key of keysOf(ve)) {
       const value = ve.getValue(key, ve.latestValues[key])
       if (!value?.on) continue
@@ -133,6 +275,7 @@ export function pageMotion(ref: string, action: PageMotionAction, edit: MotionEd
     store.entries.set(ref, entry)
     return entry
   }
+  const liveTweensOrNone = (node: Element) => gsap ? liveTweens(node) : []
   // The transition that applies to `key`, the way Motion's getValueTransition picks it.
   function pick(base: any, key: string): { transition: any; path: string | null } {
     if (base && typeof base === 'object' && base[key] && typeof base[key] === 'object') return { transition: base[key], path: key }
@@ -177,7 +320,7 @@ export function pageMotion(ref: string, action: PageMotionAction, edit: MotionEd
     const source = inline(entry.ve) ? 'inline' : !picked.transition ? 'default' : picked.path ? 'per-value' : 'transition'
     entry.path = picked.path
     return {
-      found: true, owner: describe(entry.node), relation: entry.relation, key, keys, source,
+      found: true, library: 'motion', owner: describe(entry.node), relation: entry.relation, key, keys, source,
       form: shape.form, editable: source !== 'inline' && shape.form !== 'other',
       original: (plain(picked.transition ?? shape.fallback ?? null) as Record<string, unknown> | null),
       values: shape.values, edited: Boolean(entry.edit), moved: Object.keys(entry.from).length > 0, ...extra,
@@ -202,19 +345,32 @@ export function pageMotion(ref: string, action: PageMotionAction, edit: MotionEd
     if (action === 'revert-all') {
       for (const entry of store.entries.values()) teardown(entry)
       store.entries.clear()
+      if (gsap) gsapWrap()
       return { found: false, reason: 'gone' }
     }
     if (action === 'revert' || action === 'reset') {
       const entry = store.entries.get(ref)
       if (entry) { teardown(entry); store.entries.delete(ref) }
+      if (gsap) gsapWrap()
       if (action === 'revert') { store.owners.delete(ref); return { found: false, reason: 'gone' } }
     }
-    const entry = entryFor(true)
-    if (!entry) return { found: false, reason: document.querySelector(`[data-vellum-ref="${CSS.escape(ref)}"]`) ? sawReact ? 'no-motion' : 'no-react' : 'gone' }
+    const found = entryFor(true)
+    if (!found) return { found: false, reason: document.querySelector(`[data-vellum-ref="${CSS.escape(ref)}"]`) ? sawReact || gsap ? 'no-motion' : 'no-react' : 'gone' }
+    if (found.kind === 'gsap') {
+      if (action === 'edit' && edit?.form === 'gsap' && typeof edit.values.duration === 'number' && typeof edit.values.ease === 'string') {
+        found.edit = { duration: edit.values.duration, ease: edit.values.ease }
+        gsapEdit(found, found.tween)
+        gsapWrap()
+      }
+      if (action === 'replay') return gsapInfo(found, { replayed: gsapReplay(found) })
+      return gsapInfo(found)
+    }
+    const entry = found
     if (action === 'edit' && edit) {
       const current = info(entry)
       if (!current.found || !current.editable || current.form !== edit.form) return current
       const values = edit.values
+      if (edit.form === 'gsap') return current
       const patch: Record<string, unknown> =
         edit.form === 'duration' ? { type: 'spring', duration: values.duration, bounce: values.bounce }
           : edit.form === 'visualDuration' ? { type: 'spring', visualDuration: values.visualDuration, bounce: values.bounce }

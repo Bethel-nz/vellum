@@ -177,3 +177,38 @@ reopening restored the edit. The note for the agent read `{ bounce: 0.16, durati
 confirms a CSS-animated element keeps its Playback and Timing dials. The test copy adds `<all_urls>` and
 opens the shadow root, because automation can't click the toolbar button that grants activeTab.
 Not yet run in headful Chrome, Edge or Dia.
+
+### GSAP tweens
+
+With no Motion element found, `page-motion.ts` looks for live GSAP tweens on the selection, its
+ancestors and its descendants. It uses `window.gsap.getTweensOf` and picks a running tween first,
+then a repeating one. Animation opens a Tween folder with Duration and an Ease menu of GSAP's
+named eases, labelled exactly as written. A site's own ease is offered first. An edit sets the
+tween's `duration()` and its parsed ease. Start values aren't re-recorded, so a running tween
+doesn't jump. While an edit is on, `gsap.to/from/fromTo` are wrapped, so tweens the page creates
+later on the same targets (a hover, a click) get it too. Revert restores every tween it touched and
+unwraps the methods. Replay restarts the tween, or the top-level timeline it sits in. The note says
+when a ScrollTrigger drives it instead. The agent gets
+`GSAP tween (x) on div#loop.box: { duration: 1, ease: "power2.inOut" } → { duration: 2, ease: "power2.inOut" }`.
+The worker accepts only GSAP's named eases with numeric parameters, or `custom`.
+
+Limits: GSAP removes a one-shot tween once it finishes, so an intro animation that has already
+played isn't found. A tween made through a timeline's own `.to()` after the edit, or through a
+reference the page saved before the edit, keeps its timing. The parsed ease is the private `_ease`.
+
+Verified with `review/script-motion/gsap-e2e.mjs`, a local page loading GSAP 3.15.1 from jsDelivr.
+Duration 1 → 2 doubled the measured loop period (2000 → 4000 ms). Choosing `none` set the ease.
+Reset and close restored 1 / `power2.inOut`, and reopening restored the edit. A timeline tween's note
+says Replay restarts its timeline. A tween the page created after the edit got the edited duration.
+Discard unwrapped the methods. There were no page errors. On gsap.com (GSAP 3.15.0), selecting a
+tweened word on the "Get GSAP" button found its timeline tween (duration 1, GSAP's default
+`power1.out`).
+
+### Dropdowns inside Snapshot's panel
+
+DialKit closes a dropdown on a document `pointerdown` whose target is outside it. From inside the
+shadow root that target is the host, so every option press closed the list before its click, and no
+dropdown in the panel could change its value. Iterations was affected too. `Dials.tsx` now stops
+presses inside a dropdown at the editor. Keyboard navigation inside an open dropdown still loses
+focus after the first arrow key, likely the same retargeting in DialKit's keyboard handling. It is
+not fixed here.

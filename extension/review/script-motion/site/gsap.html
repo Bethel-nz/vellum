@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8"><title>GSAP spec</title>
+<style>body { font: 14px system-ui; margin: 40px } .box { width: 120px; height: 120px; margin: 40px 0; border-radius: 16px; background: #4b7bec; color: white; display: grid; place-items: center }</style>
+<div class="box" id="loop"><span>loop</span></div>
+<div class="box" id="tl-a">timeline</div>
+<div class="box" id="hover">hover</div>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.15.1/dist/gsap.min.js"></script>
+<script>
+  const { gsap } = window
+  gsap.to('#loop', { x: 300, duration: 1, ease: 'power2.inOut', repeat: -1, yoyo: true })
+  gsap.timeline({ repeat: -1, yoyo: true }).to('#tl-a', { x: 200, duration: .8, ease: 'back.out(1.7)' }).to('#tl-a', { rotation: 45, duration: .4 })
+  const hover = document.querySelector('#hover')
+  hover.addEventListener('mouseenter', () => gsap.to(hover, { x: 240, duration: .4, ease: 'power1.out' }))
+  hover.addEventListener('mouseleave', () => gsap.to(hover, { x: 0, duration: .4, ease: 'power1.out' }))
+</script>

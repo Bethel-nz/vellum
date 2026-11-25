@@ -26,7 +26,7 @@ import type { ElementStyles, StyleField } from './element-controls'
 
 type FoundMotion = Extract<PageMotionInfo, { found: true }>
 /** Motion (via React) found on or around the element: which element it drives and the dials' values, in the source's own form. */
-export type ScriptMotionView = Pick<FoundMotion, 'owner' | 'relation' | 'source' | 'editable' | 'key' | 'values'> & { form: MotionForm | 'other' }
+export type ScriptMotionView = Pick<FoundMotion, 'library' | 'context' | 'owner' | 'relation' | 'source' | 'editable' | 'key' | 'keys' | 'values'> & { form: MotionForm | 'other' }
 /** `related`: recording an interaction also records what it opens or closes elsewhere on the page. */
 export type CaptureOptions = { triggers: boolean; frames: boolean; listeners: boolean; related: boolean }
 export type SelectedElement = { ref: string; number: number; anchor: { x: number; y: number }; selector: string; label: string; note: string; ready: boolean; fitOutline: boolean; motion: number; sampled: number; styles: ElementStyles; box: { x: number; y: number; width: number; height: number }; script?: ScriptMotionView; changes: number; comments: Array<{ id: string; text: string }>; snapshots: Array<{ id: string; file: string; image: string; selector: string }> }
@@ -57,6 +57,11 @@ export type CapturePanelProps = {
 
 function motionNote(script: ScriptMotionView) {
   const where = script.relation === 'self' ? 'this element' : `${script.relation === 'parent' ? 'its parent' : script.relation === 'ancestor' ? 'a container' : 'an element inside'}, ${script.owner}`
+  if (script.library === 'gsap') {
+    const animates = script.keys.length ? ` (${script.keys.join(', ')})` : ''
+    if (script.context === 'scroll') return `GSAP tween${animates} on ${where}, driven by the page's scroll. Edits apply as you scroll it.`
+    return `GSAP tween${animates} on ${where}. Edits apply now and to tweens it starts later. Replay restarts ${script.context === 'timeline' ? 'its timeline' : 'it'}.`
+  }
   const kind = script.form === 'tween' ? 'Tween' : 'Spring'
   if (!script.editable) return `Motion animates ${where}. Its transition is set inside animate or a variant, which Snapshot can't edit yet. Leave a note instead.`
   return `${kind} from Motion on ${where}${script.source === 'default' ? ', using Motion’s default' : ''}. Edits apply to its next move. Replay runs one now.`

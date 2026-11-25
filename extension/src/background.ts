@@ -133,7 +133,10 @@ const MOTION_FIELDS: Record<MotionEdit['form'], Record<string, [number, number]>
   visualDuration: { visualDuration: [0, 30], bounce: [-1, 1] },
   physics: { stiffness: [0, 100000], damping: [0, 10000], mass: [0.001, 1000] },
   tween: { duration: [0, 30] },
+  gsap: { duration: [0, 60] },
 }
+/** GSAP's named eases, optionally with numeric parameters (`back.out(1.7)`), or `custom` to keep the page's own. */
+const GSAP_EASE = /^(none|linear|custom|(power[0-4]|quad|cubic|quart|quint|strong|back|elastic|bounce|circ|expo|sine)(\.(in|out|inOut))?(\([\d., ]{0,24}\))?)$/
 /** Only known fields with finite numbers in range reach the page; an ease is four numbers. */
 function motionEdit(edit: MotionEdit | undefined): MotionEdit | null {
   if (!edit || !Object.hasOwn(MOTION_FIELDS, edit.form)) return null
@@ -145,6 +148,7 @@ function motionEdit(edit: MotionEdit | undefined): MotionEdit | null {
   }
   const ease = edit.values?.ease
   if (edit.form === 'tween' && Array.isArray(ease) && ease.length === 4 && ease.every((n) => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= 10)) values.ease = ease.slice()
+  if (edit.form === 'gsap') { if (typeof ease !== 'string' || !GSAP_EASE.test(ease)) return null; values.ease = ease }
   return { form: edit.form, values }
 }
 /** Runs page-motion.ts in the page's own world, in the frame that asked. */

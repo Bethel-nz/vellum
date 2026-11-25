@@ -21,6 +21,9 @@ function easing(value: string, duration: number): TransitionConfig {
 function cssEasing(points: Bezier) { return `cubic-bezier(${points.join(', ')})` }
 
 type Slider = [number, number, number, number]
+type SelectConfig = { type: 'select'; default: string; options: Array<{ value: string; label: string }> }
+/** GSAP's named eases. A site's own (`back.out(1.7)`, or `custom` for a CustomEase) is offered first. */
+const GSAP_EASES = ['none', ...['power1', 'power2', 'power3', 'power4', 'back', 'elastic', 'bounce', 'circ', 'expo', 'sine'].flatMap((name) => [`${name}.in`, `${name}.out`, `${name}.inOut`])]
 const slider = (value: number, min: number, max: number, step: number): Slider => [value, Math.min(min, value), Math.max(max, value * 2), step]
 
 /** Sliders in the transition's own form, so an edit reads back as the code the site wrote. */
@@ -29,17 +32,24 @@ function motionDials(script: ScriptMotionView) {
   if (script.form === 'duration') return { duration: slider(value('duration', .8), .05, 3, .01), bounce: slider(value('bounce', .3), 0, 1, .01) }
   if (script.form === 'visualDuration') return { visualDuration: slider(value('visualDuration', .3), .05, 3, .01), bounce: slider(value('bounce', .3), 0, 1, .01) }
   if (script.form === 'physics') return { stiffness: slider(value('stiffness', 100), 1, 1000, 1), damping: slider(value('damping', 10), 0, 100, .5), mass: slider(value('mass', 1), .1, 10, .1) }
+  if (script.form === 'gsap') {
+    const current = typeof script.values.ease === 'string' ? script.values.ease : 'power1.out'
+    // Labels are the exact names: a plain string option is title-cased, and ease names are code.
+    const names = GSAP_EASES.includes(current) ? GSAP_EASES : [current, ...GSAP_EASES]
+    return { duration: slider(value('duration', .5), .05, 5, .01), ease: { type: 'select', default: current, options: names.map((name) => ({ value: name, label: name })) } satisfies SelectConfig }
+  }
   const ease = script.values.ease
   return { curve: { type: 'easing', duration: Math.max(.01, value('duration', .3)), ease: (Array.isArray(ease) && ease.length === 4 ? ease : [0, 0, .58, 1]) as Bezier } satisfies TransitionConfig }
 }
 
 /** The same folder as plain values, for setValues. */
 function motionValues(script: ScriptMotionView) {
-  return Object.fromEntries(Object.entries(motionDials(script)).map(([key, dial]) => [key, Array.isArray(dial) ? dial[0] : dial]))
+  return Object.fromEntries(Object.entries(motionDials(script)).map(([key, dial]) => [key, Array.isArray(dial) ? dial[0] : (dial as { type: string; default?: string }).type === 'select' ? (dial as SelectConfig).default : dial]))
 }
 
 function motionEdit(script: ScriptMotionView, values: Record<string, unknown>): MotionEdit | null {
   if (script.form === 'other') return null
+  if (script.form === 'gsap') return typeof values.duration === 'number' && typeof values.ease === 'string' ? { form: 'gsap', values: { duration: values.duration, ease: values.ease } } : null
   if (script.form === 'tween') {
     const curve = values.curve as TransitionConfig | undefined
     return curve?.type === 'easing' ? { form: 'tween', values: { duration: curve.duration, ease: [...curve.ease] } } : null
@@ -62,7 +72,7 @@ export function CaptureDials(props: CapturePanelProps & { selection: SelectedEle
     // Motion found on or around the element gets its own sliders; the CSS playback and timing
     // controls stay only where the element has CSS or Web Animations for them to drive.
     const script = props.selection.script?.editable ? props.selection.script : undefined
-    const motionFolder = script?.form === 'tween' ? 'tween' : 'spring'
+    const motionFolder = script?.form === 'tween' || script?.form === 'gsap' ? 'tween' : 'spring'
     const cssMotion = !props.selection.script || props.selection.motion > 0
     const kit = createDialKit(props.selection.label, {
       design: {
@@ -163,9 +173,15 @@ export function CaptureDials(props: CapturePanelProps & { selection: SelectedEle
     }, false)
     const theme = () => surface.dataset.theme === 'light' ? 'light' as const : 'dark' as const
     const editor = createDialRoot({ target: host.current!, mode: 'inline', theme: theme(), productionEnabled: true })
+    // DialKit closes a dropdown on a document pointerdown whose target is outside it. From inside Snapshot's
+    // shadow root that target is the shadow host, so every press on an option read as outside: the list
+    // closed before the option's click and no choice was ever made. Presses inside a list stop here.
+    const keepDropdown = (event: PointerEvent) => { if ((event.target as Element | null)?.closest?.('.dialkit-select-dropdown, .dialkit-preset-dropdown, .dialkit-shortcuts-dropdown')) event.stopPropagation() }
+    host.current!.addEventListener('pointerdown', keepDropdown)
     const observer = new MutationObserver(() => editor.element.dataset.theme = theme())
     observer.observe(surface, { attributes: true, attributeFilter: ['data-theme'] })
-    return () => { synchronize.current = null; observer.disconnect(); stop(); editor.destroy(); kit.destroy() }
+    const target = host.current!
+    return () => { target.removeEventListener('pointerdown', keepDropdown); synchronize.current = null; observer.disconnect(); stop(); editor.destroy(); kit.destroy() }
   }, [props.selection.ref])
   useLayoutEffect(() => { synchronize.current?.(props) }, [JSON.stringify(props.selection.script?.values ?? null), props.selection.fitOutline, props.playback.playing, props.playback.speed, props.playback.position, props.playback.duration, props.playback.scrubDuration, props.playback.delay, props.playback.easing, props.playback.iterations, props.recordDuration, props.options.triggers, props.options.frames, props.options.listeners, props.options.related])
   return <div className="vellum-dial-editor" inert={props.capturing || props.recording} ref={host} />
