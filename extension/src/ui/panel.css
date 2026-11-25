@@ -112,6 +112,7 @@ kbd { font: 400 11px/1.5 var(--font-body); color: var(--text-secondary); }
 .vellum-inspector-navigation:active { cursor: grabbing; }
 .vellum-inspector-navigation > span { flex: 1; color: var(--text-muted); font-size: 12px; }
 .vellum-inspector-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.vellum-motion-note { margin: 2px 10px 8px; color: var(--sys-secondary); font: 400 12px/16px var(--sys-font); }
 .vellum-dial-editor .dialkit-root { font-family: var(--font-body); --dial-glass-bg: var(--background); --dial-dropdown-bg: var(--surface-raised); --dial-text-root: var(--foreground); --dial-text-primary: var(--foreground); --dial-text-label: var(--text-secondary); --dial-text-section: var(--text-secondary); --dial-text-secondary: var(--text-muted); --dial-text-tertiary: var(--text-muted); --dial-focus-ring: var(--focus-outline); }
 .vellum-dial-editor .dialkit-panel-inner { width: 100%; min-width: 0; border: 0; border-radius: 0; box-shadow: none; }
 .vellum-dial-editor .dialkit-panel-inline { width: 100%; }

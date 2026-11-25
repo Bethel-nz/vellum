@@ -21,11 +21,15 @@ import { IconSquareBehindSquare2 } from '@central-icons-react/round-outlined-rad
 import { motionTokens } from '../arc/motion-tokens'
 import { CaptureDials } from './Dials'
 import type { PageScreenshot } from '../messages'
+import type { MotionEdit, MotionForm, PageMotionInfo } from '../page-motion'
 import type { ElementStyles, StyleField } from './element-controls'
 
+type FoundMotion = Extract<PageMotionInfo, { found: true }>
+/** Motion (via React) found on or around the element: which element it drives and the dials' values, in the source's own form. */
+export type ScriptMotionView = Pick<FoundMotion, 'owner' | 'relation' | 'source' | 'editable' | 'key' | 'values'> & { form: MotionForm | 'other' }
 /** `related`: recording an interaction also records what it opens or closes elsewhere on the page. */
 export type CaptureOptions = { triggers: boolean; frames: boolean; listeners: boolean; related: boolean }
-export type SelectedElement = { ref: string; number: number; anchor: { x: number; y: number }; selector: string; label: string; note: string; ready: boolean; fitOutline: boolean; motion: number; sampled: number; styles: ElementStyles; box: { x: number; y: number; width: number; height: number }; changes: number; comments: Array<{ id: string; text: string }>; snapshots: Array<{ id: string; file: string; image: string; selector: string }> }
+export type SelectedElement = { ref: string; number: number; anchor: { x: number; y: number }; selector: string; label: string; note: string; ready: boolean; fitOutline: boolean; motion: number; sampled: number; styles: ElementStyles; box: { x: number; y: number; width: number; height: number }; script?: ScriptMotionView; changes: number; comments: Array<{ id: string; text: string }>; snapshots: Array<{ id: string; file: string; image: string; selector: string }> }
 export type CapturePanelProps = {
   open: boolean; selections: SelectedElement[]; activeRef: string | null; toolsOpen: boolean; markersHidden: boolean
   pageScreenshots: PageScreenshot[]
@@ -40,6 +44,7 @@ export type CapturePanelProps = {
   onFitOutline: (fit: boolean) => void
   onMarkers: () => void; onOriginal: (show: boolean) => void
   onStyle: (field: StyleField, value: string) => void; onReset: () => void
+  onMotion: (edit: MotionEdit) => void
   onTiming: (field: 'duration' | 'delay' | 'easing' | 'iterations', value: number | string) => void
   onNavigate: (direction: 'parent' | 'child' | 'previous' | 'next') => void
   onOptions: (options: CaptureOptions) => void; onPlayback: (playing: boolean) => void; onReplay: () => void
@@ -48,6 +53,13 @@ export type CapturePanelProps = {
   onRemoveCapture: (id: string) => void; onRemoveComment: (id: string) => void
   onCapture: () => void; onPageScreenshot: () => void; onRemovePageScreenshot: (id: string) => void; onRecord: () => void; onSend: () => void
   onCopy: () => Promise<void>
+}
+
+function motionNote(script: ScriptMotionView) {
+  const where = script.relation === 'self' ? 'this element' : `${script.relation === 'parent' ? 'its parent' : script.relation === 'ancestor' ? 'a container' : 'an element inside'}, ${script.owner}`
+  const kind = script.form === 'tween' ? 'Tween' : 'Spring'
+  if (!script.editable) return `Motion animates ${where}. Its transition is set inside animate or a variant, which Snapshot can't edit yet. Leave a note instead.`
+  return `${kind} from Motion on ${where}${script.source === 'default' ? ', using Motion’s default' : ''}. Edits apply to its next move. Replay runs one now.`
 }
 
 export function CapturePanel(props: CapturePanelProps) {
@@ -226,7 +238,10 @@ export function CapturePanel(props: CapturePanelProps) {
       dragPosition.current = { ref: active.ref, x: event.clientX - offset.x, y: event.clientY - offset.y }
       placeComposer.current()
     }} onPointerUp={() => { dragOffset.current = null }} onPointerCancel={() => { dragOffset.current = null }} onLostPointerCapture={() => { dragOffset.current = null }}><span>Nearby elements</span>{([['parent', IconArrowUp], ['child', IconArrowDown], ['previous', IconArrowLeft], ['next', IconArrowRight]] as const).map(([direction, Icon]) => <button type="button" className="vellum-tool-button" key={direction} aria-label={`Select ${direction} element`} title={`Select ${direction} element`} disabled={props.capturing} onClick={() => props.onNavigate(direction)}><Icon size={15} /></button>)}</nav>
-          <div className="vellum-inspector-scroll"><CaptureDials key={`${active.ref}:${active.selector}:${props.playback.scrubDuration}`} {...props} selection={active} /></div>
+          <div className="vellum-inspector-scroll">
+            {active.script ? <p className="vellum-motion-note">{motionNote(active.script)}</p> : null}
+            <CaptureDials key={`${active.ref}:${active.selector}:${props.playback.scrubDuration}:${active.script ? `${active.script.owner}:${active.script.form}:${active.script.editable}` : ''}`} {...props} selection={active} />
+          </div>
           <div className="vellum-inspector-footer"><button type="button" className="vellum-text-button" disabled={!active.changes || props.capturing} onClick={props.onReset}>Reset</button><span>{active.changes ? `${active.changes} changes` : ''}</span><button type="button" className="vellum-tool-button" aria-label="Capture selected element" title="Capture selected element" disabled={props.capturing} onClick={props.onCapture}><IconCamera1 size={17} /></button></div>
         </motion.div>
       </motion.div>

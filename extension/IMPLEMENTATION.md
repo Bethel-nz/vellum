@@ -142,3 +142,38 @@ the comment field and buttons to animate their global positions after the panel 
 Frame sampling reproduced roughly 78px of relative drift before the change, then 0px
 for forward and reverse dragging after it. No browser console errors were recorded.
 The existing child scale correction and comment resizing springs remain in place.
+
+## 2026-11-25 Motion springs on production sites
+
+Selecting an element whose motion comes from Motion (framer-motion / `motion`) on a React site
+now reads the real transition and opens Animation with sliders in the source's own form:
+`duration`/`bounce`, `visualDuration`/`bounce`, `stiffness`/`damping`/`mass`, or a tween curve.
+A one-line note above the dials names the element Motion animates, since clicking into a card
+usually selects text well inside it. Edits apply to the site's next move. Replay re-runs the last
+move through Motion itself. The change goes to the agent as
+`Motion transition on <element>: <before> → <after>`. CSS playback and timing dials stay hidden
+when the element has no CSS or Web Animations for them to drive.
+
+`src/page-motion.ts` runs in the page's own world through `chrome.scripting.executeScript({ world:
+'MAIN' })`, called by the worker on the content script's behalf. It needs no new permissions and no
+debugger. The worker accepts only known fields with finite values in range. The content script runs
+these calls one at a time and coalesces slider drags. Results are page data, shown only.
+The edit shadows `getDefaultTransition` on Motion's VisualElement instance. React re-renders
+leave the instance alone, so the edit holds until `delete` restores the prototype method. Reset,
+Discard, Remove, moving to a nearby element, Send, close and "Hold to view original" lift it.
+Reopening and Undo put it back, even when React has replaced the selected element.
+
+Limits: React with Motion only (the fiber shape holds from framer-motion 11 to 14). Transitions set
+inside `animate` or a variant are shown as not editable yet. Replay needs one move after selection.
+A move already under way keeps its spring. It relies on Motion internals that a release could change.
+Background research and measurements are in `research_notes/Previewing JavaScript animation edits/`.
+
+Verified with the built extension in Playwright's full Chromium (new headless):
+`review/script-motion/motion-e2e.mjs` on flora.so. Baseline 2.22 px overshoot, settling in 532 ms.
+Duration 1.5 / bounce 0.5 set from the keyboard gave 46.9 px / ~1466 ms on Replay (starting 120 ms
+after the click) and on the next autoplay. Reset, close and Discard each returned 2.2 px / 532 ms, and
+reopening restored the edit. The note for the agent read `{ bounce: 0.16, duration: 0.55, type:
+"spring" } → { bounce: 0.5, duration: 1.5, type: "spring" }`. `review/script-motion/css-e2e.mjs`
+confirms a CSS-animated element keeps its Playback and Timing dials. The test copy adds `<all_urls>` and
+opens the shadow root, because automation can't click the toolbar button that grants activeTab.
+Not yet run in headful Chrome, Edge or Dia.

@@ -11,6 +11,7 @@ import { shadowStyles } from './ui/styles'
 import { copyAnnotations } from './copy'
 import overlayStyles from './overlay.css?inline'
 import { inlineStyle, readStyles, styleProperties, type StyleField, type StyleChange } from './ui/element-controls'
+import type { MotionEdit, PageMotionAction, PageMotionInfo } from './page-motion'
 
 if (!document.querySelector('[data-vellum-capture]')) install()
 
@@ -68,6 +69,67 @@ function install() {
   const pageScreenshots: PageScreenshot[] = []
   const comments = new Map<string, Array<{ id: string; text: string }>>()
   const motionChanges = new Map<string, Map<string, { before: string; after: string }>>()
+  // Script-driven motion (Motion via React) is edited in the page's own world through the worker. Calls
+  // run one at a time, so a revert is never overtaken by an edit still on its way; slider drags coalesce
+  // to the latest value. What comes back is page data and is only displayed.
+  type ScriptMotion = Extract<PageMotionInfo, { found: true }>
+  const scriptMotion = new Map<string, ScriptMotion>()
+  const motionEdits = new Map<string, MotionEdit>()
+  const pendingMotion = new Map<string, MotionEdit>()
+  let motionQueue: Promise<unknown> = Promise.resolve()
+  function queueMotion<T>(job: () => Promise<T>): Promise<T> {
+    const run = motionQueue.then(job, job)
+    motionQueue = run.catch(() => {})
+    return run
+  }
+  const motionCall = (ref: string, action: PageMotionAction, edit?: MotionEdit) => queueMotion(() => worker<PageMotionInfo>({ type: 'motion', ref, action, edit }).catch(() => undefined))
+  async function readMotion(selection: Selection, action: PageMotionAction = 'read') {
+    const info = await motionCall(selection.ref, action)
+    if (!selections.includes(selection)) return
+    if (info?.found) scriptMotion.set(selection.ref, info); else scriptMotion.delete(selection.ref)
+    render()
+  }
+  function pushMotion(ref: string, edit: MotionEdit) {
+    const queued = pendingMotion.has(ref)
+    pendingMotion.set(ref, edit)
+    if (queued) return
+    void queueMotion(async () => {
+      const latest = pendingMotion.get(ref)
+      pendingMotion.delete(ref)
+      if (!latest) return
+      const info = await worker<PageMotionInfo>({ type: 'motion', ref, action: 'edit', edit: latest }).catch(() => undefined)
+      if (info?.found && selections.some((selection) => selection.ref === ref)) scriptMotion.set(ref, info)
+    })
+  }
+  function liftMotion(ref?: string) {
+    if (ref) pendingMotion.delete(ref); else pendingMotion.clear()
+    if (!ref && !scriptMotion.size && !motionEdits.size) return
+    void motionCall(ref ?? 'all', ref ? 'revert' : 'revert-all')
+  }
+  const motionText = (value: unknown) => JSON.stringify(value ?? null).replace(/"(\w+)":/g, '$1: ').replace(/,/g, ', ').replace(/^\{/, '{ ').replace(/\}$/, ' }')
+  function motionPatch(edit: MotionEdit): Record<string, unknown> {
+    const values = edit.values
+    if (edit.form === 'duration') return { type: 'spring', duration: values.duration, bounce: values.bounce }
+    if (edit.form === 'visualDuration') return { type: 'spring', visualDuration: values.visualDuration, bounce: values.bounce }
+    if (edit.form === 'physics') return { type: 'spring', stiffness: values.stiffness, damping: values.damping, mass: values.mass }
+    return { type: 'tween', duration: values.duration, ...(values.ease ? { ease: values.ease } : {}) }
+  }
+  function editMotion(next: MotionEdit) {
+    const selection = activeSelection()
+    const info = selection && scriptMotion.get(selection.ref)
+    if (!selection || !info?.editable || info.form !== next.form) return
+    const round = (value: number) => Math.round(value * 1000) / 1000
+    const edit: MotionEdit = { form: next.form, values: Object.fromEntries(Object.entries(next.values).map(([key, value]) => [key, Array.isArray(value) ? value.map(round) : round(value)])) }
+    clearSampledReplay()
+    motionEdits.set(selection.ref, edit)
+    let changes = motionChanges.get(selection.ref)
+    if (!changes) { changes = new Map(); motionChanges.set(selection.ref, changes) }
+    const where = `${info.source === 'per-value' ? ` for ${info.key}` : ''} on ${info.owner}${info.source === 'default' ? ' (none in the source; this was Motion’s default)' : ''}`
+    changes.set(`Motion transition${where}`, { before: motionText(info.original), after: motionText({ ...(info.original ?? {}), ...motionPatch(edit) }) })
+    if (originalVisible) viewOriginal(false)
+    else pushMotion(selection.ref, edit)
+    render()
+  }
   const frameAnimations = new Map<Animation, { currentTime: CSSNumberish | null; state: AnimationPlayState; rate: number }>()
   const savedTiming = new Map<Animation, OptionalEffectTiming>()
   let sampledReplay: Animation | undefined
@@ -93,6 +155,8 @@ function install() {
       if (show) restorePreview(element)
       else for (const [property, change] of changes) inlineStyle(element)?.setProperty(property, change.after, 'important')
     }
+    if (show) liftMotion()
+    else for (const [ref, edit] of motionEdits) if (selections.some((selection) => selection.ref === ref)) pushMotion(ref, edit)
     draw()
   }
   function clearSampledReplay() {
@@ -246,6 +310,77 @@ function install() {
     }
     updateGeometry()
   }
+  function scriptView(ref: string) {
+    const info = scriptMotion.get(ref)
+    if (!info) return undefined
+    return { owner: info.owner, relation: info.relation, form: info.form, source: info.source, editable: info.editable, key: info.key, values: motionEdits.get(ref)?.values ?? info.values }
+  }
+  /** The recorded gesture, the sampled frames, or the element's own CSS/WAAPI animations, in that order. */
+  function replayRecorded(selection: Selection, motionWaiting = false) {
+    const sampled = selection.recorded.filter((animation) => animation.origin === 'sampled' && animation.samples?.length).at(-1)
+    const gesture = [...selection.recorded].reverse().find((animation) => animation.gesture)?.gesture
+    if (gesture?.events.length) {
+      const playGesture = async () => {
+        let previous = 0
+        for (const recorded of gesture.events) {
+          const delay = Math.min(250, Math.max(0, recorded.t - previous))
+          if (delay) await new Promise((resolve) => window.setTimeout(resolve, delay))
+          previous = recorded.t
+          let target: Element | null = null
+          try { target = document.querySelector(recorded.selector) } catch { /* A stale target is skipped. */ }
+          if (!target?.isConnected || host.contains(target)) continue
+          const init = { bubbles: true, cancelable: true, composed: true, button: recorded.button ?? 0, buttons: recorded.buttons ?? 0, clientX: recorded.clientX ?? 0, clientY: recorded.clientY ?? 0, key: recorded.key ?? '', code: recorded.code ?? '', altKey: recorded.altKey ?? false, ctrlKey: recorded.ctrlKey ?? false, metaKey: recorded.metaKey ?? false, shiftKey: recorded.shiftKey ?? false }
+          let replayed: Event
+          if (recorded.type.startsWith('pointer')) replayed = new PointerEvent(recorded.type, { ...init, pointerType: recorded.pointerType ?? 'mouse' })
+          else if (recorded.type.startsWith('key')) replayed = new KeyboardEvent(recorded.type, init)
+          else if (recorded.type === 'wheel') replayed = new WheelEvent(recorded.type, { ...init, deltaX: recorded.deltaX ?? 0, deltaY: recorded.deltaY ?? 0 })
+          else if (recorded.type === 'focusin') replayed = new FocusEvent(recorded.type, init)
+          else if (recorded.type === 'input' || recorded.type === 'change') replayed = new Event(recorded.type, init)
+          else replayed = new MouseEvent(recorded.type, init)
+          target.dispatchEvent(replayed)
+        }
+      }
+      let hasReplayTarget = false
+      for (const event of gesture.events) {
+        try { if (document.querySelector(event.selector)?.isConnected) { hasReplayTarget = true; break } } catch { /* Try the next recorded target. */ }
+      }
+      if (hasReplayTarget) {
+        clearSampledReplay()
+        sampledPosition = 0
+        const rows = sampled?.samples ?? []
+        const first = rows[0]
+        const last = rows.at(-1)
+        const box = selection.element.getBoundingClientRect()
+        const matches = (row?: Record<string, number>) => Boolean(row && ['x', 'y', 'w', 'h'].every((key) => typeof row[key] !== 'number' || Math.abs(row[key]! - ({ x: box.x, y: box.y, w: box.width, h: box.height }[key as 'x' | 'y' | 'w' | 'h'])) < 3))
+        let lastChangeAt = 0
+        for (let index = 1; index < rows.length; index++) {
+          const previous = rows[index - 1]!
+          if (Object.entries(rows[index]!).some(([key, value]) => key !== 't' && Math.abs(value - (previous[key] ?? value)) > .5)) lastChangeAt = Number(rows[index]!.t ?? 0)
+        }
+        const settleMs = Math.min(5000, lastChangeAt + 180)
+        const alreadyAtEnd = Boolean(last && matches(last) && !matches(first))
+        if (alreadyAtEnd) {
+          void (async () => {
+            await playGesture()
+            await new Promise((resolve) => window.setTimeout(resolve, settleMs))
+            if (enabled && selections.includes(selection)) await playGesture()
+          })()
+        } else void playGesture()
+        status(`Replaying ${gesture.events.length} captured events.`)
+        render(); draw()
+        return
+      }
+    }
+    if (sampled?.samples?.length) {
+      previewSampledFrame(selection, 0, true)
+      render()
+      return
+    }
+    const current = currentAnimations()
+    if (!current.length) { status(motionWaiting ? 'Replay needs a move to repeat. Wait for this element to move once, then replay.' : 'Record an interaction before replaying it.', motionWaiting); return }
+    for (const animation of current) { saveAnimation(animation); animation.currentTime = 0; animation.play() }
+    render(); draw()
+  }
   function render() {
     const animation = currentAnimations()[0]
     const timing = animation?.effect?.getTiming()
@@ -258,7 +393,7 @@ function install() {
     const position = sampledProgress ?? (hasRecordedFrames ? sampledPosition / 100 : progress ?? 0)
     const playback = { playing: animation?.playState === 'running', speed: animation?.playbackRate ?? 1, position: Math.round(Number(position) * 100), duration: Number.isFinite(duration) ? duration : 1000, scrubDuration: Number(sampledDuration) || (Number.isFinite(duration) ? duration : 1000), delay: Number(timing?.delay ?? 0), easing: timing?.easing ?? 'linear', iterations: String(timing?.iterations ?? 1) }
     root.render(createElement(MotionConfig, { reducedMotion: 'user' }, createElement(CapturePanel, {
-      open: enabled, selections: selections.map((selection, index) => ({ ref: selection.ref, number: index + 1, anchor: anchorFor(selection), selector: getElementSelector(selection.element), label: labelFor(selection.element), note: selection.note, ready: ready.has(selection.ref) && hasContent(selection), fitOutline: !looseOutlines.has(selection.ref), motion: animations(selection.element).length, sampled: selection.recorded.filter((animation) => animation.origin === 'sampled').length, comments: comments.get(selection.ref) ?? [], snapshots: (snapshots.get(selection.ref) ?? []).map((snapshot) => ({ id: snapshot.id, file: snapshot.image.file, image: snapshot.image.dataUrl, selector: snapshot.node.selector })), styles: readStyles(selection.element), box: getElementBounds(selection.element), changes: (previews.get(selection.element)?.size ?? 0) + (motionChanges.get(selection.ref)?.size ?? 0) })), pageScreenshots,
+      open: enabled, selections: selections.map((selection, index) => ({ ref: selection.ref, number: index + 1, anchor: anchorFor(selection), selector: getElementSelector(selection.element), label: labelFor(selection.element), note: selection.note, ready: ready.has(selection.ref) && hasContent(selection), fitOutline: !looseOutlines.has(selection.ref), motion: animations(selection.element).length, sampled: selection.recorded.filter((animation) => animation.origin === 'sampled').length, comments: comments.get(selection.ref) ?? [], snapshots: (snapshots.get(selection.ref) ?? []).map((snapshot) => ({ id: snapshot.id, file: snapshot.image.file, image: snapshot.image.dataUrl, selector: snapshot.node.selector })), styles: readStyles(selection.element), box: getElementBounds(selection.element), script: scriptView(selection.ref), changes: (previews.get(selection.element)?.size ?? 0) + (motionChanges.get(selection.ref)?.size ?? 0) })), pageScreenshots,
       activeRef, toolsOpen, markersHidden, message, error: failed, capturing, recording, options, picking, playback, recordDuration,
       onRecordDuration: (seconds) => { recordDuration = seconds; render() },
       onPicking: () => { picking = true; activeRef = null; toolsOpen = false; hovered = null; render(); draw() },
@@ -313,11 +448,13 @@ function install() {
         render(); draw()
       },
       onStyle: editStyle,
+      onMotion: editMotion,
       onReset: () => {
         const selection = activeSelection()
         if (!selection) return
         restorePreview(selection.element); previews.delete(selection.element)
-        motionChanges.delete(selection.ref); 
+        motionChanges.delete(selection.ref)
+        if (motionEdits.delete(selection.ref)) { pendingMotion.delete(selection.ref); void readMotion(selection, 'reset') }
         for (const animation of currentAnimations()) {
           const timing = savedTiming.get(animation)
           if (timing) { animation.effect?.updateTiming(timing); savedTiming.delete(animation) }
@@ -350,6 +487,9 @@ function install() {
         for (const selection of selections) {
           selection.element.setAttribute('data-vellum-ref', selection.ref)
           for (const [property, change] of previews.get(selection.element) ?? []) inlineStyle(selection.element)?.setProperty(property, change.after, 'important')
+          const edit = motionEdits.get(selection.ref)
+          if (edit) pushMotion(selection.ref, edit)
+          void readMotion(selection)
         }
         undoSelection = undefined
         status(''); draw()
@@ -358,6 +498,7 @@ function install() {
         undoSelection = selections.slice()
         clearSampledReplay()
         for (const selection of selections) { selection.element.removeAttribute('data-vellum-ref'); restorePreview(selection.element) }
+        liftMotion()
         selections.length = 0; activeRef = null; toolsOpen = false; picking = true
         restoreAnimations(); status(''); draw()
       },
@@ -367,7 +508,7 @@ function install() {
         undoSelection = selections.slice()
         clearSampledReplay()
         const selection = selections[index]!
-        selection.element.removeAttribute('data-vellum-ref'); restorePreview(selection.element)
+        selection.element.removeAttribute('data-vellum-ref'); restorePreview(selection.element); liftMotion(ref)
         selections.splice(index, 1)
         if (activeRef === ref) { activeRef = null; toolsOpen = false }
         picking = !selections.length
@@ -390,69 +531,13 @@ function install() {
       onReplay: () => {
         const selection = activeSelection()
         if (!selection) return
-        const sampled = selection.recorded.filter((animation) => animation.origin === 'sampled' && animation.samples?.length).at(-1)
-        const gesture = [...selection.recorded].reverse().find((animation) => animation.gesture)?.gesture
-        if (gesture?.events.length) {
-          const playGesture = async () => {
-            let previous = 0
-            for (const recorded of gesture.events) {
-              const delay = Math.min(250, Math.max(0, recorded.t - previous))
-              if (delay) await new Promise((resolve) => window.setTimeout(resolve, delay))
-              previous = recorded.t
-              let target: Element | null = null
-              try { target = document.querySelector(recorded.selector) } catch { /* A stale target is skipped. */ }
-              if (!target?.isConnected || host.contains(target)) continue
-              const init = { bubbles: true, cancelable: true, composed: true, button: recorded.button ?? 0, buttons: recorded.buttons ?? 0, clientX: recorded.clientX ?? 0, clientY: recorded.clientY ?? 0, key: recorded.key ?? '', code: recorded.code ?? '', altKey: recorded.altKey ?? false, ctrlKey: recorded.ctrlKey ?? false, metaKey: recorded.metaKey ?? false, shiftKey: recorded.shiftKey ?? false }
-              let replayed: Event
-              if (recorded.type.startsWith('pointer')) replayed = new PointerEvent(recorded.type, { ...init, pointerType: recorded.pointerType ?? 'mouse' })
-              else if (recorded.type.startsWith('key')) replayed = new KeyboardEvent(recorded.type, init)
-              else if (recorded.type === 'wheel') replayed = new WheelEvent(recorded.type, { ...init, deltaX: recorded.deltaX ?? 0, deltaY: recorded.deltaY ?? 0 })
-              else if (recorded.type === 'focusin') replayed = new FocusEvent(recorded.type, init)
-              else if (recorded.type === 'input' || recorded.type === 'change') replayed = new Event(recorded.type, init)
-              else replayed = new MouseEvent(recorded.type, init)
-              target.dispatchEvent(replayed)
-            }
-          }
-          let hasReplayTarget = false
-          for (const event of gesture.events) {
-            try { if (document.querySelector(event.selector)?.isConnected) { hasReplayTarget = true; break } } catch { /* Try the next recorded target. */ }
-          }
-          if (hasReplayTarget) {
-            clearSampledReplay()
-            sampledPosition = 0
-            const rows = sampled?.samples ?? []
-            const first = rows[0]
-            const last = rows.at(-1)
-            const box = selection.element.getBoundingClientRect()
-            const matches = (row?: Record<string, number>) => Boolean(row && ['x', 'y', 'w', 'h'].every((key) => typeof row[key] !== 'number' || Math.abs(row[key]! - ({ x: box.x, y: box.y, w: box.width, h: box.height }[key as 'x' | 'y' | 'w' | 'h'])) < 3))
-            let lastChangeAt = 0
-            for (let index = 1; index < rows.length; index++) {
-              const previous = rows[index - 1]!
-              if (Object.entries(rows[index]!).some(([key, value]) => key !== 't' && Math.abs(value - (previous[key] ?? value)) > .5)) lastChangeAt = Number(rows[index]!.t ?? 0)
-            }
-            const settleMs = Math.min(5000, lastChangeAt + 180)
-            const alreadyAtEnd = Boolean(last && matches(last) && !matches(first))
-            if (alreadyAtEnd) {
-              void (async () => {
-                await playGesture()
-                await new Promise((resolve) => window.setTimeout(resolve, settleMs))
-                if (enabled && selections.includes(selection)) await playGesture()
-              })()
-            } else void playGesture()
-            status(`Replaying ${gesture.events.length} captured events.`)
-            render(); draw()
-            return
-          }
-        }
-        if (sampled?.samples?.length) {
-          previewSampledFrame(selection, 0, true)
-          render()
-          return
-        }
-        const current = currentAnimations()
-        if (!current.length) { status('Record an interaction before replaying it.'); return }
-        for (const animation of current) { saveAnimation(animation); animation.currentTime = 0; animation.play() }
-        render(); draw()
+        if (!scriptMotion.has(selection.ref)) { replayRecorded(selection); return }
+        void motionCall(selection.ref, 'replay').then((info) => {
+          if (!selections.includes(selection)) return
+          if (info?.found) scriptMotion.set(selection.ref, info)
+          if (info?.found && info.replayed) { clearSampledReplay(); status(''); render(); return }
+          replayRecorded(selection, true)
+        })
       },
       onSpeed: (speed) => { for (const animation of currentAnimations()) { saveAnimation(animation); animation.playbackRate = speed } render() },
       onSeek: (progress) => { const selection = activeSelection(); if (selection && !previewSampledFrame(selection, progress)) seek(selection.element, progress); render(); draw() },
@@ -472,7 +557,9 @@ function install() {
     element.setAttribute('data-vellum-ref', ref)
     const box = getElementBounds(element)
     pinPositions.set(ref, { x: (point?.x ?? box.x) + scrollX, y: (point?.y ?? box.y + box.height) + scrollY })
-    selections.push({ element, ref, note: '', recorded: [] })
+    const selection: Selection = { element, ref, note: '', recorded: [] }
+    selections.push(selection)
+    void readMotion(selection)
     activeRef = ref; toolsOpen = false
     hovered = null
     picking = false
@@ -498,11 +585,13 @@ function install() {
     restorePreview(selection.element)
     previews.delete(selection.element)
     motionChanges.delete(selection.ref)
+    liftMotion(selection.ref); motionEdits.delete(selection.ref); scriptMotion.delete(selection.ref)
     selection.element = next
     selection.recorded = []; selection.related = undefined; selection.changes = undefined; selection.relatedShots = undefined
     const box = getElementBounds(next)
     pinPositions.set(selection.ref, { x: box.x + scrollX, y: box.y + box.height + scrollY })
     next.setAttribute('data-vellum-ref', selection.ref)
+    void readMotion(selection)
     hovered = null
     activeRef = selection.ref
     status('')
@@ -658,6 +747,7 @@ function install() {
         await worker<SavedCapture>({ type: 'capture', ref: selection.ref, mode: 'queue', ...options })
         selection.element.removeAttribute('data-vellum-ref')
         restorePreview(selection.element); previews.delete(selection.element)
+        liftMotion(selection.ref); motionEdits.delete(selection.ref); scriptMotion.delete(selection.ref)
         selections.splice(selections.indexOf(selection), 1); ready.delete(selection.ref)
         snapshots.delete(selection.ref); comments.delete(selection.ref); motionChanges.delete(selection.ref); looseOutlines.delete(selection.ref); pinPositions.delete(selection.ref)
         draw()

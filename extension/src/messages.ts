@@ -1,4 +1,5 @@
 import type { Capture, CaptureSnapshot, SavedCapture } from '../../core/capture'
+import type { MotionEdit, PageMotionAction } from './page-motion'
 
 export type CaptureSettings = { target: string; mode: 'send' | 'queue' }
 export type Note = { id: string; title: string; workspace: string; account: string; active: boolean }
@@ -20,6 +21,7 @@ export type WorkerMessage =
   | { type: 'related-shots'; refs: string[] }
   | { type: 'page-screenshot' }
   | { type: 'capture-status'; id: string }
+  | { type: 'motion'; ref: string; action: PageMotionAction; edit?: MotionEdit }
 export type ContentMessage =
   | { type: 'ping' }
   | { type: 'toggle' }

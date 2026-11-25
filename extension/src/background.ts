@@ -1,6 +1,7 @@
 import type { Capture, SavedCapture } from '../../core/capture'
 import { bridge, settings, uploadCapture } from './bridge'
 import type { CaptureResult, ContentMessage, PageScreenshotResult, SnapshotResult, SnapshotStateResult, Upload, WorkerMessage } from './messages'
+import { pageMotion, type MotionEdit, type PageMotionInfo } from './page-motion'
 
 const busy = new Set<number>()
 
@@ -126,6 +127,34 @@ async function listeners(tabId: number, nodeId: number): Promise<Capture['elemen
   } finally { await command(tabId, 'Runtime.releaseObject', { objectId }).catch(() => {}) }
 }
 
+const MOTION_ACTIONS = new Set(['read', 'edit', 'replay', 'reset', 'revert', 'revert-all'])
+const MOTION_FIELDS: Record<MotionEdit['form'], Record<string, [number, number]>> = {
+  duration: { duration: [0, 30], bounce: [-1, 1] },
+  visualDuration: { visualDuration: [0, 30], bounce: [-1, 1] },
+  physics: { stiffness: [0, 100000], damping: [0, 10000], mass: [0.001, 1000] },
+  tween: { duration: [0, 30] },
+}
+/** Only known fields with finite numbers in range reach the page; an ease is four numbers. */
+function motionEdit(edit: MotionEdit | undefined): MotionEdit | null {
+  if (!edit || !Object.hasOwn(MOTION_FIELDS, edit.form)) return null
+  const values: MotionEdit['values'] = {}
+  for (const [field, [min, max]] of Object.entries(MOTION_FIELDS[edit.form])) {
+    const value = edit.values?.[field]
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) return null
+    values[field] = value
+  }
+  const ease = edit.values?.ease
+  if (edit.form === 'tween' && Array.isArray(ease) && ease.length === 4 && ease.every((n) => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= 10)) values.ease = ease.slice()
+  return { form: edit.form, values }
+}
+/** Runs page-motion.ts in the page's own world, in the frame that asked. */
+async function motion(sender: chrome.runtime.MessageSender, message: Extract<WorkerMessage, { type: 'motion' }>): Promise<PageMotionInfo> {
+  const tabId = sender.tab?.id
+  if (tabId === undefined || !/^[\w-]{1,100}$/.test(message.ref) || !MOTION_ACTIONS.has(message.action)) throw new Error('Select the element again.')
+  const [result] = await chrome.scripting.executeScript({ target: { tabId, frameIds: [sender.frameId ?? 0] }, world: 'MAIN', func: pageMotion, args: [message.ref, message.action, motionEdit(message.edit)] })
+  return (result?.result as PageMotionInfo | undefined) ?? { found: false, reason: 'gone' }
+}
+
 async function capture(tabId: number, options: Extract<WorkerMessage, { type: 'capture' }>) {
   if (busy.has(tabId)) throw new Error('A capture is already being prepared.')
   busy.add(tabId)
@@ -195,7 +224,7 @@ async function handle(message: WorkerMessage, sender: chrome.runtime.MessageSend
   if (sender.id !== chrome.runtime.id) throw new Error('This request did not come from Vellum Snapshot.')
   // Page-side scripts can request capture operations, but cannot read connection credentials.
   const popup = sender.url === chrome.runtime.getURL('popup.html')
-  if (sender.tab && !popup && message.type !== 'toolbar-presence' && message.type !== 'capture' && message.type !== 'snapshot' && message.type !== 'related-shots' && message.type !== 'page-screenshot' && message.type !== 'capture-status' && message.type !== 'appearance' && message.type !== 'notes' && message.type !== 'settings' && message.type !== 'target') throw new Error('This action is only available in the extension popup.')
+  if (sender.tab && !popup && message.type !== 'toolbar-presence' && message.type !== 'capture' && message.type !== 'snapshot' && message.type !== 'related-shots' && message.type !== 'page-screenshot' && message.type !== 'capture-status' && message.type !== 'appearance' && message.type !== 'motion' && message.type !== 'notes' && message.type !== 'settings' && message.type !== 'target') throw new Error('This action is only available in the extension popup.')
   switch (message.type) {
     case 'toolbar-presence': {
       if (!sender.tab || sender.frameId !== 0) throw new Error('Toolbar presence requires the top-frame extension sender')
@@ -281,6 +310,7 @@ async function handle(message: WorkerMessage, sender: chrome.runtime.MessageSend
       }
     }
     case 'capture': return capture(sender.tab?.id ?? await activeTab(), message)
+    case 'motion': return motion(sender, message)
     default: throw new Error('Unknown capture action.')
   }
 }
