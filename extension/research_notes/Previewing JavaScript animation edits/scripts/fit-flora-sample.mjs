@@ -7,6 +7,8 @@
 // a cubic-bezier fit loses on BIC. It also checks the standalone Motion port (fit-motion-spring.mjs)
 // against Motion's own per-frame writes: inverting the port's curve at each written value gives Motion's
 // elapsed time, which should be a constant offset from the frame time (only timestamp rounding left).
+// And it shows the motion owner problem: the slide a person selects has no transform; its box x is the
+// track's translateX plus a constant, so the preview and the code change belong to the track.
 //
 // Run: node fit-flora-sample.mjs [samples.json] [fits.json]      (records, then fits)
 //      node fit-flora-sample.mjs fit-flora-samples.json fits.json reuse   (refits a saved recording offline)
@@ -44,7 +46,8 @@ data = await page.evaluate(() => new Promise((resolve) => {
     const tick = (ts) => {
       start ??= ts
       const m = getComputedStyle(el).transform
-      raf.push({ ts, now: performance.now(), tx: new DOMMatrix(m === 'none' ? undefined : m).e, inline: num(el.style.transform) })
+      // card: the box x of a visible slide (what a person would select); it has no transform of its own
+      raf.push({ ts, now: performance.now(), tx: new DOMMatrix(m === 'none' ? undefined : m).e, inline: num(el.style.transform), card: el.children[2].getBoundingClientRect().x })
       if (ts - start < 10600) requestAnimationFrame(tick); else { mo.disconnect(); resolve({ transition, raf, writes, ua: navigator.userAgent }) }
     }
     requestAnimationFrame(tick)
@@ -95,4 +98,11 @@ const flush = () => {
 for (let i = 0; i < writes.length; i++) { if (i && writes[i].tl - writes[i - 1].tl > 100) { flush(); seg = [] } seg.push(writes[i]) }
 flush()
 console.log('port check (offset spread = timestamp rounding only if the port is exact):', port)
-fs.writeFileSync(fitsFile, JSON.stringify({ groundTruth: data.transition, fits, portCheck: port }, null, 1))
+// Motion owner: the selected slide moves only because its ancestor's transform does. Its box x minus the
+// track's translateX is constant except for a step when React rewrites the recycled slides' `left`.
+const runs = []
+for (const r of data.raf) { const o = +(r.card - r.tx).toFixed(3); if (!runs.length || runs.at(-1).offsetPx !== o) runs.push({ offsetPx: o, fromMs: +(r.ts - data.raf[0].ts).toFixed(1), frames: 0 }); runs.at(-1).frames++ }
+const moveStarts = data.raf.filter((r, i) => i && r.tx !== data.raf[i - 1].tx && data.raf[i - 1].tx === data.raf[Math.max(0, i - 2)].tx).map((r) => +(r.ts - data.raf[0].ts).toFixed(1))
+const owner = { slideMinusTrack: runs, trackMoveStartsMs: moveStarts }
+console.log('slide box x - track translateX:', JSON.stringify(owner))
+fs.writeFileSync(fitsFile, JSON.stringify({ groundTruth: data.transition, fits, portCheck: port, owner }, null, 1))
